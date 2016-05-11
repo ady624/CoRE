@@ -54,7 +54,7 @@ preferences {
 def pageMain() {
 	dynamicPage(name: "pageMain", title: "CoRE - Pistons", install: true, uninstall: true) {
         section {
-            app( name: "pistons", title: "Add a piston...", description: "test", appName: "Piston", namespace: "ady624", , multiple: true)
+            app( name: "pistons", title: "Add a piston...", description: "test", appName: "CoRE Piston", namespace: "ady624", , multiple: true)
         }
 
         section(title:"Application Info") {
