@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *   5/12/2016 >>> v0.0.014.20160512 - Alpha test version - Piston's scheduler, "Timing belt" is now operational.
  *   5/11/2016 >>> v0.0.013.20160511 - Alpha test version - Name changed to CoRE Piston, child of CoRE, time triggers operational - can figure out next schedule time
  *   5/10/2016 >>> v0.0.012.20160510 - Alpha test version - Added runtime statistics - even more stats for nerds
  *   5/10/2016 >>> v0.0.011.20160510 - Alpha test version - Added runtime statistics - stats for nerds
@@ -68,7 +69,7 @@ preferences {
 
 /* constant definitions */
 def version() {
-	return "v0.0.013.20160511"
+	return "v0.0.014.20160512"
 }
 
 def mem() {
@@ -405,7 +406,7 @@ private customAttributePrefix() {
 
 
 def pageMain() {
-	dummy()
+	//dummy()
 	state.run = "config"
 	configApp()
     cleanUpConditions(true)
@@ -1274,11 +1275,6 @@ private getConditionDescription(id, level) {
 private formatTime(time) {
 	//we accept both a Date or a settings' Time    
     return formatLocalTime(time, "h:mm a z")
-//	def t = adjustTime(time)
-//    def h = t.getHours()
-//    def m = t.getMinutes()
-    //am/pm version
-//    return "${(h == 0 ? 12 : (h < 13 ? h : h - 12))}:${m.toString().padLeft(2, "0")}${h < 12 ? "am" : "pm"}"
 }
 
 private formatHour(h) {
@@ -1688,7 +1684,7 @@ private addOffsetToMinutes(minutes, offset) {
     return minutes
 }
 
-private evaluateTimeCondition(condition, unixTime = null) {
+private evaluateTimeCondition(condition, evt = null, unixTime = null) {
 	//no condition? not time condition? false!
 	if (!condition || (condition.attr != "time")) {
     	return false
@@ -1701,9 +1697,20 @@ private evaluateTimeCondition(condition, unixTime = null) {
     def comparison = cleanUpComparison(condition.comp)
     def comp = getComparisonOption(condition.attr, comparison)    
     //if we can't find the attribute (can't be...) or the comparison object, or we're dealing with a trigger, exit stage false
-    if (!attr || !comp || comp.trigger == comparison) {
+    if (!attr || !comp) {
     	return false
     }
+    
+    if (comp.trigger == comparison) {
+		//trigger
+		if ((evt.deviceId == "time") && (evt.conditionId == condition.id)) {
+        	condition.lt = evt.date.time
+            //we have a time event returning as a result of a trigger, assume true
+            return true
+        } else {
+        	return false
+        }
+	}
 
 	//check comparison
     if (comparison.contains("any")) {
@@ -2369,16 +2376,20 @@ private cleanUpMap(map) {
 private updateCondition(condition) {
 	condition.cap = settings["condCap${condition.id}"]
 	condition.dev = []
-    for (device in settings["condDevices${condition.id}"])
-    {
-    	//save the list of device IDs - we can't have the actual device objects in the state
-    	condition.dev.push(device.id)
-    }
     condition.attr = cleanUpAttribute(settings["condAttr${condition.id}"])
     if (!condition.attr) {
 	    def cap = getCapabilityByDisplay(condition.cap)
         if (cap && cap.attribute) {
     		condition.attr = cap.attribute
+        }
+    }
+    if (condition.attr == "time") {
+    	condition.dev.push(condition.attr)
+    } else {
+        for (device in settings["condDevices${condition.id}"])
+        {
+            //save the list of device IDs - we can't have the actual device objects in the state
+            condition.dev.push(device.id)
         }
     }
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
@@ -2455,13 +2466,13 @@ private _traverseConditions(parent, conditionId) {
 }
 
 //returns a condition based on its ID
-private getCondition(conditionId) {
+private getCondition(conditionId, primary = null) {
 	def result = null
     def parent = (state.run == "config" ? state.config : state)
-    if (parent && parent.app && parent.app.conditions) {
+    if (parent && (primary in [null, true]) && parent.app && parent.app.conditions) {
     	result =_traverseConditions(parent.app.conditions, conditionId)
     }
-    if (!result && parent && parent.app && parent.app.otherConditions) {
+    if (!result && parent && (primary in [null, false]) && parent.app && parent.app.otherConditions) {
     	result = _traverseConditions(parent.app.otherConditions, conditionId)
     }
 	return result
@@ -2508,9 +2519,28 @@ private getConditionTriggerCount(condition) {
     return result
 }
 
+private withEachTrigger(condition, callback) {
+	def result = 0
+    if (condition) {
+        if (condition.children != null) {
+            //we're dealing with a group
+            for (child in condition.children) {
+                withEachTrigger(child, callback)
+            }
+        } else {
+        	if (condition.trg) {
+            	"$callback"(condition)
+            }
+        }
+    }
+    return result
+}
+
 private getTriggerCount(app) {
 	return getConditionTriggerCount(app.conditions) + (settings.mode == "Latching" ? getConditionTriggerCount(app.otherConditions) : 0)
 }
+
+
 
 private getConditionConditionCount(condition) {
 	def result = 0
@@ -2586,7 +2616,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 }
 
 private subscribeToAll(app) {
-	debug "Initializing subscriptions..."
+	debug "Initializing subscriptions...", 1
 	//we have to maintain two separate logic threads for the latching mode
     //to do so, we first simulate
     state.deviceSubscriptions = 0
@@ -2615,7 +2645,7 @@ private subscribeToAll(app) {
     	//simple IF case, no worries here
     	subscribeToDevices(app.conditions, hasTriggers, deviceHandler, null, null, null)
     }
-	debug "Finished subscribing"
+	debug "Finished subscribing", -1
 }
 
 private checkEventEligibility(condition, evt) {
@@ -2685,13 +2715,18 @@ def updated() {
 }
 
 def initialize() {
+	debug "", 0
+	debug "Initializing app...", 1
 	// TODO: subscribe to attributes, devices, locations, etc.
     //move app to production
     state.app = state.config ? state.config.app : state.app
     //save misc
     state.app.mode = settings.mode
     
+	state.run = "app"
+    
     state.cache = [:]
+    state.tasks = state.tasks ? state.tasks : [:]
     state.store = state.store ? state.store : [:]
     
     subscribeToAll(state.app)
@@ -2699,16 +2734,16 @@ def initialize() {
     subscribe(app, appHandler)
     
     state.remove("config")    
+    
+    processTasks()
+    
+	debug "Done", -1
 }
 
 def appHandler() {
 }
 
-private debug(message) {
-	debug message, null
-}
-
-private debug(message, mode) {
+private debug(message, mode = null) {
 	if (!settings.debugging) {
     	return
     }
@@ -2751,39 +2786,51 @@ private debug(message, mode) {
 }
 
 def deviceHandler(evt) {
+	entryPoint()
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
     debug "", 0
-	debug "Entering deviceHandler()", 1
-    broadcastDeviceEvent(evt, true, false)
+	debug "Received a primary block device event", 1
+    broadcastEvent(evt, true, false)
     perf = now() - perf
-    debug "Exiting deviceHandler() after ${perf}ms", -1
+    debug "Done in ${perf}ms", -1
     exit(perf)
 }
 
 def latchingDeviceHandler(evt) {
+	entryPoint()
+    
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
     debug "", 0
-	debug "Entering latchingDeviceHandler()", 1
-    broadcastDeviceEvent(evt, false, true)
+	debug "Received a secondary block device event", 1
+    broadcastEvent(evt, false, true)
     perf = now() - perf
-    debug "Exiting latchingDeviceHandler() after ${perf}ms", -1
+    debug "Done in ${perf}ms", -1
     exit(perf)
 }
 
 def bothDeviceHandler(evt) {
+	entryPoint()
+    
 	//executes whenever a common use device has an event
 	//broadcast to both IF blocks
     def perf = now()
     debug "", 0
-	debug "Entering bothDeviceHandler()", 1
-    broadcastDeviceEvent(evt, true, true)
+	debug "Received a dual block device event", 1
+    broadcastEvent(evt, true, true)
     perf = now() - perf
-    debug "Exiting bothDeviceHandler() after ${perf}ms", -1
+    debug "Done in ${perf}ms", -1
     exit(perf)
+}
+
+private entryPoint() {
+	//initialize whenever app runs
+    //use the "app" version throughout
+    state.run = "app"
+	state.tasker = state.tasker ? state.tasker : []
 }
 
 private exit(milliseconds) {
@@ -2805,20 +2852,22 @@ private exit(milliseconds) {
         runStats.lastEventDelay = state.lastEvent.delay
     }
     
-    state.runStats = runStats
     atomicState.runStats = runStats
     
 	parent.updateChart("exec", milliseconds)
 
+	//save all atomic states to state
+    state.runStats = runStats
+	state.cache = atomicState.cache
+    state.tasks = atomicState.tasks
 }
 
-private broadcastDeviceEvent(evt, primary, secondary) {
+private broadcastEvent(evt, primary, secondary) {
 	state.run = "app"
 	//filter duplicate events and broadcast event to proper IF blocks
     def perf = now()
-	debug "Entering broadcastDeviceEvent()", 1
     def delay = now() - evt.date.getTime()
-	debug "Event ${evt.name} for device ${evt.device} with id ${evt.deviceId} and value ${evt.value} was generated on ${evt.date} (${evt.date.getTime()}), about ${delay}ms ago"
+	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago", 1
     state.lastEvent = [ event: evt.name, delay: delay ]
     try {
 	    parent.updateChart("delay", delay)
@@ -2827,9 +2876,7 @@ private broadcastDeviceEvent(evt, primary, secondary) {
     }
     def cachedValue = atomicState.cache[evt.deviceId + '-' + evt.name]
     def eventTime = evt.date.getTime()
-	state.cache[evt.deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, t: eventTime ]
-    //we apparently can't change subelements of atomicState - we save the whole cache then?
-    atomicState.cache = state.cache
+	atomicState.cache[evt.deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, t: eventTime ]
 	if (cachedValue) {
     	if ((cachedValue.v == evt.value) && ((cachedValue.v instanceof String) || (eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
         	//duplicate event
@@ -2838,52 +2885,66 @@ private broadcastDeviceEvent(evt, primary, secondary) {
         }
     }
 
+	try {
+        if (evt) {    
+            //broadcast to primary IF block
+            def result1 = null
+            def result2 = null
+            if (primary) {
+                result1 = evaluateConditionSet(evt, true)
+                state.lastPrimaryEvaluationResult = result1
+                state.lastPrimaryEvaluationDate = now()
+                debug "Primary IF block evaluation result is $result1"
+            }
+            //broadcast to secondary IF block
+            if (secondary) {
+                result2 = evaluateConditionSet(evt, false)
+                state.lastSecondaryEvaluationResult = result2
+                state.lastSecondaryEvaluationDate = now()
+                debug "Secondary IF block evaluation result is $result1"
+            }
+            def currentState = state.currentState
+            def mode = state.app.mode
 
-	if (evt) {    
-	    debug "Event is a valid, non-duplicate, storing it in the cache"
-    	//broadcast to primary IF block
-        def result1 = null
-        def result2 = null
-    	if (primary) {
-        	result1 = evaluateConditionSet(evt, true)
-            state.lastPrimaryEvaluationResult = result1
-            state.lastPrimaryEvaluationDate = now()
-        }
-    	//broadcast to secondary IF block
-    	if (secondary) {
-        	result2 = evaluateConditionSet(evt, false)
-            state.lastSecondaryEvaluationResult = result2
-            state.lastSecondaryEvaluationDate = now()
-        }
-        def currentState = state.currentState
-        def mode = state.app.mode
-        
-        switch (mode) {
-        	case "Latching":
-            	if (!currentState) {
-                	if (result1) {
-                		//flip on
-                    	state.currentState = true
-                        state.currentStateSince = now()
+            switch (mode) {
+                case "Latching":
+                    if (!currentState) {
+                        if (result1) {
+                            //flip on
+                            state.currentState = true
+                            state.currentStateSince = now()
+                            debug "♦♦♦ Latching Piston changed state to true ♦♦♦"
+                        }
+                    } else {
+                        if (result2) {
+                            //flip off
+                            state.currentState = false
+                            state.currentStateSince = now()
+                            debug "♦♦♦♦ Latching Piston changed state to false ♦♦♦"
+                        }
                     }
-                } else {
-                	if (result2) {
-                    	//flip off
-                        state.currentState = false
+                    break
+                case "Simple":
+                    if (currentState != result1) {
+                        state.currentState = result1
                         state.currentStateSince = now()
+                        debug "♦♦♦♦ Simple Piston changed state to $result1 ♦♦♦"
                     }
-                }
-            	break
-            default:
-            	if (currentState != result1) {
-            		state.currentState = result1
-                	state.currentStateSince = now()
-                }
+                    break
+                case "Else-If":
+                    if (currentState != result1) {
+                        state.currentState = result1
+                        state.currentStateSince = now()
+                        debug "♦♦♦ Else-If Piston changed state to $result1 ♦♦♦"
+                    }
+                    break
+            }
         }
-	}
+	} catch(all) {
+    	debug "ERROR: An error occurred while processing event $evt"
+    }
     perf = now() - perf
-    debug "Exiting broadcastDeviceEvent() after ${perf}ms", -1
-    if (evt) debug "Event processing took ${perf}ms"
+    if (evt) debug "Event processing took ${perf}ms", -1
 }
 
 private evaluateConditionSet(evt, primary) {
@@ -2891,43 +2952,38 @@ private evaluateConditionSet(evt, primary) {
     def perf = now()
     def pushNote = null
     
-	debug "Entering evaluateConditionSet()", 1
-    debug "Event received by the ${primary ? "primary" : "secondary"} IF block evaluation for device ${evt.device}, attribute ${evt.name}='${evt.value}', isStateChange=${evt.isStateChange()}, currentValue=${evt.device.currentValue(evt.name)}, determining eligibility"
+    //debug "Event received by the ${primary ? "primary" : "secondary"} IF block evaluation for device ${evt.device}, attribute ${evt.name}='${evt.value}', isStateChange=${evt.isStateChange()}, currentValue=${evt.device.currentValue(evt.name)}, determining eligibility"
     //check for triggers - if the primary IF block has triggers and the event is not related to any trigger
     //then we don't want to evaluate anything, as only triggers should be executed
     //this check ensures that an event that is used in both blocks, but as different types, one as a trigger
     //and one as a condition do not interfere with each other
     def eligibilityStatus = checkEventEligibility(primary ? state.app.conditions: state.app.otherConditions , evt)
     def evaluation = null
-    debug "Eligibility status is $eligibilityStatus  - ${eligibilityStatus > 0 ? "ELIGIBLE" : "INELIGIBLE"} (" + (eligibilityStatus == 2 ? "triggers required, event is a trigger" : (eligibilityStatus == 1 ? "triggers not required, event is a condition" : (eligibilityStatus == -2 ? "triggers required, but event is a condition" : "something is messed up"))) + ")"
+    debug "Event eligibility for the ${primary ? "primary" : "secondary"} IF block is $eligibilityStatus  - ${eligibilityStatus > 0 ? "ELIGIBLE" : "INELIGIBLE"} (" + (eligibilityStatus == 2 ? "triggers required, event is a trigger" : (eligibilityStatus == 1 ? "triggers not required, event is a condition" : (eligibilityStatus == -2 ? "triggers required, but event is a condition" : "something is messed up"))) + ")"
     if (eligibilityStatus > 0) {
         evaluation = evaluateCondition(primary ? state.app.conditions: state.app.otherConditions, evt)
-        log.info "${primary ? "PRIMARY" : "SECONDARY"} EVALUATION IS $evaluation\n${getConditionDescription(primary ? 0 : -1)}\n"
-        pushNote = "${evt.device}.${evt.name} >>> ${evt.value}\n${primary ? "primary" : "secondary"} evaluation result: $evaluation\n\n${getConditionDescription(primary ? 0 : -1)}\n\nEvent received after ${perf - evt.date.getTime()}ms\n"
+        //log.info "${primary ? "PRIMARY" : "SECONDARY"} EVALUATION IS $evaluation\n${getConditionDescription(primary ? 0 : -1)}\n"
+        //pushNote = "${evt.device}.${evt.name} >>> ${evt.value}\n${primary ? "primary" : "secondary"} evaluation result: $evaluation\n\n${getConditionDescription(primary ? 0 : -1)}\n\nEvent received after ${perf - evt.date.getTime()}ms\n"
     } else {
+    	//ignore the event
     }
     perf = now() - perf
-    debug "Exiting evaluateConditionSet() after ${perf}ms", -1
-
-	if (pushNote) {
+	//if (pushNote) {
     	//sendPush(pushNote + "Event processed in ${perf}ms")
-    }
-
+    //}
     return evaluation
 }
 
 private evaluateCondition(condition, evt) {
 	//evaluates a condition
-    def perf = now()
-	debug "Entering evaluateCondition()", 1
-    
+    def perf = now()  
     def result = false
     
     if (condition.children == null) {
     	//we evaluate a real condition here
         //several types of conditions, device, mode, SMH, time, etc.
         if (condition.attr == "time") {
-        	result = evaluateTimeCondition(condition)
+        	result = evaluateTimeCondition(condition, evt)
         } else if (condition.dev && condition.dev.size()) {
         	result = evaluateDeviceCondition(condition, evt)
         }
@@ -2953,16 +3009,13 @@ private evaluateCondition(condition, evt) {
     }
     
     perf = now() - perf
-    debug "Exiting evaluateCondition() after ${perf}ms", -1
-
 	return result
 }
 
 private evaluateDeviceCondition(condition, evt) {
 	//evaluates a condition
     def perf = now()
-	debug "Entering evaluateDeviceCondition()", 1
-    
+   
     //we need true when dealing with All
     def mode = condition.mode == "All" ? "All" : "Any"
     def result =  mode == "All" ? true : false
@@ -2972,7 +3025,7 @@ private evaluateDeviceCondition(condition, evt) {
     def devices = settings["condDevices${condition.id}"]
     if (!devices) {
     	//something went wrong
-        debug "Something went wrong, we cannot find any devices for condition #${condition.id}"
+        debug "ERROR: Something went wrong, we cannot find any devices for condition #${condition.id}"
     	
     } else {
     	//the real deal goes here
@@ -2984,7 +3037,7 @@ private evaluateDeviceCondition(condition, evt) {
                 def deviceResult = false
                 def ownsEvent = (evt.deviceId == device.id) && (evt.name == condition.attr)
                 def oldValue = null
-                def cachedValue = state.cache[device.id + "-" + condition.attr]
+                def cachedValue = atomicState.cache[device.id + "-" + condition.attr]
                 if (cachedValue) oldValue = cachedValue.o
             	currentValue = ownsEvent ? evt.value : device.currentValue(condition.attr)
                 def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
@@ -3019,7 +3072,7 @@ private evaluateDeviceCondition(condition, evt) {
                 } else {          
                 	def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
 					deviceResult = "$function"(condition, device, condition.attr, oldValue, currentValue, value1, value2, ownsEvent ? evt : null, evt)
-                    log.info "Function $function for $device [$oldValue >>> $currentValue] ${condition.comp} $value1 - $value2 returned $deviceResult"
+                    debug "${$deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
                 }
                 
         		//compound the result, depending on mode
@@ -3053,7 +3106,6 @@ private evaluateDeviceCondition(condition, evt) {
     }
 
 	perf = now() - perf
-    debug "Exiting evaluateDeviceCondition() after ${perf}ms", -1
     return  result
 }
 
@@ -3398,15 +3450,212 @@ private eval_trg_exits_range(condition, device, attribute, oldValue, currentValu
 
 
 
+/* The CoRE Piston Scheduler */
+/* Timing belt */
+
+private scheduleTimeTriggers() {
+	debug "Rescheduling time triggers"
+	withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
+	if (state.app.mode == "Latching") {
+    	withEachTrigger(state.app.otherConditions, "scheduleTimeTrigger")
+    }
+}
+
+private scheduleTimeTrigger(condition) {
+	if (!condition || !(condition.attr) || (condition.attr != "time")) {
+    	return
+    }
+    def time = getNextTimeTrigger(condition, condition.lt)
+    condition.nt = time
+    scheduleTask("evt", condition.id, null, time)
+}
+
+private scheduleTask(task, ownerId, deviceId, unixTime, data = null) {
+	if (!state.tasker) state.tasker = []
+    state.tasker.push([add: task, ownerId: ownerId, deviceId: deviceId, data: data, time: unixTime, created: now()])
+}
+
+private unscheduleTask(taskType, ownerId, deviceId) {
+	if (!state.tasker) state.tasker = []
+   state.tasker.push([del: task, ownerId: ownerId, deviceId: deviceId, created: now()])
+}
+
+def timeHandler() {
+	entryPoint()
+	//executes whenever a device in the primary if block has an event
+	//starting primary IF block evaluation
+    def perf = now()
+    debug "", 0
+    debug "Received a time event", 1
+    processTasks()
+    perf = now() - perf
+    debug "Done in ${perf}ms", -1
+    exit(perf)
+}
+
+def recoveryHandler() {
+	entryPoint()
+	//executes whenever a device in the primary if block has an event
+	//starting primary IF block evaluation
+    def perf = now()
+    debug "", 0
+    debug "CAUTION: Received a recovery event", 1
+    processTasks()
+    perf = now() - perf
+    debug "Done in ${perf}ms", -1
+    exit(perf)
+}
+
+private processTasks() {
+	//pfew, off to process tasks
+    //first, we make a variable to help us pick up where we left off
+    def tasks = null
+    def perf = now()
+    debug "Processing tasks", 1
+
+    //setup a safety net ST schedule to resume the process if we fail
+    debug "Installing ST safety net"
+    runIn(90, recoveryHandler)
+
+    //let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
+    def threshold = 2000
+    
+	//we're off to process any pending immediate events
+    //we loop a seemingly infinite loop
+    //no worries, we'll break out of it, maybe :)
+    while (true) {
+        //we need to read the list every time we get here because the loop itself takes time.
+        //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
+        tasks = tasks ? tasks : atomicState.tasks
+		tasks = tasks ? tasks : [:]
+        for (item in tasks) {
+            def task = item.value
+            if ((task.type == "evt") && (task.time <= now() + threshold)) {
+                //remove from tasks
+                tasks.remove(item.key)
+                atomicState.tasks = tasks
+                //throw away the task list as this procedure below may take time, making our list stale
+                //not to worry, we'll read it again on our next iteration
+                tasks = null
+                //trigger an event
+                if (getCondition(task.ownerId, true)) {
+	                //look for condition in primary block
+	                debug "Broadcasting time event for primary IF block, condition #${task.ownerId}"
+					broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], true, false)
+                } else if (getCondition(task.ownerId, false)) {
+	                //look for condition in secondary block
+	                debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}"
+					broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
+                } else {
+	                debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist"
+                }
+                //continue the loop
+                continue
+            }
+        }
+        //well, if we got here, it means there's nothing to do anymore
+        break
+    }
+  
+  	//okay, now let's give the time triggers a chance to readjust
+    scheduleTimeTriggers()
+
+	//read the tasks
+    tasks = atomicState.tasks
+    tasks = tasks ? tasks : [:]
+    //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
+    if (state.tasker && state.tasker.size()) {
+        for (task in state.tasker) {
+            if (task.add) {
+                //add a task
+                def t = [type: task.add, ownerId: task.ownerId, deviceId: task.deviceId, time: task.time, created: task.created]
+                def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}"
+                tasks[n] = t
+            } else if (task.del) {
+                //delete a task
+                def n = "${task.task}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}"
+                tasks.remove(n)
+            }
+        }
+        //we save the tasks list atomically, ouch
+        //this is to avoid spending too much time with the tasks list on our hands and having other instances
+        //running and modifying the old list that we picked up above
+        atomicState.tasksProcessed = now()
+        atomicState.tasks = tasks
+		state.tasker = []
+    }
+    
+	//time to see if there is any ST schedule needed for the future
+	def nextTime = null
+    def immediateTasks = 0
+    def thresholdTime = now() + threshold
+    for (item in tasks) {
+    	def task = item.value
+        //if a task is already due, we keep track of it
+    	if (task.time <= thresholdTime) {
+        	immediateTasks++
+		} else {
+        	//we try to get the nearest time in the future
+	    	nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
+        }
+    }
+    //if we found a time that's after 
+    if (nextTime) {
+    	def seconds = Math.round((nextTime - now()) / 1000)
+    	runIn(seconds, timeHandler)
+    	debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}"
+    }
+
+	//we're done with the scheduling, let's do some real work, if we have any
+    if (immediateTasks) {
+		debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
+        //we loop a seemingly infinite loop
+        //no worries, we'll break out of it, maybe :)
+        while (true) {
+            //we need to read the list every time we get here because the loop itself takes time.
+            //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
+            tasks = tasks ? tasks : atomicState.tasks
+		    tasks = tasks ? tasks : [:]
+            for (item in tasks) {
+                def task = item.value
+                if ((task.type != "evt") && (task.time <= (now() + threshold))) {
+                    //remove from tasks
+                    tasks = atomicState.tasks
+                    debug "Removing task ${item.key}"
+                    tasks.remove(item.key)
+                    debug "Saving atomic state tasks: $tasks"
+                    atomicState.tasks = tasks
+                    //throw away the task list as this procedure below may take time, making our list stale
+                    //not to worry, we'll read it again on our next iteration
+                    tasks = null
+                    //do some work
+                    if (task.type == "cmd") {
+                    	debug "Processing command task $task"
+                    	processCommandTask(task)
+                    }
+                    //continue the loop
+                    continue
+                }
+            }
+            //well, if we got here, it means there's nothing to do anymore
+            break
+        }
+    }
+    //would you look at that, we finished!
+    //remove the safety net, wasn't worth the investment
+    debug "Removing ST safety net"
+    unschedule(recoveryHandler)
+	//end of processTasks
+	perf = now() - perf
+    debug "Done in ${perf}ms", -1    
+}
 
 
-
-
-
-
-
-
-
+//the heavy lifting of commands
+//this executes each and every single command we have to give
+private processCommandTask(task) {
+	return true
+}
 
 
 def dummy() {
@@ -3414,44 +3663,12 @@ def dummy() {
     def perf = now()
 	debug "Entering dummy()", 1
     //using this for development
+   
+//    scheduleTimeTriggers()
+    
+//    publishTasks()
     
     perf = now() - perf
     debug "Exiting dummy() after ${perf}ms", -1
-	
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-private getWeekOfMonth2(date = null) {
-	if (!date) {
-    	date = adjustTime(now())
-    }
-	def day = date.date
-    def month = date.month
-    def year = date.year
-    def firstOfMonth = new Date(year, month, 1)
-    def lastOfMonth = new Date(year, month + 1, 0)
-    def lastDayOfMonth = lastOfMonth.date
-    def firstOfMonthDOW = firstOfMonth.day
-    def todayDOW = date.day
-    def offset = day + firstOfMonthDOW - 1
-    def weeksInMonth = 1 + Math.ceil((lastDayOfMonth + firstOfMonthDOW - 7) / 7)
-    def week = 1 + Math.floor(offset / 7)
-    log.debug "$date >>> week is $week of $weeksInMonth (year = $year, firstOfMonth = $firstOfMonth, lastOfMonth = $lastOfMonth, todayDOW = $todayDOW, day = $day, firstOfMonthDOW = $firstOfMonthDOW"
-    
-}
-
-
