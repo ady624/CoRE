@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/13/2016 >>> v0.0.017.20160513 - Alpha test version - Variable support improved - full list of variables during config
  *	 5/13/2016 >>> v0.0.016.20160513 - Alpha test version - Minor fixes, bringing missing methods back from the dead
  *	 5/13/2016 >>> v0.0.015.20160513 - Alpha test version - Merged CoRE and CoRE Piston into one single its-own-parent-and-child app, action UI progress
  * 
@@ -62,7 +63,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.016.20160513"
+	return "v0.0.017.20160513"
 }
 
 
@@ -629,6 +630,7 @@ def pageCondition(params) {
                                         if (attr && comp) {
                                         	trigger = (comp.trigger == comparison)                                            
                                             def extraComparisons = !comparison.contains("one of")
+                                            def varList = (extraComparisons ? listVariables(true) : [])
                                             if (comp.parameters >= 1) {
                                                 def value1 = settings["condValue$id#1"]
                                                 def device1 = settings["condDev$id#1"]
@@ -641,7 +643,7 @@ def pageCondition(params) {
                                                         input "condDev$id#1", "capability.${capability.name}", title: (device1 == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device" : "From")), required: true, multiple: comp.multiple, submitOnChange: true
                                                     }
                                                     if ((value1 == null) && (device1 == null)) {
-                                                        input "condVar$id#1", "enum", options: listVariables(), title: (variable1 == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable" : "From")), required: true, multiple: false, submitOnChange: true, capitalization: "none"
+                                                        input "condVar$id#1", "enum", options: varList, title: (variable1 == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable" : "From")), required: true, multiple: false, submitOnChange: true, capitalization: "none"
                                                     }
                                                     if (((variable1 != null) || (device1 != null)) && ((attr.type == "number") || (attr.type == "decimal"))) {
                                                         input "condOffset$id#1", attr.type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
@@ -660,7 +662,7 @@ def pageCondition(params) {
                                                         input "condDev$id#2", "capability.${capability.name}", title: (device2 == null ? "... or choose a device to compare ..." : "Through device"), required: true, multiple: false, submitOnChange: true
                                                     }
                                                     if ((value2 == null) && (device2 == null)) {
-                                                        input "condVar$id#2", "enum", options: listVariables(), title: (variable2 == null ? "... or choose a variable to compare ..." : "Through variable"), required: true, multiple: false, submitOnChange: true, capitalization: "none"
+                                                        input "condVar$id#2", "enum", options: varList, title: (variable2 == null ? "... or choose a variable to compare ..." : "Through variable"), required: true, multiple: false, submitOnChange: true, capitalization: "none"
                                                     }
                                                     if (((variable2 != null) || (device2 != null)) && ((attr.type == "number") || (attr.type == "decimal"))) {
                                                         input "condOffset$id#1", attr.type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
@@ -922,12 +924,12 @@ def pageAction() {
 		                        		input "actParam$actionId#$id-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                     } else if (param.type == "attributes") {
 		                        		input "actParam$actionId#$id-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
-                                	} else if (param.type == "device") {
-		                        		input "actParam$actionId#$id-$i", "enum", options: devices, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                    } else if (param.type == "devices") {
-		                        		input "actParam$actionId#$id-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                	} else if (param.type == "variable") {
+		                        		input "actParam$actionId#$id-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                    } else if (param.type == "variables") {
+		                        		input "actParam$actionId#$id-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                     } else {
-		                        		input "actParam$actionId#$id-$i", param.type, range: param.range, title: param.title, required: param.required, submitOnChange: param.last, capitalization: "sentences"
+		                        		input "actParam$actionId#$id-$i", param.type, range: param.range, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
                                     }
                                     if (param.last && settings["actParam$actionId#$id-$i"]) {
                                     	//this is the last parameter, if filled in
@@ -1104,12 +1106,59 @@ def setVariable(name, value) {
     //TODO: date&time triggers based on variables being changed need to be reevaluated
 }
 
-def listVariables() {
+def listVariables(config = false) {
 	def result = []
+    def parentResult = null
     for (variable in state.store) {
     	result.push(variable.key)
     }
-    return result.sort()
+    if (parent) {
+    	parentResult = parent.listVariables()
+    }
+    if (parent && config) {
+    	//look for variables set during conditions
+        def list = settings.findAll{it.key.startsWith("condVar") && !it.key.contains("#")}
+        for (it in list) {
+        	def var = it.value
+            if (var) {
+            	if (var.startsWith("@")) {
+                	//global
+                    if (!(var in parentResult)) {
+                    	parentResult.push(var)
+                    }
+                } else {
+                	//local
+                    if (!(var in result)) {
+                    	result.push(var)
+                    }
+                }
+            }
+        }
+        //look for tasks that set variables...
+        list = settings.findAll{it.key.startsWith("actTask")}
+        for (it in list) {
+        	if (it.value) {
+            	def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
+                if (virtualCommand && (virtualCommand.varEntry != null)) {
+                	def var = settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"]
+                    if (var) {
+                        if (var.startsWith("@")) {
+                            //global
+                            if (!(var in parentResult)) {
+                                parentResult.push(var)
+                            }
+                        } else {
+                            //local
+                            if (!(var in result)) {
+                                result.push(var)
+                            }
+                        }
+                    }
+				}
+            }
+        }
+    }
+    return result.sort() + (parentResult ? parentResult.sort() : [])
 }
 
 
@@ -4255,7 +4304,7 @@ private getAttributeByName(name) {
         	return attribute
         }
     }
-    return [ name: name, type: "string", range: null, unit: null, options: null]
+    return [ name: name, type: "text", range: null, unit: null, options: null]
 }
 
 //returns all available command categories
@@ -4416,7 +4465,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["attribute", "attributes"]) {
+    if (dataType in ["attribute", "attributes", "variable", "variables"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -4569,7 +4618,7 @@ private commands() {
     	[ name: "close",						category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
     	[ name: "windowShade.open",				category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
     	[ name: "windowShade.close",			category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
-    	[ name: "windowShade.presetPosition",	category: "Convenience",				group: "Control [devices]",			display: "Open to preset position",		parameters: [], ],
+    	[ name: "windowShade.presetPosition",	category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
     	[ name: "speak",						category: "Convenience",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
     	[ name: "playText",						category: "Convenience",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
     	[ name: "lock",							category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
@@ -4594,10 +4643,14 @@ private virtualCommands() {
     	[ name: "wait",					requires: [],			 			display: "Wait",					parameters: ["Time (minutes):number[1..1440]"],												],
     	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",			parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]"],		],
     	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																												],
-    	[ name: "captureAttribute",		requires: [],			 			display: "Capture one attribute",	parameters: ["Attribute:attribute","Into variable...:string"],			singleDevice: true,	],
-    	[ name: "restoreAttribute",		requires: [],			 			display: "Restore one attribute",	parameters: ["Attribute:attribute","From variable...:string"],			singleDevice: true,	],
-    	[ name: "captureState",			requires: [],			 			display: "Capture state",			parameters: ["?Attributes:attributes"],														],
-    	[ name: "restoreState",			requires: [],			 			display: "Restore state",			parameters: ["?Attributes:attributes"],														],
+    	[ name: "captureAttribute",		requires: [],			 			display: "Capture attribute to variable", parameters: ["Attribute:attribute","Into variable...:string"],			singleDevice: true,	varEntry: 1],
+    	[ name: "captureState",			requires: [],			 			display: "Capture state to variable",parameters: ["?Attributes:attributes","Into variable...:string"],		singleDevice: true,	varEntry: 1],
+    	[ name: "captureStateLocally",	requires: [],			 			display: "Capture local state",		parameters: ["?Attributes:attributes"],														],
+    	[ name: "captureStateGlobally",	requires: [],			 			display: "Capture global state",	parameters: ["?Attributes:attributes"],														],
+    	[ name: "restoreAttribute",		requires: [],			 			display: "Restore attribute from variable",	parameters: ["Attribute:attribute","From variable...:variable"],								],
+    	[ name: "restoreState",			requires: [],			 			display: "Restore state from variable",parameters: ["?Attributes:attributes","From variable...:variable"],							],
+    	[ name: "restoreStateLocally",	requires: [],			 			display: "Restore local state",		parameters: ["?Attributes:attributes"],														],
+    	[ name: "restoreStateGlobally",	requires: [],			 			display: "Restore global state",	parameters: ["?Attributes:attributes"],														],
     ]
 }
 
