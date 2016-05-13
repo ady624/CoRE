@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/13/2016 >>> v0.0.016.20160513 - Alpha test version - Minor fixes, bringing missing methods back from the dead
  *	 5/13/2016 >>> v0.0.015.20160513 - Alpha test version - Merged CoRE and CoRE Piston into one single its-own-parent-and-child app, action UI progress
  * 
  *******************************************************************************************************************************************************************
@@ -61,7 +62,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.015.20160513"
+	return "v0.0.016.20160513"
 }
 
 
@@ -2498,11 +2499,14 @@ private getNextTimeTrigger(condition, startTime = null) {
     }
     
     def repeat = (condition.val1 && condition.val1.contains("every") ? condition.val1 : condition.r)
-    def interval = (repeat.contains("number") ? (condition.val1 && condition.val1.contains("every") ? condition.e : condition.re) : 1)
-    repeat = repeat.replace("every ", "").replace("number of ", "").replace("s", "")
-    if ((!repeat) || (!interval)) {
+    if (!repeat) {
     	return null
 	}
+    def interval = (repeat.contains("number") ? (condition.val1 && condition.val1.contains("every") ? condition.e : condition.re) : 1)
+    if (!interval) {
+    	return null
+	}
+    repeat = repeat.replace("every ", "").replace("number of ", "").replace("s", "")
 	//do the work
     def maxCycles = null
 	while ((maxCycles == null) || (maxCycles > 0)) {
@@ -3093,6 +3097,19 @@ private formatLocalTime(time, format = "EEE, MMM d yyyy @ h:mm a z") {
 	return formatter.format(time)
 }
 
+private convertDateToUnixTime(date) {
+	return date.time - location.timeZone.getOffset(date.time)
+}
+
+private formatTime(time) {
+	//we accept both a Date or a settings' Time    
+    return formatLocalTime(time, "h:mm a z")
+}
+
+private formatHour(h) {
+	return (h == 0 ? "midnight" : (h < 12 ? "${h} AM" : (h == 12 ? "noon" : "${h-12} PM"))).toString()
+}
+
 private formatDayOfMonth(dom, dow) {
 	if (dom) {
     	if (dom.contains("week")) {
@@ -3113,6 +3130,143 @@ private formatDayOfMonth(dom, dow) {
     return "[ERROR]"
 }
 
+//return the number of occurrences of same day of week up until the date or from the end of the month if backwards, i.e. last Sunday is -1, second-last Sunday is -2
+private getWeekOfMonth(date = null, backwards = false) {
+	if (!date) {
+    	date = adjustTime(now())
+    }
+	def day = date.date
+    if (backwards) {
+        def month = date.month
+        def year = date.year
+        def lastDayOfMonth = (new Date(year, month + 1, 0)).date
+        return -(1 + Math.floor((lastDayOfMonth - day) / 7))
+    } else {
+		return 1 + Math.floor((day - 1) / 7) //1 based
+    }
+}
+
+//returns the number of day in a month, 1 based, or -1 based if backwards (last day of the month)
+private getDayOfMonth(date = null, backwards = false) {
+	if (!date) {
+    	date = adjustTime(now())
+    }
+	def day = date.date
+    if (backwards) {
+        def month = date.month
+        def year = date.year
+        def lastDayOfMonth = (new Date(year, month + 1, 0)).date
+        return day - lastDayOfMonth - 1
+    } else {
+		return day
+    }
+}
+
+//for a given month, returns the Nth instance of a certain day of the week within that month. week ranges from 1 through 5 and -1 through -5
+private getDayInWeekOfMonth(date, week, dow) {
+	if (!date || (dow == null)) {
+    	return null
+    }
+    def lastDayOfMonth = (new Date(date.year, date.month + 1, 0)).date
+	if (week > 0) {
+    	//going forward
+        def firstDayOfMonthDOW = (new Date(date.year, date.month, 1)).day
+        //find the first matching day
+        def firstMatch = 1 + dow - firstDayOfMonthDOW + (dow < firstDayOfMonthDOW ? 7 : 0)
+        def result = firstMatch + 7 * (week - 1)
+        return result <= lastDayOfMonth ? result : null
+    }
+    if (week < 0) {
+    	//going backwards
+        def lastDayOfMonthDOW = (new Date(date.year, date.month + 1, 0)).day
+        //find the first matching day
+        def firstMatch = lastDayOfMonth + dow - lastDayOfMonthDOW - (dow > lastDayOfMonthDOW ? 7 : 0)
+        def result = firstMatch + 7 * (week + 1)
+        return result >= 1 ? result : null
+    }
+    return null
+}
+
+private getDayOfWeekName(date = null) {
+	if (!date) {
+    	date = adjustTime(now())
+    }
+    switch (date.day) {
+    	case 0: return "Sunday"
+    	case 1: return "Monday"
+    	case 2: return "Tuesday"
+    	case 3: return "Wednesday"
+    	case 4: return "Thursday"
+    	case 5: return "Friday"
+    	case 6: return "Saturday"
+    }
+    return null
+}
+
+private getDayOfWeekNumber(date = null) {
+	if (!date) {
+    	date = adjustTime(now())
+    }
+    if (date instanceof Date) {
+    	return date.day
+    }
+    switch (date) {
+    	case "Sunday": return 0
+    	case "Monday": return 1
+    	case "Tuesday": return 2
+    	case "Wednesday": return 3
+    	case "Thursday": return 4
+    	case "Friday": return 5
+    	case "Saturday": return 6
+    }
+    return null
+}
+
+private getMonthName(date = null) {
+	if (!date) {
+    	date = adjustTime(now())
+    }
+    def month = date.month + 1
+    switch (month) {
+    	case  1: return "January"
+    	case  2: return "February"
+    	case  3: return "March"
+    	case  4: return "April"
+    	case  5: return "May"
+    	case  6: return "June"
+    	case  7: return "July"
+    	case  8: return "August"
+    	case  9: return "September"
+    	case 10: return "October"
+    	case 11: return "November"
+    	case 12: return "December"
+    }
+    return null
+}
+
+private getMonthNumber(date = null) {
+	if (!date) {
+    	date = adjustTime(now())
+    }
+    if (date instanceof Date) {
+    	return date.month + 1
+    }
+    switch (date) {
+    	case "January": return 1
+    	case "February": return 2
+    	case "March": return 3
+    	case "April": return 4
+    	case "May": return 5
+    	case "June": return 6
+    	case "July": return 7
+        case "August": return 8
+    	case "September": return 9
+    	case "October": return 10
+    	case "November": return 11
+    	case "December": return 12
+    }
+    return null
+}
 private getSunrise() {
 	if (!(state.sunrise instanceof Date)) {
     	def sunTimes = getSunriseAndSunset()
