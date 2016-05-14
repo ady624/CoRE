@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/13/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
  *	 5/13/2016 >>> v0.0.017.20160513 - Alpha test version - Variable support improved - full list of variables during config
  *	 5/13/2016 >>> v0.0.016.20160513 - Alpha test version - Minor fixes, bringing missing methods back from the dead
  *	 5/13/2016 >>> v0.0.015.20160513 - Alpha test version - Merged CoRE and CoRE Piston into one single its-own-parent-and-child app, action UI progress
@@ -63,7 +64,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.017.20160513"
+	return "v0.0.018.20160513"
 }
 
 
@@ -339,25 +340,12 @@ private pageMainCoREPiston() {
     state.run = "config"
     configApp()
     cleanUpConditions(true)
-    dynamicPage(name: "pageMain", title: "Piston Application", uninstall: true, install: true) {
-        section() {
-            label name: "name", title: "Name", required: true, state: (name ? "complete" : null), defaultValue: parent.generatePistonName()
-            input "description", "string", title: "Description", required: false, state: (description ? "complete" : null), capitalization: "sentences"
-            input "mode", "enum", title: "Piston Mode", required: true, options: ["Simple", "Latching", "Else-If"], defaultValue: "Simple", submitOnChange: true
-            switch (settings.mode) {
-                case "Latching":
-                paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
-                break
-                case "Else-If":
-                paragraph "An Else-If Piston executes a set of actions if an initial condition set evaluates to true, otherwise executes a second set of actions if a second condition set evaluates to true"
-                break
-            }
+    dynamicPage(name: "pageMain", title: "", uninstall: true, install: true) {
+    	def currentState = state.currentState
+    	section() {
+        	input "enabled", "bool", description: settings["enabled"] ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${(settings["enabled"] ? "RUNNING" : "PAUSED")}", submitOnChange: true, required: false, state: "complete"
+            input "mode", "enum", title: "Piston Mode", required: true, state: null, options: ["Simple", "Latching", "Else-If"], defaultValue: "Simple", submitOnChange: true
         }
-
-        section() {
-            href "pageSimulate", title: "Simulate", description: "Allows you to test the actions manually", state: complete
-        }
-
         section() {
             href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to edit the main If group or tap on any individual conditions below to edit them directly" : "Tap to select conditions")
             buildIfContent()
@@ -385,11 +373,28 @@ private pageMainCoREPiston() {
             href "pageActionGroup", params:["conditionId": -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: "Choose what should happen otherwise", state: null, submitOnChange: false
         }
 
+        section() {
+            href "pageSimulate", title: "Simulate", description: "Allows you to test the actions manually", state: complete
+        }
+
         section(title:"Application Info") {
             paragraph version(), title: "Version"
             paragraph mem(), title: "Memory Usage"
             href "pageVariables", title: "Local Variables"
         }
+        
+        section() {
+            label name: "name", title: "Name", required: true, state: (name ? "complete" : null), defaultValue: parent.generatePistonName()
+            input "description", "string", title: "Description", required: false, state: (description ? "complete" : null), capitalization: "sentences"
+            switch (settings.mode) {
+                case "Latching":
+                paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
+                break
+                case "Else-If":
+                paragraph "An Else-If Piston executes a set of actions if an initial condition set evaluates to true, otherwise executes a second set of actions if a second condition set evaluates to true"
+                break
+            }
+        }        
 
         section(title: "Advanced options", hideable: true, hidden: true) {
             input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
@@ -1076,9 +1081,21 @@ def initialize() {
 /*** 																		***/
 /******************************************************************************/
 
-def mem() {
+def mem(showBytes = true) {
 	def bytes = state.toString().length()
-	return Math.round(100.00 * (bytes/ 100000.00)) + "% ($bytes bytes)"
+	return Math.round(100.00 * (bytes/ 100000.00)) + "%${showBytes ? " ($bytes bytes)" : ""}"
+}
+
+def cpu() {
+    if (state.lastExecutionTime == null) {
+    	return "N/A"
+    } else {
+    	def cpu = Math.round(state.lastExecutionTime / 20000)
+        if (cpu > 100) {
+        	cpu = 100
+        }
+        return "$cpu%"
+    }
 }
 
 def getVariable(name) {
@@ -1101,6 +1118,7 @@ def setVariable(name, value) {
     if (parent && name.startsWith("@")) {
     	parent.setVariable(name, value)
     } else {
+    	debug "Storing variable $name with value $value"
 		state.store[name] = value
     }
     //TODO: date&time triggers based on variables being changed need to be reevaluated
@@ -1323,6 +1341,8 @@ def initializeCoREPiston() {
     state.remove("config")    
     
     processTasks()
+    //we need to finalize to write atomic state
+    exit()
     
 	debug "Done", -1
 }
@@ -1695,11 +1715,15 @@ private exitPoint(milliseconds) {
     }
     
     atomicState.runStats = runStats
-    
+    state.lastExecutionTime = milliseconds
 	parent.updateChart("exec", milliseconds)
-
-	//save all atomic states to state
     state.runStats = runStats
+    exit()
+}
+
+private exit() {
+	//save all atomic states to state
+    //to avoid race conditions
 	state.cache = atomicState.cache
     state.tasks = atomicState.tasks
 }
@@ -1767,14 +1791,15 @@ private broadcastEvent(evt, primary, secondary) {
 
             switch (mode) {
                 case "Latching":
-                    if (!currentState) {
+                    if (currentState in [null, false]) {
                         if (result1) {
                             //flip on
                             state.currentState = true
                             state.currentStateSince = now()
                             debug "♦♦♦ Latching Piston changed state to true ♦♦♦"
                         }
-                    } else {
+                    }
+                    if (crrentState in [null, true]) {
                         if (result2) {
                             //flip off
                             state.currentState = false
@@ -1906,6 +1931,19 @@ private evaluateCondition(condition, evt) {
         } else if (condition.dev && condition.dev.size()) {
         	result = evaluateDeviceCondition(condition, evt)
         }
+        
+        //apply the NOT, if needed
+        result = condition.not ? !result : result
+        //store variables
+        if (condition.vd) setVariable(condition.vd, now())
+        if (condition.vs) setVariable(condition.vs, result)
+        if (condition.trg) {
+            if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
+            if (condition.vv && result) setVariable(condition.vv, evt.value)
+            if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
+            if (condition.vw && !result) setVariable(condition.vw, evt.value)
+        }
+        
     } else {
     	//we evaluate a group
         result = (condition.grp == "AND") //we need to start with a true when doing AND or with a false when doing OR/XOR
@@ -1932,9 +1970,7 @@ private evaluateCondition(condition, evt) {
 }
 
 private evaluateDeviceCondition(condition, evt) {
-	//evaluates a condition
-    def perf = now()
-   
+	//evaluates a condition   
     //we need true when dealing with All
     def mode = condition.mode == "All" ? "All" : "Any"
     def result =  mode == "All" ? true : false
@@ -2012,19 +2048,7 @@ private evaluateDeviceCondition(condition, evt) {
         }
         
     }
-    //apply the NOT, if needed
-	result = condition.not ? !result : result
-    //store variables
-   	if (condition.vd) setVariable(condition.vd, now())
-   	if (condition.vs) setVariable(condition.vs, result)
-	if (condition.trg) {
-    	if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
-    	if (condition.vv && result) setVariable(condition.vv, evt.value)
-    	if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
-    	if (condition.vw && !result) setVariable(condition.vw, evt.value)
-    }
 
-	perf = now() - perf
     return  result
 }
 
@@ -2082,7 +2106,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
                     }
                    	break
 				case "midnight":
-                	v = 0
+                	v = (i == 1 ? 0 : 1440)
                     break
                 case "sunrise":
                 	t = getSunrise()
@@ -2521,8 +2545,10 @@ private scheduleTimeTrigger(condition) {
 }
 
 private scheduleTask(task, ownerId, deviceId, unixTime, data = null) {
+	if (!unixTime) return false
 	if (!state.tasker) state.tasker = []
     state.tasker.push([add: task, ownerId: ownerId, deviceId: deviceId, data: data, time: unixTime, created: now()])
+    return true
 }
 
 private unscheduleTask(taskType, ownerId, deviceId) {
@@ -2602,6 +2628,7 @@ private getNextTimeTrigger(condition, startTime = null) {
                     offset = condition.o1 ? condition.o1 : 0
                     break
             }
+            
             if (customTime) {
                 h = customTime.hours
                 m = customTime.minutes
@@ -2611,8 +2638,9 @@ private getNextTimeTrigger(condition, startTime = null) {
 
             //we need a - one day offset if now is before the required time
             //since today could still be a candidate
-            now = (now.hours * 24 - h * 24 + now.minutes - m - offset < 0) ? now - 1 : now
+            now = (now.hours * 60 - h * 60 + now.minutes - m - offset < 0) ? now - 1 : now
             now = new Date(now.year, now.month, now.date, h, m, 0)
+            
             //apply the offset
             if (offset) {
             	now = new Date(now.time + offset * 60000)
@@ -2858,7 +2886,7 @@ private processTasks() {
                 //trigger an event
                 if (getCondition(task.ownerId, true)) {
 	                //look for condition in primary block
-	                debug "Broadcasting time event for primary IF block, condition #${task.ownerId}"
+	                debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task"
 					broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], true, false)
                 } else if (getCondition(task.ownerId, false)) {
 	                //look for condition in secondary block
@@ -2868,11 +2896,11 @@ private processTasks() {
 	                debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"
                 }
                 //continue the loop
-                continue
+                break
             }
         }
         //well, if we got here, it means there's nothing to do anymore
-        break
+        if (tasks != null) break
     }
   
   	//okay, now let's give the time triggers a chance to readjust
@@ -3138,7 +3166,11 @@ private formatLocalTime(time, format = "EEE, MMM d yyyy @ h:mm a z") {
 	if (time instanceof Long) {
     	time = new Date(time)
     }
-	if (!(time instanceof Date)) {
+	if (time instanceof String) {
+    	//get UTC time
+    	time = timeToday(time, location.timeZone)
+    }   
+    if (!(time instanceof Date)) {
     	return null
     }
 	def formatter = new java.text.SimpleDateFormat(format)
