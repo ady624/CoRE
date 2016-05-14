@@ -17,7 +17,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 5/13/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
+ *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
+ *	 5/14/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
  *	 5/13/2016 >>> v0.0.017.20160513 - Alpha test version - Variable support improved - full list of variables during config
  *	 5/13/2016 >>> v0.0.016.20160513 - Alpha test version - Minor fixes, bringing missing methods back from the dead
  *	 5/13/2016 >>> v0.0.015.20160513 - Alpha test version - Merged CoRE and CoRE Piston into one single its-own-parent-and-child app, action UI progress
@@ -64,7 +65,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.018.20160513"
+	return "v0.0.019.20160514"
 }
 
 
@@ -184,12 +185,17 @@ private pageMainCoRE() {
 def pageGlobalVariables() {
 	dynamicPage(name: "pageGlobalVariables", title: "Global Variables", install: false, uninstall: false) {
     	section() {
-            for (def variable in state.store) {
-            	def value = variable.value
+        	def cnt = 0
+            for (def variable in state.store.sort{ it.key }) {
+            	def value = getVariable(variable.key)
                 if ((value instanceof Long) && (value > 999999999999)) {
                 	value = formatLocalTime(value)
                 }
                 paragraph "$value", title: "${variable.key}"
+                cnt++
+            }
+            if (!cnt) {
+            	paragraph "No global variables yet"
             }
         }
 	}
@@ -343,8 +349,17 @@ private pageMainCoREPiston() {
     dynamicPage(name: "pageMain", title: "", uninstall: true, install: true) {
     	def currentState = state.currentState
     	section() {
-        	input "enabled", "bool", description: settings["enabled"] ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${(settings["enabled"] ? "RUNNING" : "PAUSED")}", submitOnChange: true, required: false, state: "complete"
+        	def enabled = settings["enabled"] != false
+        	input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
             input "mode", "enum", title: "Piston Mode", required: true, state: null, options: ["Simple", "Latching", "Else-If"], defaultValue: "Simple", submitOnChange: true
+            switch (settings.mode) {
+                case "Latching":
+                paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
+                break
+                case "Else-If":
+                paragraph "An Else-If Piston executes a set of actions if an initial condition set evaluates to true, otherwise executes a second set of actions if a second condition set evaluates to true"
+                break
+            }
         }
         section() {
             href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to edit the main If group or tap on any individual conditions below to edit them directly" : "Tap to select conditions")
@@ -352,7 +367,7 @@ private pageMainCoREPiston() {
         }
 
         section() {
-            href "pageActionGroup", params:["conditionId": -1], title: "Then...", description: "Choose what should happen then", state: null, submitOnChange: false
+            href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: "Choose what should happen then", state: null, submitOnChange: false
         }
 
         if (settings.mode == "Latching") {
@@ -370,7 +385,7 @@ private pageMainCoREPiston() {
         }
 
         section() {
-            href "pageActionGroup", params:["conditionId": -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: "Choose what should happen otherwise", state: null, submitOnChange: false
+            href "pageActionGroup", params:[conditionId: -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: "Choose what should happen otherwise", state: null, submitOnChange: false
         }
 
         section() {
@@ -378,24 +393,13 @@ private pageMainCoREPiston() {
         }
 
         section(title:"Application Info") {
+            label name: "name", title: "Name", required: true, state: (name ? "complete" : null), defaultValue: parent.generatePistonName()
+            input "description", "string", title: "Description", required: false, state: (description ? "complete" : null), capitalization: "sentences"
             paragraph version(), title: "Version"
             paragraph mem(), title: "Memory Usage"
             href "pageVariables", title: "Local Variables"
         }
         
-        section() {
-            label name: "name", title: "Name", required: true, state: (name ? "complete" : null), defaultValue: parent.generatePistonName()
-            input "description", "string", title: "Description", required: false, state: (description ? "complete" : null), capitalization: "sentences"
-            switch (settings.mode) {
-                case "Latching":
-                paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
-                break
-                case "Else-If":
-                paragraph "An Else-If Piston executes a set of actions if an initial condition set evaluates to true, otherwise executes a second set of actions if a second condition set evaluates to true"
-                break
-            }
-        }        
-
         section(title: "Advanced options", hideable: true, hidden: true) {
             input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
         }
@@ -493,7 +497,7 @@ private getConditionGroupPageContent(params, condition) {
         if (condition.children.size()) {
             section(title: "Group Overview") {
                 paragraph getConditionDescription(id)
-                href "pageActionGroup", params:["conditionId": id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
+                href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
             }       
 		}
 //        section() {
@@ -503,10 +507,12 @@ private getConditionGroupPageContent(params, condition) {
 		section(title: "Advanced options", hideable: true, hidden: true) {
            	//input "condGrouping$id", "enum", title: "Grouping Method", description: "Choose the logical operation to be applied between all conditions in this group", options: ["AND", "OR", "XOR"], defaultValue: "AND", required: true, submitOnChange: true
            	input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, required: true, submitOnChange: true
-        	if (id) {
-            	//add a hidden parameter for any condition other than the main container - this is to maintain the correct grouping
-    	        input "condParent$id", "number", title: "Parent ID", range: "$pid..$pid", defaultValue: pid
-        	}
+        }
+
+		if (id) {
+            section(title: "Required data - do not change", hideable: true, hidden: true) {            
+                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..$pid", defaultValue: pid
+			}
         }
     }
 }
@@ -551,6 +557,7 @@ def pageCondition(params) {
                                         //we have a valid comparison object
                                         trigger = (comp.trigger == comparison)
                                         //if no parameters, show the filters
+                                        def varList = listVariables(true)
                                         showDateTimeFilter = comp.parameters == 0
                                         for (def i = 1; i <= comp.parameters; i++) {
                                             input "condValue$id#$i", "enum", title: (comp.parameters == 1 ? "Value" : (i == 1 ? "Time" : "And")), options: timeComparisonOptionValues(trigger), required: true, multiple: false, submitOnChange: true
@@ -560,6 +567,10 @@ def pageCondition(params) {
                                                 if (value.contains("custom")) {
                                                     //using a time offset
                                                     input "condTime$id#$i", "time", title: "Custom time", required: true, multiple: false, submitOnChange: true
+                                                }
+                                                if (value.contains("variable")) {
+                                                    //using a time offset
+                                                    input "condVar$id#$i", "enum", options: varList, title: "Variable", required: true, multiple: false, submitOnChange: true
                                                 }
                                                 if (comparison.contains("around") || !(value.contains('every') || value.contains('custom'))) {
                                                     //using a time offset
@@ -760,7 +771,7 @@ def pageCondition(params) {
                     	paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
                     }
                 }
-	            href "pageActionGroup", params:["conditionId": id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
+	            href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
 			}
 
 			section() {
@@ -799,12 +810,26 @@ def pageConditionVsTrigger() {
 
 def pageVariables() {
 	state.run = "config"
-	dynamicPage(name: "pageVariables", title: "Local Variables", install: false, uninstall: false) {
-    	section() {
-            for (def variable in state.store) {
-            	def value = variable.value
+	dynamicPage(name: "pageVariables", title: "", install: false, uninstall: false) {
+    	section("Local Variables") {
+        	def cnt = 0
+            for (def variable in state.store.sort{ it.key }) {
+            	def value = getVariable(variable.key)
                 if ((value instanceof Long) && (value > 999999999999)) {
-                	value = new Date(value)
+                	value = formatLocalTime(value)
+                }
+                paragraph "$value", title: "${variable.key}"
+                cnt++
+            }
+            if (!cnt) {
+            	paragraph "No local variables yet"
+            }
+        }
+    	section("System Variables") {
+            for (def variable in state.systemStore.sort{ it.key }) {
+            	def value = getVariable(variable.key)
+                if ((value instanceof Long) && (value > 999999999999)) {
+                	value = formatLocalTime(value)
                 }
                 paragraph "$value", title: "${variable.key}"
             }
@@ -812,146 +837,192 @@ def pageVariables() {
 	}
 }
 
-def pageActionGroup() {
+def pageActionGroup(params) {
 	state.run = "config"
-	def conditionId = params?.conditionId
-	def value = (conditionId < 0) && (settings.mode == "Simple") ? "false" : "true"
-	dynamicPage(name: "pageActionGroup", title: "Actions", uninstall: false, install: false) {
+	def conditionId = params?.conditionId != null ? params?.conditionId : state.config.conditionId
+    state.config.conditionId = conditionId
+	def value = true
+    def block = "IF"
+    if (conditionId < 0) {
+    	switch (settings.mode) {
+        	case "Simple":
+            	value = false
+                break
+        	case "Else-If":
+            	block = "ELSE IF"
+                break
+			case "Latching":
+            	block = "BUT IF"
+                break
+        }
+    }
+	dynamicPage(name: "pageActionGroup", title: "$block ... THEN ..", uninstall: false, install: false) {
     	section() {
-        	paragraph "Add actions below to be executed once, whenever the evaluation of your condition(s) changes to '$value'", title: "Do..."
-            href "pageAction", params:["command": "add", "conditionId": id, "branch": "do"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", required: true, state: "complete", submitOnChange: true
+        	paragraph "Add actions below to be executed once, whenever the evaluation of your $block condition(s) changes to '$value'", title: "Do..."
+            def actions = listActions(conditionId, false)
+            for(action in actions) {
+            	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: "Action description goes here", required: true, state: "complete", submitOnChange: true
+            }
+            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "do"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", state: (actions.size() ? null : "complete"), submitOnChange: true
         }
     	section() {
         	paragraph "Add actions below to be executed every time the evaluation of your condition(s) is '$value'", title: "Do While..."
-            paragraph "CAUTION: Only use this section if you know what you are doing. Because evaluations may happen whenever various attributes of various devices involved in your condition(s) change, actions in this list may be executed very often and may therefore yield unexpected results\n\nYE BE WARNED!", required: true, state: null
-            href "pageAction", params:["command": "add", "conditionId": id, "branch": "doWhile"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", required: true, state: "complete", submitOnChange: true
+            def actions = listActions(conditionId, true)
+            if (!actions.size()) {
+                paragraph "CAUTION: Only use this section if you know what you are doing. Because evaluations may happen whenever various attributes of various devices involved in your condition(s) change, actions in this list may be executed very often and may therefore yield unexpected results\n\nYE BE WARNED!", required: true, state: null
+			}
+            for(action in actions) {
+            	paragraph "action goes here"
+            }
+            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "doWhile"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", required: true, state: "complete", submitOnChange: true
         }
         
     }
 }
 
-def pageAction() {
+def pageAction(params) {
 	state.run = "config"
    	//this page has a dual purpose, either action wizard or task manager
     //if no devices have been previously selected, the page acts as a wizard, guiding the use through the selection of devices
     //if at least one device has been previously selected, the page will guide the user through setting up tasks for selected devices
-    def actionId = 1
-	dynamicPage(name: "pageAction", title: "", uninstall: false, install: false) {
-    	def devices = []
-        def usedCapabilities = []
-        //did we get any devices? search all capabilities
-    	for(def capability in capabilities()) {
-        	if (capability.devices) {
-            	//only if the capability published any devices - it wouldn't be here otherwise
-        		def dev = settings["actDev$actionId#${capability.name}"]
-            	if (dev && dev.size()) {
-	            	devices = devices + dev
-                    //add to used capabilities - needed later
-                    if (!(capability.name in usedCapabilities)) {
-                    	usedCapabilities.push(capability.name)
-                    }
-	            }
-            }
-        }
-        if (devices.size() == 0) {
-            for(def category in listCommandCategories()) {
-                section(title: category) {
-                    def options = []
-                    for(def command in listCategoryCommands(category)) {
-                        def option = getCommandGroupName(command)
-                        if (option && !(option in options)) {
-                            options.push option
-                            href "pageActionDevices", title: option, params: [command: command]
+    def action = null
+    if (params?.command == "add") {
+        action = createAction(params?.conditionId, params?.branch == "doWhile")
+    } else {   	
+		action = getAction(params?.actionId ? params?.actionId : state.config.actionId)
+    }
+    if (action) {
+    	updateAction(action)
+    	def id = action.id
+        state.config.actionId = id
+        def pid = action.pid
+    
+        dynamicPage(name: "pageAction", title: "Action #$id", uninstall: false, install: false) {
+            def devices = []
+            def usedCapabilities = []
+            //did we get any devices? search all capabilities
+            for(def capability in capabilities()) {
+                if (capability.devices) {
+                    //only if the capability published any devices - it wouldn't be here otherwise
+                    def dev = settings["actDev$id#${capability.name}"]
+                    if (dev && dev.size()) {
+                        devices = devices + dev
+                        //add to used capabilities - needed later
+                        if (!(capability.name in usedCapabilities)) {
+                            usedCapabilities.push(capability.name)
                         }
                     }
                 }
             }
-        } else {
-        	section() {
-            	def names=[]
-                for(device in devices) {
-                	if (!(device.label in names)) {
-                    	names.push(device.label)
-                    }
-                }
-            	href "pageActionDevices", title: "With...", description: "${buildNameList(names, "and")}", state: "complete"
-            }
-            def prefix = "actTask$actionId#"
-            def tasks = settings.findAll{it.key.startsWith(prefix)}
-            def maxId = 1
-            def ids = []
-            //we need to get a list of all existing ids that are used
-            for (task in tasks) {
-                if (task.value) {
-                    def id = task.key.replace(prefix, "")
-                    if (id.isInteger()) {
-                        id = id.toInteger()
-                        maxId = id >= maxId ? id + 1 : maxId
-                        ids.push(id)
-                    }
-                }
-            }
-            //sort the ids, we really want to have these in the proper order
-            ids = ids.sort()
-            def availableCommands = listCommonDeviceCommands(devices, usedCapabilities)
-            for (vcmd in virtualCommands()) {
-            	if (!vcmd.requires || !(vcmd.display in availableCommands)) {
-                	//single device support - some virtual commands require only one device, can't handle more at a time
-                	if (!vcmd.singleDevice || (devices.size() == 1)) {
-                		availableCommands.push(virtualCommandPrefix() + vcmd.display)
-                    }
-                }
-            }
-            def idx = 0
-            for (id in ids) {
-                //display each 
-	            section(title: idx == 0 ? "Task list" : "") {
-    	        	input "$prefix$id", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
-                    //parameters
-                    def cmd = settings["$prefix$id"]
-                    def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
-                    def custom = (cmd && cmd.startsWith(customCommandPrefix()))
-                    cmd = cleanUpCommand(cmd)
-                    def command = null
-                    if (virtual) {
-                    	//dealing with a virtual command
-                        command = getVirtualCommandByDisplay(cmd)
-                    } else {
-                        command = getCommandByDisplay(cmd)
-                    }
-                    if (command) {
-                    	if (command.parameters) {
-                        	def i = 0
-                        	for (def parameter in command.parameters) {
-                            	def param = parseCommandParameter(parameter)
-                                if (param) {
-                                	if (param.type == "attribute") {
-		                        		input "actParam$actionId#$id-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                    } else if (param.type == "attributes") {
-		                        		input "actParam$actionId#$id-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
-                                	} else if (param.type == "variable") {
-		                        		input "actParam$actionId#$id-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                    } else if (param.type == "variables") {
-		                        		input "actParam$actionId#$id-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
-                                    } else {
-		                        		input "actParam$actionId#$id-$i", param.type, range: param.range, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
-                                    }
-                                    if (param.last && settings["actParam$actionId#$id-$i"]) {
-                                    	//this is the last parameter, if filled in
-                                    	break
-                                    }
-                                } else {
-                                	paragraph "Invalid parameter definition for $parameter"
-                                }
-                                i++
+            if (devices.size() == 0) {
+            	//category selection page
+                for(def category in listCommandCategories()) {
+                    section(title: category) {
+                        def options = []
+                        for(def command in listCategoryCommands(category)) {
+                            def option = getCommandGroupName(command)
+                            if (option && !(option in options)) {
+                                options.push option
+                                href "pageActionDevices", params:[actionId: id, command: command], title: option
                             }
                         }
                     }
-	            }
-                idx++
-            }
-            section() {
-            	input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
+                }
+            } else {
+            	//actual action page
+                section() {
+                    def names=[]
+                    for(device in devices) {
+                        if (!(device.label in names)) {
+                            names.push(device.label)
+                        }
+                    }
+                    href "pageActionDevices", title: "With...", description: "${buildNameList(names, "and")}", state: "complete"
+                }
+                def prefix = "actTask$id#"
+                def tasks = settings.findAll{it.key.startsWith(prefix)}
+                def maxId = 1
+                def ids = []
+                //we need to get a list of all existing ids that are used
+                for (task in tasks) {
+                    if (task.value) {
+                        def tid = task.key.replace(prefix, "")
+                        if (tid.isInteger()) {
+                            tid = tid.toInteger()
+                            maxId = tid >= maxId ? tid + 1 : maxId
+                            ids.push(tid)
+                        }
+                    }
+                }
+                //sort the ids, we really want to have these in the proper order
+                ids = ids.sort()
+                def availableCommands = listCommonDeviceCommands(devices, usedCapabilities)
+                for (vcmd in virtualCommands()) {
+                    if (!vcmd.requires || !(vcmd.display in availableCommands)) {
+                        //single device support - some virtual commands require only one device, can't handle more at a time
+                        if (!vcmd.singleDevice || (devices.size() == 1)) {
+                            availableCommands.push(virtualCommandPrefix() + vcmd.display)
+                        }
+                    }
+                }
+                def idx = 0
+                for (tid in ids) {
+                    //display each 
+                    section(title: idx == 0 ? "Task list" : "") {
+                        input "$prefix$tid", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
+                        //parameters
+                        def cmd = settings["$prefix$tid"]
+                        def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
+                        def custom = (cmd && cmd.startsWith(customCommandPrefix()))
+                        cmd = cleanUpCommand(cmd)
+                        def command = null
+                        if (virtual) {
+                            //dealing with a virtual command
+                            command = getVirtualCommandByDisplay(cmd)
+                        } else {
+                            command = getCommandByDisplay(cmd)
+                        }
+                        if (command) {
+                            if (command.parameters) {
+                                def i = 0
+                                for (def parameter in command.parameters) {
+                                    def param = parseCommandParameter(parameter)
+                                    if (param) {
+                                        if (param.type == "attribute") {
+                                            input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                        } else if (param.type == "attributes") {
+                                            input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                        } else if (param.type == "variable") {
+                                            input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                        } else if (param.type == "variables") {
+                                            input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                        } else {
+                                            input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
+                                        }
+                                        if (param.last && settings["actParam$id#$tid-$i"]) {
+                                            //this is the last parameter, if filled in
+                                            break
+                                        }
+                                    } else {
+                                        paragraph "Invalid parameter definition for $parameter"
+                                    }
+                                    i++
+                                }
+                            }
+                        }
+                    }
+                    idx++
+                }
+                section() {
+                    input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
+                }
+                
+                if (id) {
+                    section(title: "Required data - do not change", hideable: true, hidden: true) {            
+                        input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..$pid", defaultValue: pid
+                    }
+                }
+                
             }
         }
     }
@@ -959,6 +1030,7 @@ def pageAction() {
 
 def pageActionDevices(params) {
 	state.run = "config"
+    def actionId = params?.actionId
 	def command = params?.command
     command = command ? command : state.selectedCommand
     state.selectedCommand = command
@@ -979,7 +1051,7 @@ def pageActionDevices(params) {
             if (caps.size()) {
             	for(cap in caps) {
                 	section() {
-	                    input "actDev1#${cap.key}", "capability.${cap.key}", title: "Select ${buildNameList(cap.value, "or")}", multiple: true, required: false
+	                    input "actDev$actionId#${cap.key}", "capability.${cap.key}", title: "Select ${buildNameList(cap.value, "or")}", multiple: true, required: false
 	                }
                 }
             }
@@ -1100,26 +1172,46 @@ def cpu() {
 
 def getVariable(name) {
     name = sanitizeVariableName(name)
+    if (name == "\$now") return now()
+    if (name == "\$currentStateDuration") {
+    	try {
+        	return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
+        } catch(all) {
+        	return null
+        }
+    }
 	if (!name) {
     	return null
     }
     if (parent && name.startsWith("@")) {
     	return parent.getVariable(name)
     } else {
-		return state.store[name]
+    	if (name.startsWith("\$")) {
+			return state.systemStore[name]
+        } else {
+			return state.store[name]
+    	}
     }
 }
 
-def setVariable(name, value) {
+def setVariable(name, value, system = false) {
     name = sanitizeVariableName(name)
+    if (name == "\$now") value = null
+    if (name == "\$currentStateDuration") value = null
 	if (!name) {
     	return
     }
     if (parent && name.startsWith("@")) {
     	parent.setVariable(name, value)
     } else {
-    	debug "Storing variable $name with value $value"
-		state.store[name] = value
+    	if (name.startsWith("\$")) {
+        	if (system) {
+				state.systemStore[name] = value
+            }
+        } else {
+	    	debug "Storing variable $name with value $value"
+			state.store[name] = value
+    	}
     }
     //TODO: date&time triggers based on variables being changed need to be reevaluated
 }
@@ -1127,7 +1219,11 @@ def setVariable(name, value) {
 def listVariables(config = false) {
 	def result = []
     def parentResult = null
+    def systemResult = []
     for (variable in state.store) {
+    	result.push(variable.key)
+    }
+    for (variable in state.systemStore) {
     	result.push(variable.key)
     }
     if (parent) {
@@ -1176,7 +1272,7 @@ def listVariables(config = false) {
             }
         }
     }
-    return result.sort() + (parentResult ? parentResult.sort() : [])
+    return result.sort() + (parentResult ? parentResult.sort() : []) + systemResult.sort()
 }
 
 
@@ -1203,9 +1299,8 @@ def listVariables(config = false) {
 /******************************************************************************/
 
 def initializeCoRE() {
-    if (state.store == null) {
-    	state.store = [:]
-    }
+    state.store = state.store ? state.store : [:]
+    state.systemStore = state.systemStore ? state.systemStore : [:]
 }
 
 def childUninstalled() {}
@@ -1333,18 +1428,28 @@ def initializeCoREPiston() {
     state.cache = [:]
     state.tasks = state.tasks ? state.tasks : [:]
     state.store = state.store ? state.store : [:]
+    state.systemStore = state.systemStore ? state.systemStore : [:]
     
     subscribeToAll(state.app)
   
     subscribe(app, appHandler)
     
-    state.remove("config")    
-    
+    state.remove("config")
+    //uncomment next line to clear system store
+    //state.systemStore = [:]
+    setVariable("\$lastInitialized", now(), true)
+    setVariable("\$now", null, true)
+    setVariable("\$currentStateDuration", null, true)
+    setVariable("\$currentState", state.currentState, true)
+    setVariable("\$currentStateSince", state.currentStateSince, true)
     processTasks()
-    //we need to finalize to write atomic state
-    exit()
-    
 	debug "Done", -1
+
+	//we need to finalize to write atomic state
+	//save all atomic states to state
+    //to avoid race conditions
+	//state.cache = atomicState.cache
+    //state.tasks = atomicState.tasks
 }
 
 /* prepare configuration version of app */
@@ -1362,11 +1467,7 @@ private configApp() {
             state.config.app.conditions.id = 0
             state.config.app.otherConditions = createCondition(true)
             state.config.app.otherConditions.id = -1
-            state.config.app.actions = [:]
-            state.config.app.actions.ot = []
-            state.config.app.actions.wt = []
-            state.config.app.actions.of = []
-            state.config.app.actions.wf = []
+            state.config.app.actions = []
 		    //get expert savvy
 			state.config.expertMode = parent.expertMode()
         }
@@ -1474,7 +1575,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 private createCondition(group) {
     def condition = [:]
     //give the new condition an id
-    condition.id = getNextId(state.config.app.conditions, 'cond')
+    condition.id = getNextConditionId()
     //initiate the condition type
     if (group) {
     	//initiate children
@@ -1535,7 +1636,7 @@ private updateCondition(condition) {
         }
     }
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
-    condition.trg = isComparisonOptionTrigger(condition.attr, condition.comp)
+    condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
     condition.val1 = settings["condValue${condition.id}#1"]
     condition.dev1 = settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].label : null
@@ -1586,11 +1687,58 @@ private updateCondition(condition) {
     return null
 }
 
+//used to get the next id for a condition, action, etc - looks into settings to make sure we're not reusing a previously used id
+private getNextConditionId() {
+	def nextId = getLastConditionId(state.config.app.conditions) + 1
+	def otherNextId = getLastConditionId(state.config.app.otherConditions) + 1
+    nextId = nextId > otherNextId ? nextId : otherNextId
+    while (settings.findAll { it.key == "condParent" + nextId }) {
+    	nextId++
+    }
+    return nextId
+}
+
+//helper function for getNextId
+private getLastConditionId(parent) {
+	if (!parent) {
+    	return -1
+    }
+	def lastId = parent?.id    
+    for (child in parent.children) {
+        def childLastId = getLastConditionId(child)
+        lastId = lastId > childLastId ? lastId : childLastId
+    }
+    return lastId
+}
 
 
+//creates a condition (grouped or not)
+private createAction(parentId, doWhile) {
+    def action = [:]
+    //give the new condition an id
+    action.id = getNextActionId()
+    action.pid = parentId
+    action.w = !!doWhile
+    state.config.app.actions.push(action)
+    return action
+}
 
+private getNextActionId() {
+	def nextId = 1
+    for(action in state.config.app.actions) {
+    	if (action.id > nextId) {
+        	nextId = action.id + 1
+        }
+    }
+    while (settings.findAll { it.key == "actParent" + nextId }) {
+    	nextId++
+    }
+    return nextId
+}
 
-
+private updateAction(action) {
+//blah blah
+}
 
 
 
@@ -1707,25 +1855,25 @@ private exitPoint(milliseconds) {
     runStats.maxExecutionTime = runStats.maxExecutionTime && runStats.maxExecutionTime > milliseconds ? runStats.maxExecutionTime : milliseconds
     runStats.lastExecutionTime = milliseconds
     
-    if (state.lastEvent && state.lastEvent.delay) {
-        runStats.eventDelay = runStats.eventDelay ? runStats.eventDelay + state.lastEvent.delay : state.lastEvent.delay
-        runStats.minEventDelay = runStats.minEventDelay && runStats.minEventDelay < state.lastEvent.delay ? runStats.minEventDelay : state.lastEvent.delay
-        runStats.maxEventDelay = runStats.maxEventDelay && runStats.maxEventDelay > state.lastEvent.delay ? runStats.maxEventDelay : state.lastEvent.delay
-        runStats.lastEventDelay = state.lastEvent.delay
+    def lastEvent = state.lastEvent
+    if (lastEvent && lastEvent.delay) {
+        runStats.eventDelay = runStats.eventDelay ? runStats.eventDelay + lastEvent.delay : lastEvent.delay
+        runStats.minEventDelay = runStats.minEventDelay && runStats.minEventDelay < lastEvent.delay ? runStats.minEventDelay : lastEvent.delay
+        runStats.maxEventDelay = runStats.maxEventDelay && runStats.maxEventDelay > lastEvent.delay ? runStats.maxEventDelay : lastEvent.delay
+        runStats.lastEventDelay = lastEvent.delay
     }
-    
-    atomicState.runStats = runStats
+    setVariable("\$previousEventExecutionTime", milliseconds, true)
     state.lastExecutionTime = milliseconds
 	parent.updateChart("exec", milliseconds)
-    state.runStats = runStats
-    exit()
-}
+    atomicState.runStats = runStats
+   
 
-private exit() {
+
 	//save all atomic states to state
     //to avoid race conditions
 	state.cache = atomicState.cache
     state.tasks = atomicState.tasks
+    state.runStats = atomicState.runStats    
 }
 
 
@@ -1746,9 +1894,31 @@ private broadcastEvent(evt, primary, secondary) {
 	state.run = "app"
 	//filter duplicate events and broadcast event to proper IF blocks
     def perf = now()
-    def delay = now() - evt.date.getTime()
+    def delay = perf - evt.date.getTime()
 	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago", 1
-    state.lastEvent = [ event: evt.name, delay: delay ]
+    //save previous event
+	setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
+    setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
+    setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
+    setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
+    setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
+    setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)        
+    def lastEvent = [
+    	event: [
+        	device: evt.device ? "${evt.device}" : evt.deviceId,
+            name: evt.name,
+            value: evt.value,
+            date: evt.date
+        ],
+        delay: delay
+    ]
+    state.lastEvent = lastEvent    
+    setVariable("\$currentEventReceived", perf, true)
+    setVariable("\$currentEventDevice", lastEvent.event.device, true)
+    setVariable("\$currentEventAttribute", lastEvent.event.name, true)
+    setVariable("\$currentEventValue", lastEvent.event.value, true)
+    setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
+    setVariable("\$currentEventDelay", lastEvent.delay, true)    
     try {
 	    parent.updateChart("delay", delay)
     } catch(all) {
@@ -1756,10 +1926,12 @@ private broadcastEvent(evt, primary, secondary) {
     }
     if (!evt.deviceId == "time") {
     	def cache = atomicState.cache
+        cache = cache ? cache : [:]
     	def cachedValue = cache[evt.deviceId + '-' + evt.name]
     	def eventTime = evt.date.getTime()
 		cache[evt.deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, t: eventTime ]
     	atomicState.cache = cache
+        state.cache = cache
 		if (cachedValue) {
 	    	if ((cachedValue.v == evt.value) && ((cachedValue.v instanceof String) || (eventTime < cachedValue.t) || (cachedValue.t + 2000 > eventTime))) {
 	        	//duplicate event
@@ -1787,6 +1959,7 @@ private broadcastEvent(evt, primary, secondary) {
                 debug "Secondary IF block evaluation result is $result1"
             }
             def currentState = state.currentState
+            def currentStateSince = state.currentStateSince
             def mode = state.app.mode
 
             switch (mode) {
@@ -1822,6 +1995,14 @@ private broadcastEvent(evt, primary, secondary) {
                         debug "♦♦♦ Else-If Piston changed state to $result1 ♦♦♦"
                     }
                     break
+            }
+            if (currentState != state.currentState) {
+            	//we have a state change
+	            setVariable("\$previousState", currentState, true)
+	            setVariable("\$previousStateSince", currentStateSince, true)
+	            setVariable("\$previousStateDuration", state.currentStateSince - currentStateSince, true)
+	            setVariable("\$currentState", state.currentState, true)
+	            setVariable("\$currentStateSince", state.currentStateSince, true)
             }
         }
 	} catch(all) {
@@ -1992,7 +2173,9 @@ private evaluateDeviceCondition(condition, evt) {
                 def deviceResult = false
                 def ownsEvent = (evt.deviceId == device.id) && (evt.name == condition.attr)
                 def oldValue = null
-                def cachedValue = atomicState.cache[device.id + "-" + condition.attr]
+                def cache = atomicState.cache
+				cache = cache ? cache : [:]
+                def cachedValue = cache[device.id + "-" + condition.attr]
                 if (cachedValue) oldValue = cachedValue.o
             	currentValue = ownsEvent ? evt.value : device.currentValue(condition.attr)
                 def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
@@ -2876,6 +3059,7 @@ private processTasks() {
                 //remove from tasks
                 tasks.remove(item.key)
                 atomicState.tasks = tasks
+                state.tasks = tasks
                 //throw away the task list as this procedure below may take time, making our list stale
                 //not to worry, we'll read it again on our next iteration
                 tasks = null
@@ -2926,8 +3110,9 @@ private processTasks() {
         //we save the tasks list atomically, ouch
         //this is to avoid spending too much time with the tasks list on our hands and having other instances
         //running and modifying the old list that we picked up above
-        atomicState.tasksProcessed = now()
+        state.tasksProcessed = now()
         atomicState.tasks = tasks
+        state.tasks = tasks
 		state.tasker = []
     }
     
@@ -2949,6 +3134,8 @@ private processTasks() {
     if (nextTime) {
     	def seconds = Math.round((nextTime - now()) / 1000)
     	runIn(seconds, timeHandler)
+        state.nextScheduledTime = nextTime
+        setVariable("\$nextScheduledTime", nextTime, true)
     	debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}"
     }
 
@@ -3061,8 +3248,8 @@ def getRunStats() {
 }
 
 def resetRunStats() {
-	state.runStats = null
     atomicState.runStats = null
+	state.runStats = null
 }
 
 def getConditionStats() {
@@ -3384,7 +3571,7 @@ private addOffsetToMinutes(minutes, offset) {
 }
 
 private timeComparisonOptionValues(trigger) {
-   	return ["custom time", "midnight", "sunrise", "noon", "sunset"] + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
+   	return ["custom time", "midnight", "sunrise", "noon", "sunset", "time of variable", "date and time of variable"] + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
 }
 
 private timeOptions() {
@@ -4015,6 +4202,33 @@ private getTimeConditionDescription(condition) {
 
 
 
+/******************************************************************************/
+/*** ACTION FUNCTIONS														***/
+/******************************************************************************/
+
+def getAction(actionId) {
+    def parent = (state.run == "config" ? state.config : state)
+	for(action in parent.app.actions) {
+    	if (action.id == actionId) {
+        	return action
+        }
+    }
+    return null
+}
+def listActions(conditionId, whileDo = false) {
+	def result = []
+    def parent = (state.run == "config" ? state.config : state)
+
+	for(action in parent.app.actions) {
+    	if ((action.pid == conditionId) && (action.w == whileDo)) {
+        	result.push(action)
+        }
+    }
+    
+    return result
+}
+
+
 
 /******************************************************************************/
 /*** OTHER FUNCTIONS														***/
@@ -4022,28 +4236,6 @@ private getTimeConditionDescription(condition) {
 
 private sanitizeVariableName(name) {
 	name = name ? name.trim().replace(" ", "_") : null
-}
-
-//used to get the next id for a condition, action, etc - looks into settings to make sure we're not reusing a previously used id
-private getNextId(collection, prefix) {
-	def nextId = _getLastId(collection) + 1
-    while (settings.findAll { it.key == prefix + "Parent" + nextId }) {
-    	nextId++
-    }
-    return nextId
-}
-
-//helper function for getNextId
-private _getLastId(parent) {
-	if (!parent) {
-    	return -1
-    }
-	def lastId = parent?.id    
-    for (child in parent.children) {
-        def childLastId = _getLastId(child)
-        lastId = lastId > childLastId ? lastId : childLastId
-    }
-    return lastId
 }
 
 def dummy() {
@@ -4423,7 +4615,7 @@ private getCommandGroupName(command) {
     if (command.group.contains("[devices]")) {
         def list = []
         for (capability in listCommandCapabilities(command)) {
-        	if (capability.devices) {
+        	if ((capability.devices) && !(capability.devices in list)){
             	list.push(capability.devices)
             }
         }
@@ -4573,8 +4765,8 @@ private capabilities() {
         [ name: "imageCapture",						display: "Camera",							attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras",			],
     	[ name: "carbonDioxideMeasurement",			display: "Carbon Dioxide Measurement",		attribute: "carbonDioxide",				commands: null,																		multiple: true,			],
         [ name: "carbonMonoxideDetector",			display: "Carbon Monoxide Detector",		attribute: "carbonMonoxide",			commands: null,																		multiple: true,			],
-    	[ name: "colorControl",						display: "Color Control",					attribute: "color",						commands: ["setColor", "setHue", "setSaturation"],									multiple: true,			devices: "RGB lights"		],
-        [ name: "colorTemperature",					display: "Color Temperature",				attribute: "colorTemperature",			commands: ["setColorTemperature"],													multiple: true,			],
+    	[ name: "colorControl",						display: "Color Control",					attribute: "color",						commands: ["setColor", "setHue", "setSaturation"],									multiple: true,			devices: "RGB/W lights"		],
+        [ name: "colorTemperature",					display: "Color Temperature",				attribute: "colorTemperature",			commands: ["setColorTemperature"],													multiple: true,			devices: "RGB/W lights"],
     	[ name: "configure",						display: "Configure",						attribute: null,						commands: ["configure"],															multiple: true,			],
     	[ name: "consumable",						display: "Consumable",						attribute: "consumable",				commands: ["setConsumableStatus"],													multiple: true,			],
 		[ name: "contactSensor",					display: "Contact Sensor",					attribute: "contact",					commands: null,																		multiple: true,			],
@@ -4617,14 +4809,12 @@ private capabilities() {
     	[ name: "tamperAlert",						display: "Tamper Alert",					attribute: "tamper",					commands: null,																		multiple: true,			],
     	[ name: "temperatureMeasurement",			display: "Temperature Measurement",			attribute: "temperature",				commands: null,																		multiple: true,			],
         [ name: "thermostat",						display: "Thermostat",						attribute: "temperature",				commands: ["setHeatingSetpoint", "setCoolingSetpoint", "off", "heat", "emergencyHeat", "cool", "setThermostatMode", "fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode", "auto"],	multiple: true,		devices: "thermostats"	],
-        /*
         [ name: "thermostatCoolingSetpoint",		display: "Thermostat Cooling Setpoint",		attribute: "coolingSetpoint",			commands: ["setCoolingSetpoint"],													multiple: true,			],
-    	[ name: "thermostatFanMode",				display: "Thermostat Fan Mode",				attribute: "thermostatFanMode",			commands: ["fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode"],				multiple: true,			],
+    	[ name: "thermostatFanMode",				display: "Thermostat Fan Mode",				attribute: "thermostatFanMode",			commands: ["fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode"],				multiple: true,			devices: "fans",	],
     	[ name: "thermostatHeatingSetpoint",		display: "Thermostat Heating Setpoint",		attribute: "heatingSetpoint",			commands: ["setHeatingSetpoint"],													multiple: true,			],
     	[ name: "thermostatMode",					display: "Thermostat Mode",					attribute: "thermostatMode",			commands: ["off", "heat", "emergencyHeat", "cool", "auto", "setThermostatMode"],	multiple: true,			],
     	[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	commands: null,																		multiple: true,			],
     	[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		commands: null,																		multiple: true,			],
-        */
     	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "threeAxis",					commands: null,																		multiple: true,			],
     	[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			],
     	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["tone"],																	multiple: true,			devices: "tone generators",	],
@@ -4640,7 +4830,7 @@ private commands() {
 	return [
     	[ name: "on",							category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
     	[ name: "off",							category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
-    	[ name: "toggle",						category: "Convenience",				group: "Control [devices]",			display: "Toggle",						parameters: [], ],
+    	[ name: "toggle",						category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
     	[ name: "setLevel",						category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], ],
     	[ name: "setColor",						category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","Hue:hue","Saturation:saturation","Level:level"], ],
     	[ name: "setHue",						category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], ],
@@ -4651,8 +4841,6 @@ private commands() {
     	[ name: "windowShade.open",				category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
     	[ name: "windowShade.close",			category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
     	[ name: "windowShade.presetPosition",	category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
-    	[ name: "speak",						category: "Convenience",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
-    	[ name: "playText",						category: "Convenience",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
     	[ name: "lock",							category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
     	[ name: "unlock",						category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], ],
     	[ name: "alarm.off",					category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						parameters: [], ],
@@ -4664,6 +4852,14 @@ private commands() {
     	[ name: "thermostat.cool",				category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
     	[ name: "thermostat.auto",				category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
     	[ name: "thermostat.emergencyHeat",		category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
+    	[ name: "thermostat.fanOn",				category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",					parameters: [], ],
+    	[ name: "thermostat.fanCiculate",		category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",					parameters: [], ],
+    	[ name: "thermostat.fanAuto",			category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",					parameters: [], ],
+    	[ name: "thermostat.setThermostatFanMode",category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",					parameters: ["Fan mode:thermostatFanMode"], ],
+    	[ name: "thermostat.off",				category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					parameters: [], ],
+    	[ name: "speak",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
+    	[ name: "musicPlayer.setLevel",			category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
+    	[ name: "playText",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
     	[ name: "configure",					category: "Tools",						group: "Configure [devices]",		display: "Configure",					parameters: [], ],
     	[ name: "poll",							category: "Tools",						group: "Poll [devices]",			display: "Poll",						parameters: [], ],
     	[ name: "refresh",						category: "Tools",						group: "Refresh [devices]",			display: "Refresh",						parameters: [], ],
