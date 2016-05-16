@@ -17,12 +17,12 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.01f.20160516 - Alpha test version - Fixed a problem with $previousStateDuration not being available on first run
  *	 5/16/2016 >>> v0.0.01e.20160516 - Alpha test version - Fixed the action ID being considered float under Android. Forcefully casting to int.
  *	 5/16/2016 >>> v0.0.01c.20160516 - Alpha test version - Fixed the time condition evaluation returning false. Result was not correctly initialized to true
  *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly. Added submitOnChange for pageActionDevices
  *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
  *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
- *	 5/14/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
  *	 5/13/2016 >>> v0.0.017.20160513 - Alpha test version - Variable support improved - full list of variables during config
  *	 5/13/2016 >>> v0.0.016.20160513 - Alpha test version - Minor fixes, bringing missing methods back from the dead
  *	 5/13/2016 >>> v0.0.015.20160513 - Alpha test version - Merged CoRE and CoRE Piston into one single its-own-parent-and-child app, action UI progress
@@ -69,7 +69,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.01e.20160516"
+	return "v0.0.01f.20160516"
 }
 
 
@@ -1471,6 +1471,8 @@ def initializeCoREPiston() {
 	debug "Initializing app...", 1
 	// TODO: subscribe to attributes, devices, locations, etc.
     //move app to production
+	state.run = "config"
+    cleanUpConditions(true)
     state.app = state.config ? state.config.app : state.app
     //save misc
     state.app.mode = settings.mode
@@ -2197,7 +2199,7 @@ private broadcastEvent(evt, primary, secondary) {
             	//we have a state change
 	            setVariable("\$previousState", currentState, true)
 	            setVariable("\$previousStateSince", currentStateSince, true)
-	            setVariable("\$previousStateDuration", state.currentStateSince - currentStateSince, true)
+	            setVariable("\$previousStateDuration", state.currentStateSince && currentStateSince ? state.currentStateSince - currentStateSince : null, true)
 	            setVariable("\$currentState", state.currentState, true)
 	            setVariable("\$currentStateSince", state.currentStateSince, true)
                 //new state
@@ -3341,7 +3343,7 @@ private processTasks() {
     def perf = now()
     debug "Processing tasks", 1
     
-    try {
+  //  try {
 
         def safetyNet = false
 
@@ -3512,9 +3514,9 @@ private processTasks() {
         //remove the safety net, wasn't worth the investment
         debug "Removing any existing ST safety nets"
         unschedule(recoveryHandler)
-    } catch(all) {
-    	debug "ERROR: Error while executing processTasks: $all", null, "error"
-    }
+    //} catch(all) {
+//    	debug "ERROR: Error while executing processTasks: $all", null, "error"
+//    }
 	//end of processTasks
 	perf = now() - perf
     debug "Task processing took ${perf}ms", -1    
@@ -4249,6 +4251,7 @@ private getConditionCount(app) {
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
 private cleanUpConditions(deleteGroups) {
 	//go through each condition in the state config and delete it if no associated settings exist
+    if (!state.config || !state.config.app) return
     _cleanUpCondition(state.config.app.conditions, deleteGroups)
     _cleanUpCondition(state.config.app.otherConditions, deleteGroups)
     cleanUpActions()
