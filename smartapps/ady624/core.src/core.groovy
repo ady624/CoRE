@@ -1749,7 +1749,7 @@ private getNextConditionId() {
     while (settings.findAll { it.key == "condParent" + nextId }) {
     	nextId++
     }
-    return nextId
+    return (int) nextId
 }
 
 //helper function for getNextId
@@ -1787,7 +1787,7 @@ private getNextActionId() {
     while (settings.findAll { it.key == "actParent" + nextId }) {
     	nextId++
     }
-    return nextId
+    return (int) nextId
 }
 
 private updateAction(action) {
