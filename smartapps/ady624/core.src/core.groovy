@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.01c.20160516 - Alpha test version - Fixed the time condition evaluation returning false. Result was not correctly initialized to true
  *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly. Added submitOnChange for pageActionDevices
  *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
  *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
@@ -67,7 +68,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.01b.20160516"
+	return "v0.0.01c.20160516"
 }
 
 
@@ -2462,9 +2463,9 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
 	}
 
 	//check comparison
+    def result = true
     if (comparison.contains("any")) {
     	//we match any time
-        result = true
     } else {
         //convert times to number of minutes since midnight for easy comparison
         def m = now ? now.getHours() * 60 + now.getMinutes() : 0
@@ -2507,6 +2508,8 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
             	m2 = v
             }
         }
+        
+        
         if (comparison.contains("before")) {
         	if ((m1 == null) || (m >= addOffsetToMinutes(m1, o1))) {
         		//m before m1?
