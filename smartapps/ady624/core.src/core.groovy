@@ -489,7 +489,7 @@ def pageConditionGroup(params, level) {
 private getConditionGroupPageContent(params, condition) {	
 	if (condition) {
         def id = condition.id
-        def pid = condition.parentId ? condition.parentId : condition.id
+        def pid = condition.parentId ? (int) condition.parentId : (int)condition.id
         def nextLevel = (condition.level ? condition.level : 0) + 1
         def cnt = 0
         section() {
@@ -559,9 +559,9 @@ def pageCondition(params) {
     }
     if (condition) {
     	updateCondition(condition)
-    	def id = condition.id
+    	def id = (int) condition.id
         state.config.conditionId = id
-        def pid = condition.parentId
+        def pid = (int) condition.parentId
         def showDateTimeFilter = false
         def showDateTimeRepeat = false
         def recurring = false
