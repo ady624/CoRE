@@ -3475,7 +3475,11 @@ private processTasks() {
                         //do some work
                         if (task.type == "cmd") {
                             debug "Processing command task $task"
-                            processCommandTask(task)
+                            try {
+                            	processCommandTask(task)
+							} catch (all) {
+                            	debug "ERROR: Error while processing command task: $all", null, "error"
+                            }
                         }
                         //repeat the while since we just modified the task
                         found = true
