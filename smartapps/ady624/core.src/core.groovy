@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.01d.20160516 - Alpha test version - Fixed the time triggers not being able to fire due to taskId parameter missing
  *	 5/16/2016 >>> v0.0.01c.20160516 - Alpha test version - Fixed the time condition evaluation returning false. Result was not correctly initialized to true
  *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly. Added submitOnChange for pageActionDevices
  *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
@@ -68,7 +69,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.01c.20160516"
+	return "v0.0.01d.20160516"
 }
 
 
@@ -1086,7 +1087,7 @@ def pageActionDevices(params) {
             //go through each and look for "devices" - the user-friendly name of what kind of devices the capability stands for
             if (capability.devices) {
                 def cap = caps[capability.name] ? caps[capability.name] : []
-                cap.push(capability.devices)
+                if (!(capability.deviecs in cap)) cap.push(capability.devices)
                 caps[capability.name] = cap
             }
         }
@@ -2939,7 +2940,7 @@ private scheduleTimeTrigger(condition) {
     }
     def time = getNextTimeTriggerTime(condition, condition.lt)
     condition.nt = time
-    scheduleTask("evt", condition.id, null, time)
+    scheduleTask("evt", condition.id, null, null, time)
 }
 
 private scheduleActions(conditionId, everyBranch) {
@@ -5171,7 +5172,7 @@ private capabilities() {
     	[ name: "presenceSensor",					display: "Presence Sensor",					attribute: "presence",					commands: null,																		multiple: true,			],
     	[ name: "refresh",							display: "Refresh",							attribute: null,						commands: ["refresh"],																multiple: true,			],
     	[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					commands: null,																		multiple: true,			],
-    	[ name: "relaySwitch",						display: "Relay Switch",					attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "outlets",			],
+    	[ name: "relaySwitch",						display: "Relay Switch",					attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "relays",			],
     	[ name: "shockSensor",						display: "Shock Sensor",					attribute: "shock",						commands: null,																		multiple: true,			],
     	[ name: "signalStrength",					display: "Signal Strength",					attribute: "lqi",						commands: null,																		multiple: true,			],
     	[ name: "alarm",							display: "Siren",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
