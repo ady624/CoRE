@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 5/16/2016 >>> v0.0.01d.20160516 - Alpha test version - Fixed the time triggers not being able to fire due to taskId parameter missing
+ *	 5/16/2016 >>> v0.0.01e.20160516 - Alpha test version - Fixed the action ID being considered float under Android. Forcefully casting to int.
  *	 5/16/2016 >>> v0.0.01c.20160516 - Alpha test version - Fixed the time condition evaluation returning false. Result was not correctly initialized to true
  *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly. Added submitOnChange for pageActionDevices
  *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
@@ -69,7 +69,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.01d.20160516"
+	return "v0.0.01e.20160516"
 }
 
 
@@ -1066,6 +1066,8 @@ def pageActionDevices(params) {
 	state.run = "config"
     def actionId = params?.actionId
     if (!actionId) return
+    //convert this to an int - Android thinks this is a float
+    actionId = (int) actionId
 	def command = params?.command
 	def caps = params?.capabilities
     def capabilities = []
