@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.020.20160516 - Alpha test version - More float vs int problems fixed with Android
  *	 5/16/2016 >>> v0.0.01f.20160516 - Alpha test version - Fixed a problem with $previousStateDuration not being available on first run
  *	 5/16/2016 >>> v0.0.01e.20160516 - Alpha test version - Fixed the action ID being considered float under Android. Forcefully casting to int.
  *	 5/16/2016 >>> v0.0.01c.20160516 - Alpha test version - Fixed the time condition evaluation returning false. Result was not correctly initialized to true
@@ -527,7 +528,7 @@ private getConditionGroupPageContent(params, condition) {
         if (condition.children.size()) {
             section(title: "Group Overview") {
                 paragraph getConditionDescription(id)
-                href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
+                //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
             }       
 		}
 //        section() {
@@ -805,7 +806,7 @@ def pageCondition(params) {
                     	paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
                     }
                 }
-	            href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
+	            //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
 			}
 
 			section() {
@@ -1633,7 +1634,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 private createCondition(group) {
     def condition = [:]
     //give the new condition an id
-    condition.id = getNextConditionId()
+    condition.id = (int) getNextConditionId()
     //initiate the condition type
     if (group) {
     	//initiate children
@@ -1651,7 +1652,7 @@ private createCondition(parentConditionId, group) {
     if (parent) {
 		def condition = createCondition(group)
     	//preserve the parentId so we can rebuild the app from settings
-    	condition.parentId = parent ? parent.id : null
+    	condition.parentId = parent ? (int) parent.id : null
         //calculate depth for new condition
         condition.level = (parent.level ? parent.level : 0) + 1
    		//add the new condition to its parent, if any
@@ -1774,8 +1775,8 @@ private getLastConditionId(parent) {
 private createAction(parentId, everyBranch) {
     def action = [:]
     //give the new condition an id
-    action.id = getNextActionId()
-    action.pid = parentId
+    action.id = (int) getNextActionId()
+    action.pid = (int) parentId
     action.e = !!everyBranch
     state.config.app.actions.push(action)
     return action
