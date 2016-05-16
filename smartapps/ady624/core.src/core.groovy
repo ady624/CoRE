@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly.
+ *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly. Added submitOnChange for pageActionDevices
  *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
  *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
  *	 5/14/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
@@ -956,7 +956,7 @@ def pageAction(params) {
                             def option = getCommandGroupName(command)
                             if (option && !(option in options)) {
                                 options.push option
-                                href "pageActionDevices", params:[actionId: id, command: command], title: option
+                                href "pageActionDevices", params:[actionId: id, command: command], title: option, submitOnChange: true
                             }
                         }
                     }
@@ -970,7 +970,7 @@ def pageAction(params) {
                             names.push(device.label)
                         }
                     }
-                    href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete"
+                    href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
                 }
                 def prefix = "actTask$id#"
                 def tasks = settings.findAll{it.key.startsWith(prefix)}
