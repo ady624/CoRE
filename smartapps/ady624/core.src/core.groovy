@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly.
  *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
  *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
  *	 5/14/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
@@ -66,7 +67,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.01a.20160516"
+	return "v0.0.01b.20160516"
 }
 
 
@@ -1212,6 +1213,8 @@ def cpu() {
 def getVariable(name) {
     name = sanitizeVariableName(name)
     if (name == "\$now") return now()
+    if (name == "\$random") return Math.random()
+    if (name == "\$randomLevel") return (int)Math.round(100 * Math.random())
     if (name == "\$currentStateDuration") {
     	try {
         	return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
@@ -1235,8 +1238,6 @@ def getVariable(name) {
 
 def setVariable(name, value, system = false) {
     name = sanitizeVariableName(name)
-    if (name == "\$now") value = null
-    if (name == "\$currentStateDuration") value = null
 	if (!name) {
     	return
     }
@@ -1339,7 +1340,7 @@ def listVariables(config = false) {
 
 def initializeCoRE() {
     state.store = state.store ? state.store : [:]
-    state.systemStore = state.systemStore ? state.systemStore : [:]
+    state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
 }
 
 def childUninstalled() {}
@@ -3314,10 +3315,6 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 }
 
 private processTasks() {
-	if (!settings.enabled) {
-    	debug "Piston is paused", null, "info"
-        return false
-    }
 	//pfew, off to process tasks
     //first, we make a variable to help us pick up where we left off
     def tasks = null
@@ -3477,7 +3474,7 @@ private processTasks() {
                         //not to worry, we'll read it again on our next iteration
                         tasks = null
                         //do some work
-                        if (task.type == "cmd") {
+                        if (settings.enabled && (task.type == "cmd")) {
                             debug "Processing command task $task"
                             try {
                             	processCommandTask(task)
@@ -5365,7 +5362,35 @@ private comparisons() {
     ]
 }
 
-
+private initialSystemStore() {
+	return [
+        "\$currentEventAttribute": null,
+        "\$currentEventDate": null,
+        "\$currentEventDelay": null,
+        "\$currentEventDevice": null,
+        "\$currentEventReceived": null,
+        "\$currentEventValue": null,
+        "\$currentState": null,
+        "\$currentState": null,
+        "\$currentStateDuration": null,
+        "\$currentStateSince": null,
+        "\$currentStateSince": null,
+        "\$nextScheduledTime": null,
+        "\$now": null,
+        "\$previousEventAttribute": null,
+        "\$previousEventDate": null,
+        "\$previousEventDelay": null,
+        "\$previousEventDevice": null,
+        "\$previousEventExecutionTime": null,
+        "\$previousEventReceived": null,
+        "\$previousEventValue": null,
+        "\$previousState": null,
+        "\$previousStateDuration": null,
+        "\$previousStateSince": null,
+        "\$random": null,
+        "\$randomLevel": null,
+	]
+}
 
 
 
