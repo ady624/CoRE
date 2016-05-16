@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.021.20160516 - Alpha test version - More bug fixes
  *	 5/16/2016 >>> v0.0.020.20160516 - Alpha test version - More float vs int problems fixed with Android
  *	 5/16/2016 >>> v0.0.01f.20160516 - Alpha test version - Fixed a problem with $previousStateDuration not being available on first run
  *	 5/16/2016 >>> v0.0.01e.20160516 - Alpha test version - Fixed the action ID being considered float under Android. Forcefully casting to int.
@@ -70,7 +71,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.01f.20160516"
+	return "v0.0.021.20160516"
 }
 
 
@@ -894,7 +895,7 @@ def pageActionGroup(params) {
     cleanUpActions()
 	dynamicPage(name: "pageActionGroup", title: "$block ... THEN ..", uninstall: false, install: false) {
     	section() {
-        	paragraph "Add actions below to be executed once, whenever the evaluation of your $block condition(s) changes to '$value'", title: "Do..."
+        	paragraph "Add actions below to be executed once, whenever the evaluation of your $block condition(s) changes to '$value'", title: "Do once when piston becomes '$value'..."
             def actions = listActions(conditionId, false)
             for(action in actions) {
             	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
@@ -902,7 +903,7 @@ def pageActionGroup(params) {
             href "pageAction", params:[command: "add", conditionId: conditionId, branch: "once"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", state: (actions.size() ? null : "complete"), submitOnChange: true
         }
     	section() {
-        	paragraph "Add actions below to be executed every time the evaluation of your condition(s) is '$value'", title: "Do While..."
+        	paragraph "Add actions below to be executed every time the evaluation of your condition(s) is '$value'", title: "Do every time the condition set is true..."
             def actions = listActions(conditionId, true)
             if (!actions.size()) {
                 paragraph "CAUTION: Only use this section if you know what you are doing. Because evaluations may happen whenever various attributes of various devices involved in your condition(s) change, actions in this list may be executed very often and may therefore yield unexpected results\n\nYE BE WARNED!", required: true, state: null
