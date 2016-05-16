@@ -3314,6 +3314,10 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 }
 
 private processTasks() {
+	if (!settings.enabled) {
+    	debug "Piston is paused", null, "info"
+        return false
+    }
 	//pfew, off to process tasks
     //first, we make a variable to help us pick up where we left off
     def tasks = null
