@@ -1426,11 +1426,16 @@ def generatePistonName() {
 	def i = 1
     while (true) {
     	def name = i == 5 ? "Mambo No. 5" : "CoRE Piston #$i"
+        def found = false
         for (app in apps) {
         	if (app.label == name) {
-            	i++
-            	continue
+                found = true
+            	break
             }
+        }
+        if (found) {
+           	i++
+        	continue
         }
         return name
     }
@@ -1468,7 +1473,7 @@ def initializeCoREPiston() {
     state.cache = [:]
     state.tasks = state.tasks ? state.tasks : [:]
     state.store = state.store ? state.store : [:]
-    state.systemStore = state.systemStore ? state.systemStore : [:]
+    state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
     
     subscribeToAll(state.app)
   
@@ -1495,6 +1500,10 @@ def initializeCoREPiston() {
 /* prepare configuration version of app */
 private configApp() {
 	//TODO: rebuild (object-oriented) app object from settings
+	//prepare stores    
+    state.store = state.store ? state.store : [:]
+    state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
+    
 	if (!state.config) {
     	//initiate config app, since we have no running version yet (not yet installed)
         state.config = [:]
