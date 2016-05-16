@@ -1,7 +1,7 @@
 /**
  *  CoRE - Community's own Rule Engine
  *
- *  Copyright 2016 Adrian Caramaliu
+ *  Copyright 2016 Adrian Caramaliu <adrian(a sign goes here)caramaliu.com>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
  *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
  *	 5/14/2016 >>> v0.0.018.20160514 - Alpha test version - Fixed minor bugs with time formatting and trigger calculations, fixed variables not set on time triggers
  *	 5/13/2016 >>> v0.0.017.20160513 - Alpha test version - Variable support improved - full list of variables during config
@@ -65,7 +66,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.019.20160514"
+	return "v0.0.01a.20160516"
 }
 
 
@@ -367,7 +368,20 @@ private pageMainCoREPiston() {
         }
 
         section() {
-            href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: "Choose what should happen then", state: null, submitOnChange: false
+        	def actionsDoOnce = listActions(0, false)
+        	def actionsDo = listActions(0, true)
+            def desc = actionsDoOnce.size() + actionsDoOnce.size() ? "" : "Choose what should happen then"
+            href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
+            if (actionsDoOnce.size()) {
+                for (action in actionsDoOnce) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, with "), required: true, state: "complete", submitOnChange: true
+                }
+            }
+            if (actionsDo.size()) {
+                for (action in actionsDoOnce) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, with "), required: true, state: "complete", submitOnChange: true
+                }
+            }
         }
 
         if (settings.mode == "Latching") {
@@ -385,7 +399,20 @@ private pageMainCoREPiston() {
         }
 
         section() {
-            href "pageActionGroup", params:[conditionId: -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: "Choose what should happen otherwise", state: null, submitOnChange: false
+        	def actionsDoOnce = listActions(-1, false)
+        	def actionsDo = listActions(-1, true)
+            def desc = actionsDoOnce.size() + actionsDoOnce.size() ? "" : "Choose what should happen otherwise"
+            href "pageActionGroup", params:[conditionId: -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: desc, state: null, submitOnChange: false
+            if (actionsDoOnce.size()) {
+                for (action in actionsDoOnce) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, with "), required: true, state: "complete", submitOnChange: true
+                }
+            }
+            if (actionsDo.size()) {
+                for (action in actionsDoOnce) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, with "), required: true, state: "complete", submitOnChange: true
+                }
+            }
         }
 
         section() {
@@ -687,8 +714,12 @@ def pageCondition(params) {
                                             }
 
                                             if (comp.timed) {
-                                                input "condFor$id", "enum", title: "Time restriction", options: ["for at least", "for less than"], required: true, multiple: false, submitOnChange: true
-                                                input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
+                                            	if (comparison.contains("change")) {
+                                                	input "condTime$id", "enum", title: "In the last (minutes)", options: timeOptions(), required: true, multiple: false, submitOnChange: true
+                                                } else {
+                                                	input "condFor$id", "enum", title: "Time restriction", options: ["for at least", "for less than"], required: true, multiple: false, submitOnChange: true
+                                                	input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
+                                                }
                                             }
                                         }
                                     }
@@ -758,7 +789,7 @@ def pageCondition(params) {
                 		def value = ""
                         def nextTime = null
                         for (def i = 0; i < 5; i++) {
-                       		nextTime = getNextTimeTrigger(condition, nextTime)
+                       		nextTime = getNextTimeTriggerTime(condition, nextTime)
                             if (nextTime) {
                             	value = value + ( value ? "\n" : "") + formatLocalTime(nextTime)
                             } else {
@@ -856,14 +887,15 @@ def pageActionGroup(params) {
                 break
         }
     }
+    cleanUpActions()
 	dynamicPage(name: "pageActionGroup", title: "$block ... THEN ..", uninstall: false, install: false) {
     	section() {
         	paragraph "Add actions below to be executed once, whenever the evaluation of your $block condition(s) changes to '$value'", title: "Do..."
             def actions = listActions(conditionId, false)
             for(action in actions) {
-            	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: "Action description goes here", required: true, state: "complete", submitOnChange: true
+            	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
             }
-            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "do"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", state: (actions.size() ? null : "complete"), submitOnChange: true
+            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "once"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", state: (actions.size() ? null : "complete"), submitOnChange: true
         }
     	section() {
         	paragraph "Add actions below to be executed every time the evaluation of your condition(s) is '$value'", title: "Do While..."
@@ -872,9 +904,9 @@ def pageActionGroup(params) {
                 paragraph "CAUTION: Only use this section if you know what you are doing. Because evaluations may happen whenever various attributes of various devices involved in your condition(s) change, actions in this list may be executed very often and may therefore yield unexpected results\n\nYE BE WARNED!", required: true, state: null
 			}
             for(action in actions) {
-            	paragraph "action goes here"
+            	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
             }
-            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "doWhile"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", required: true, state: "complete", submitOnChange: true
+            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "every"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", required: true, state: "complete", submitOnChange: true
         }
         
     }
@@ -887,7 +919,7 @@ def pageAction(params) {
     //if at least one device has been previously selected, the page will guide the user through setting up tasks for selected devices
     def action = null
     if (params?.command == "add") {
-        action = createAction(params?.conditionId, params?.branch == "doWhile")
+        action = createAction(params?.conditionId, params?.branch == "every")
     } else {   	
 		action = getAction(params?.actionId ? params?.actionId : state.config.actionId)
     }
@@ -937,7 +969,7 @@ def pageAction(params) {
                             names.push(device.label)
                         }
                     }
-                    href "pageActionDevices", title: "With...", description: "${buildNameList(names, "and")}", state: "complete"
+                    href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete"
                 }
                 def prefix = "actTask$id#"
                 def tasks = settings.findAll{it.key.startsWith(prefix)}
@@ -1022,7 +1054,6 @@ def pageAction(params) {
                         input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..$pid", defaultValue: pid
                     }
                 }
-                
             }
         }
     }
@@ -1031,28 +1062,36 @@ def pageAction(params) {
 def pageActionDevices(params) {
 	state.run = "config"
     def actionId = params?.actionId
+    if (!actionId) return
 	def command = params?.command
-    command = command ? command : state.selectedCommand
-    state.selectedCommand = command
-    
+	def caps = params?.capabilities
+    def capabilities = []
+	if (caps && caps.size()) {
+    	//we don't have a list of capabilities to filter by, let's figure things out by using the command
+        for(def cap in caps) {
+        	def capability = getCapabilityByName(cap)
+            if (capability) capabilities.push(capability)
+        }
+    } else {
+	    capabilities = listCommandCapabilities(command)
+    }
+
+    if (!capabilities) return
 	dynamicPage(name: "pageActionDevices", title: "", uninstall: false, install: false) {
-	    def capabilities = listCommandCapabilities(command)
-        if (capabilities) {
-        	def caps = [:]
-           	//we got a list of capabilities to display
-            for(def capability in capabilities) {
-            	//go through each and look for "devices" - the user-friendly name of what kind of devices the capability stands for
-            	if (capability.devices) {
-            		def cap = caps[capability.name] ? caps[capability.name] : []
-                	cap.push(capability.devices)
-                    caps[capability.name] = cap
-                }
+        caps = [:]
+        //we got a list of capabilities to display
+        for(def capability in capabilities) {
+            //go through each and look for "devices" - the user-friendly name of what kind of devices the capability stands for
+            if (capability.devices) {
+                def cap = caps[capability.name] ? caps[capability.name] : []
+                cap.push(capability.devices)
+                caps[capability.name] = cap
             }
-            if (caps.size()) {
-            	for(cap in caps) {
-                	section() {
-	                    input "actDev$actionId#${cap.key}", "capability.${cap.key}", title: "Select ${buildNameList(cap.value, "or")}", multiple: true, required: false
-	                }
+        }
+        if (caps.size()) {
+            for(cap in caps) {
+                section() {
+                    input "actDev$actionId#${cap.key}", "capability.${cap.key}", title: "Select ${buildNameList(cap.value, "or")}", multiple: true, required: false
                 }
             }
         }
@@ -1713,12 +1752,12 @@ private getLastConditionId(parent) {
 
 
 //creates a condition (grouped or not)
-private createAction(parentId, doWhile) {
+private createAction(parentId, everyBranch) {
     def action = [:]
     //give the new condition an id
     action.id = getNextActionId()
     action.pid = parentId
-    action.w = !!doWhile
+    action.e = !!everyBranch
     state.config.app.actions.push(action)
     return action
 }
@@ -1737,9 +1776,132 @@ private getNextActionId() {
 }
 
 private updateAction(action) {
-//blah blah
+	if (!action) return null
+    def id = action.id
+    def devices = []
+    def usedCapabilities = []
+    //did we get any devices? search all capabilities
+    for(def capability in capabilities()) {
+        if (capability.devices) {
+            //only if the capability published any devices - it wouldn't be here otherwise
+            def dev = settings["actDev$id#${capability.name}"]
+            if (dev && dev.size()) {
+                devices = devices + dev
+                //add to used capabilities - needed later
+                if (!(capability.name in usedCapabilities)) {
+                    usedCapabilities.push(capability.name)
+                }
+            }
+        }
+    }
+    action.d = []
+    for(device in devices) {
+    	if (!(device.id in action.d)) {
+    		action.d.push(device.id)
+        }
+    }
+    //look for tasks
+    action.t = []
+    def prefix = "actTask$id#"
+    def tasks = settings.findAll{it.key.startsWith(prefix)}
+    def ids = []
+    //we need to get a list of all existing ids that are used
+    for (item in tasks) {
+        if (item.value) {
+            def tid = item.key.replace(prefix, "")
+            if (tid.isInteger()) {
+                tid = tid.toInteger()
+                def task = [ i: tid + 0 ]
+                //get task data
+                //get command
+                def cmd = settings["$prefix$tid"]
+                task.c = cmd
+                task.p = []
+                def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
+                def custom = (cmd && cmd.startsWith(customCommandPrefix()))
+                cmd = cleanUpCommand(cmd)
+                def command = null
+                if (virtual) {
+                    //dealing with a virtual command
+                    command = getVirtualCommandByDisplay(cmd)
+                } else {
+                    command = getCommandByDisplay(cmd)
+                }
+                if (command) {
+                    if (command.parameters) {
+                        def i = 0
+                        for (def parameter in command.parameters) {
+                            def param = parseCommandParameter(parameter)
+                            if (param) {
+                            	def type = param.type
+                                def data = settings["actParam$id#$tid-$i"]
+                                def var = (command.varEntry == i)
+                                if (var) {
+                                    task.p.push([i: i, t: type, d: data, v: 1])
+                                } else {
+                                    task.p.push([i: i, t: type, d: data])
+                                }
+                            }
+                            i++
+                        }
+                    }
+                }
+                action.t.push(task)
+            }
+        }
+    }
 }
 
+private cleanUpActions() {
+	for(action in state.config.app.actions) {
+    	updateAction(action)
+    }
+   	def dirty = true
+    while (dirty) {
+    	dirty = false
+		for(action in state.config.app.actions) {
+			if (!action.d || !action.d.size()) {
+            	state.config.app.actions.remove(action)
+                dirty = true
+                break
+            }
+    	}
+    }
+}
+
+private listActionDevices(actionId) {
+    def devices = []
+    //did we get any devices? search all capabilities
+    for(def capability in capabilities()) {
+        if (capability.devices) {
+            //only if the capability published any devices - it wouldn't be here otherwise
+            def dev = settings["actDev$actionId#${capability.name}"]
+            if (dev && dev.size()) {
+                devices = devices + dev
+            }
+        }
+    }
+	return devices
+}
+private getActionDescription(action, prefix = null) {
+	if (!action) return null
+    def devices = listActionDevices(action.id)
+    def result = (prefix ? prefix : "With ") + buildDeviceNameList(devices, "and")+ "..."
+    for (task in action.t.sort{it.i}) {
+    	def t = cleanUpCommand(task.c)
+        if (task.p && task.p.size()) {
+        	t += " ["
+            def i = 0
+            for(param in task.p.sort{ it.i }) {
+            	t += (i > 0 ? ", " : "") + (param.v ? "{${param.d}}" : "${param.d}")
+                i++
+            }
+        	t += "]"
+        }
+        result += "\n ► $t"
+    }
+    return result
+}
 
 
 
@@ -1830,7 +1992,7 @@ def recoveryHandler() {
 	//starting primary IF block evaluation
     def perf = now()
     debug "", 0
-    debug "CAUTION: Received a recovery event", 1
+    debug "CAUTION: Received a recovery event", 1, "warn"
     processTasks()
     perf = now() - perf
     debug "Done in ${perf}ms", -1
@@ -1950,7 +2112,20 @@ private broadcastEvent(evt, primary, secondary) {
                 state.lastPrimaryEvaluationResult = result1
                 state.lastPrimaryEvaluationDate = now()
                 debug "Primary IF block evaluation result is $result1"
+                
+                switch (mode) {
+                	case "And-If":
+                    	//execute the second branch if the first one fails
+                    	secondary = result1
+                		break
+                	case "Else-If":
+                    	//execute the second branch if the first one fails
+                    	secondary = !result1
+                		break
+                }
+                
             }
+            
             //broadcast to secondary IF block
             if (secondary) {
                 result2 = evaluateConditionSet(evt, false)
@@ -1962,6 +2137,7 @@ private broadcastEvent(evt, primary, secondary) {
             def currentStateSince = state.currentStateSince
             def mode = state.app.mode
 
+
             switch (mode) {
                 case "Latching":
                     if (currentState in [null, false]) {
@@ -1972,7 +2148,7 @@ private broadcastEvent(evt, primary, secondary) {
                             debug "♦♦♦ Latching Piston changed state to true ♦♦♦"
                         }
                     }
-                    if (crrentState in [null, true]) {
+                    if (currentState in [null, true]) {
                         if (result2) {
                             //flip off
                             state.currentState = false
@@ -1982,6 +2158,7 @@ private broadcastEvent(evt, primary, secondary) {
                     }
                     break
                 case "Simple":
+                	result2 = !result1
                     if (currentState != result1) {
                         state.currentState = result1
                         state.currentStateSince = now()
@@ -1989,8 +2166,9 @@ private broadcastEvent(evt, primary, secondary) {
                     }
                     break
                 case "Else-If":
-                    if (currentState != result1) {
-                        state.currentState = result1
+                	def newState = result1 ? true : (result2 ? false : currentState)
+                    if (currentState != newState) {
+                        state.currentState = newState
                         state.currentStateSince = now()
                         debug "♦♦♦ Else-If Piston changed state to $result1 ♦♦♦"
                     }
@@ -2003,10 +2181,20 @@ private broadcastEvent(evt, primary, secondary) {
 	            setVariable("\$previousStateDuration", state.currentStateSince - currentStateSince, true)
 	            setVariable("\$currentState", state.currentState, true)
 	            setVariable("\$currentStateSince", state.currentStateSince, true)
+                //new state
+                currentState = state.currentState
+                if (currentState) {
+                	scheduleActions(0, false)
+                } else {
+                	scheduleActions(-1, false)
+                }
             }
+            //execute the DO EVERY TIME actions
+            if (result1) scheduleActions(0, true)
+            if (result2) scheduleActions(-1, true)
         }
-	} catch(all) {
-    	debug "ERROR: An error occurred while processing event $evt: $all", null, "error"
+	} catch(javax.script.ScriptException e) {
+    	debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
     }
     perf = now() - perf
     if (evt) debug "Event processing took ${perf}ms", -1
@@ -2490,6 +2678,15 @@ private listPreviousStates(device, attribute, currentValue, minutes, excludeLast
     return result
 }
 
+private eval_cond_changed(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	def events = device.eventsSince(new Date(now() - minutes * 60000)).findAll{it.name == attribute}
+    return (events.size() > 0)
+}
+
+private eval_cond_did_not_change(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_changed(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+}
+
 private eval_cond_was(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
 	return eval_cond_was_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
 }
@@ -2722,24 +2919,107 @@ private scheduleTimeTrigger(condition) {
 	if (!condition || !(condition.attr) || (condition.attr != "time")) {
     	return
     }
-    def time = getNextTimeTrigger(condition, condition.lt)
+    def time = getNextTimeTriggerTime(condition, condition.lt)
     condition.nt = time
     scheduleTask("evt", condition.id, null, time)
 }
 
-private scheduleTask(task, ownerId, deviceId, unixTime, data = null) {
+private scheduleActions(conditionId, everyBranch) {
+	debug "Scheduling actions for condition #${conditionId} and the ${everyBranch ? "DO EVERY" : "DO ONCE" } branch."
+	def actions = listActions(conditionId, everyBranch).sort{ it.id }
+    for (action in actions) {
+    	scheduleAction(action)
+    }
+}
+
+private scheduleAction(action) {
+	if (!action) return null   
+    for (deviceId in action.d) {
+    	//remove all tasks for all involved devices
+        unscheduleTask("cmd", null, deviceId)
+    }
+    def time = now()
+    if (action.t && action.t.size() && action.d && action.d.size() ) {
+    	for (task in action.t.sort{ it.i }) {
+        	def cmd = task.c
+            def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
+            def custom = (cmd && cmd.startsWith(customCommandPrefix()))
+            cmd = cleanUpCommand(cmd)
+            def command = null
+            if (virtual) {
+                //dealing with a virtual command
+                command = getVirtualCommandByDisplay(cmd)
+                if (command && command.immediate) {
+               		def function = "cmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
+					def result = "$function"(action, task, time)
+                	time = (result && result.time) ? result.time : time
+                    command = null
+                }
+            } else {
+                command = getCommandByDisplay(cmd)
+            }
+            if (command) {
+                for (deviceId in action.d) {
+		            scheduleTask("cmd", action.id, deviceId, task.i, time)
+                }            	
+            }
+        	debug "Scheduling task $task for action $action"
+            
+        }
+    }
+}
+
+private cmd_wait(action, task, time) {
+	def result = [:]
+    if (task && task.p && task.p.size() == 1) {
+       	def offset = task.p[0].d * 60000
+       	result.time = time + offset
+    }
+    return result
+}
+
+private cmd_waitRandom(action, task, time) {
+	def result = [:]
+    if (task && task.p && task.p.size() == 2) {
+    	def min = task.p[0].d * 60000
+        def max = task.p[1].d * 60000
+        if (min > max) {
+        	//swap the numbers
+        	def x = min
+            min = max
+            max = x
+        }
+       	def offset = (long)(min + Math.round(Math.random() * (max - min)))
+       	result.time = time + offset
+    }
+    return result
+}
+
+
+private scheduleTask(task, ownerId, deviceId, taskId, unixTime, data = null) {
 	if (!unixTime) return false
-	if (!state.tasker) state.tasker = []
-    state.tasker.push([add: task, ownerId: ownerId, deviceId: deviceId, data: data, time: unixTime, created: now()])
+	if (!state.tasker) {
+    	state.tasker = []
+        state.taskerIdx = 0
+    }
+    //get next index for task ordering
+    def idx = state.taskerIdx
+    state.taskerIdx = idx + 1
+    state.tasker.push([idx: idx, add: task, ownerId: ownerId, deviceId: deviceId, taskId: taskId, data: data, time: unixTime, created: now()])
     return true
 }
 
-private unscheduleTask(taskType, ownerId, deviceId) {
-	if (!state.tasker) state.tasker = []
-   state.tasker.push([del: task, ownerId: ownerId, deviceId: deviceId, created: now()])
+private unscheduleTask(task, ownerId, deviceId) {
+	if (!state.tasker) {
+    	state.tasker = []
+        state.taskerIdx = 0
+    }
+    def idx = state.taskerIdx
+    state.taskerIdx = idx + 1
+	state.tasker.push([idx: idx, del: task, ownerId: ownerId, deviceId: deviceId, created: now()])
 }
 
-private getNextTimeTrigger(condition, startTime = null) {
+private getNextTimeTriggerTime(condition, startTime = null) {
 	//no condition? not time condition? false!
 	if (!condition || (condition.attr != "time")) {
     	return null
@@ -3039,152 +3319,177 @@ private processTasks() {
     def tasks = null
     def perf = now()
     debug "Processing tasks", 1
-
-	def safetyNet = false
-
-    //let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
-    def threshold = 2000
     
-	//we're off to process any pending immediate events
-    //we loop a seemingly infinite loop
-    //no worries, we'll break out of it, maybe :)
-    while (true) {
-        //we need to read the list every time we get here because the loop itself takes time.
-        //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
-        tasks = tasks ? tasks : atomicState.tasks
-		tasks = tasks ? tasks : [:]
-        for (item in tasks) {
-            def task = item.value
-            if ((task.type == "evt") && (task.time <= now() + threshold)) {
-                //remove from tasks
-                tasks.remove(item.key)
-                atomicState.tasks = tasks
-                state.tasks = tasks
-                //throw away the task list as this procedure below may take time, making our list stale
-                //not to worry, we'll read it again on our next iteration
-                tasks = null
-                //since we may timeout here, install the safety net
-                safetyNet = true
-			    debug "Installing ST safety net"
-			    runIn(90, recoveryHandler)
-                //trigger an event
-                if (getCondition(task.ownerId, true)) {
-	                //look for condition in primary block
-	                debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task"
-					broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], true, false)
-                } else if (getCondition(task.ownerId, false)) {
-	                //look for condition in secondary block
-	                debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}"
-					broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
-                } else {
-	                debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"
-                }
-                //continue the loop
-                break
-            }
-        }
-        //well, if we got here, it means there's nothing to do anymore
-        if (tasks != null) break
-    }
-  
-  	//okay, now let's give the time triggers a chance to readjust
-    scheduleTimeTriggers()
+    try {
 
-	//read the tasks
-    tasks = atomicState.tasks
-    tasks = tasks ? tasks : [:]
-    //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
-    if (state.tasker && state.tasker.size()) {
-        for (task in state.tasker) {
-            if (task.add) {
-                //add a task
-                def t = [type: task.add, ownerId: task.ownerId, deviceId: task.deviceId, time: task.time, created: task.created]
-                def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}"
-                tasks[n] = t
-            } else if (task.del) {
-                //delete a task
-                def n = "${task.task}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}"
-                tasks.remove(n)
-            }
-        }
-        //we save the tasks list atomically, ouch
-        //this is to avoid spending too much time with the tasks list on our hands and having other instances
-        //running and modifying the old list that we picked up above
-        state.tasksProcessed = now()
-        atomicState.tasks = tasks
-        state.tasks = tasks
-		state.tasker = []
-    }
-    
-	//time to see if there is any ST schedule needed for the future
-	def nextTime = null
-    def immediateTasks = 0
-    def thresholdTime = now() + threshold
-    for (item in tasks) {
-    	def task = item.value
-        //if a task is already due, we keep track of it
-    	if (task.time <= thresholdTime) {
-        	immediateTasks++
-		} else {
-        	//we try to get the nearest time in the future
-	    	nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
-        }
-    }
-    //if we found a time that's after 
-    if (nextTime) {
-    	def seconds = Math.round((nextTime - now()) / 1000)
-    	runIn(seconds, timeHandler)
-        state.nextScheduledTime = nextTime
-        setVariable("\$nextScheduledTime", nextTime, true)
-    	debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}"
-    }
+        def safetyNet = false
 
-	//we're done with the scheduling, let's do some real work, if we have any
-    if (immediateTasks) {
-    	if (!safetyNet) {
-        	//setup a safety net ST schedule to resume the process if we fail
-            safetyNet = true
-        	debug "Installing ST safety net"
-        	runIn(90, recoveryHandler)
-        }
-    
-		debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
+        //let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
+        def threshold = 2000
+
+        //we're off to process any pending immediate EVENTS ONLY
         //we loop a seemingly infinite loop
         //no worries, we'll break out of it, maybe :)
         while (true) {
             //we need to read the list every time we get here because the loop itself takes time.
-            //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
+            //we always need to work with a fresh list.
             tasks = tasks ? tasks : atomicState.tasks
-		    tasks = tasks ? tasks : [:]
-            for (item in tasks) {
+            tasks = tasks ? tasks : [:]
+            for (item in tasks.findAll{ it.value.type == "evt"}.sort{ it.value.time }) {
                 def task = item.value
-                if ((task.type != "evt") && (task.time <= (now() + threshold))) {
+                if (task.time <= now() + threshold) {
                     //remove from tasks
-                    tasks = atomicState.tasks
-                    debug "Removing task ${item.key}"
                     tasks.remove(item.key)
-                    debug "Saving atomic state tasks: $tasks"
                     atomicState.tasks = tasks
+                    state.tasks = tasks
                     //throw away the task list as this procedure below may take time, making our list stale
                     //not to worry, we'll read it again on our next iteration
                     tasks = null
-                    //do some work
-                    if (task.type == "cmd") {
-                    	debug "Processing command task $task"
-                    	processCommandTask(task)
+                    //since we may timeout here, install the safety net
+                    if (!safetyNet) {
+                        safetyNet = true
+                        debug "Installing ST safety net"
+                        runIn(90, recoveryHandler)
+                    }
+                    //trigger an event
+                    if (getCondition(task.ownerId, true)) {
+                        //look for condition in primary block
+                        debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task"
+                        broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], true, false)
+                    } else if (getCondition(task.ownerId, false)) {
+                        //look for condition in secondary block
+                        debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}"
+                        broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
+                    } else {
+                        debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"
                     }
                     //continue the loop
-                    continue
+                    break
                 }
             }
             //well, if we got here, it means there's nothing to do anymore
-            break
+            if (tasks != null) break
         }
+
+        //okay, now let's give the time triggers a chance to readjust
+        scheduleTimeTriggers()
+
+        //read the tasks
+        tasks = atomicState.tasks
+        tasks = tasks ? tasks : [:]
+        def idx = 1
+        //find the last index
+        for(task in tasks) {
+            if ((task.value.idx) && (task.value.idx >= idx)) {
+                idx = task.value.idx + 1
+            }
+        }
+        //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
+        if (state.tasker && state.tasker.size()) {
+            for (task in state.tasker.sort{ it.idx }) {
+                if (task.add) {
+                    def t = [type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created]
+                    def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}"
+                    idx++
+                    tasks[n] = t
+                } else if (task.del) {
+                    //delete a task
+                    def dirty = true
+                    while (dirty) {
+                        dirty = false
+                        for (it in tasks) {
+                        	if ((it.value.type == task.del) && (!task.ownerId || (it.value.ownerId == task.ownerId)) && (!task.deviceId || (task.deviceId == it.value.deviceId)) && (!task.taskId || (task.taskId == it.value.taskId))) {
+                            	tasks.remove(it.key)
+    	                        dirty = true
+                                break
+	                        }
+	                    }
+	                }
+                }
+            }
+            //we save the tasks list atomically, ouch
+            //this is to avoid spending too much time with the tasks list on our hands and having other instances
+            //running and modifying the old list that we picked up above
+            state.tasksProcessed = now()
+            atomicState.tasks = tasks
+            state.tasks = tasks
+            state.tasker = null
+        }
+
+        //time to see if there is any ST schedule needed for the future
+        def nextTime = null
+        def immediateTasks = 0
+        def thresholdTime = now() + threshold
+        for (item in tasks) {
+            def task = item.value
+            //if a task is already due, we keep track of it
+            if (task.time <= thresholdTime) {
+                immediateTasks++
+            } else {
+                //we try to get the nearest time in the future
+                nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
+            }
+        }
+        //if we found a time that's after 
+        if (nextTime) {
+            def seconds = Math.round((nextTime - now()) / 1000)
+            runIn(seconds, timeHandler)
+            state.nextScheduledTime = nextTime
+            setVariable("\$nextScheduledTime", nextTime, true)
+            debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}"
+        }
+
+        //we're done with the scheduling, let's do some real work, if we have any
+        if (immediateTasks) {
+            if (!safetyNet) {
+                //setup a safety net ST schedule to resume the process if we fail
+                safetyNet = true
+                debug "Installing ST safety net"
+                runIn(90, recoveryHandler)
+            }
+
+            debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
+            //we loop a seemingly infinite loop
+            //no worries, we'll break out of it, maybe :)
+            def found = true
+            while (found) {
+                found = false
+                //we need to read the list every time we get here because the loop itself takes time.
+                //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
+                tasks = tasks ? tasks : atomicState.tasks
+                tasks = tasks ? tasks : [:]
+                def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (it.value.time <= (now() + threshold)) }
+                if (firstTask) {
+                    def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (it.value.time == firstTask.value.time) }
+                    if (firstSubTask) {
+                        def task = firstSubTask.value
+                        //remove from tasks
+                        tasks = atomicState.tasks
+                        debug "Removing task ${firstSubTask.key}"
+                        tasks.remove(firstSubTask.key)
+                        debug "Saving atomic state tasks: $tasks"
+                        atomicState.tasks = tasks
+                        //throw away the task list as this procedure below may take time, making our list stale
+                        //not to worry, we'll read it again on our next iteration
+                        tasks = null
+                        //do some work
+                        if (task.type == "cmd") {
+                            debug "Processing command task $task"
+                            processCommandTask(task)
+                        }
+                        //repeat the while since we just modified the task
+                        found = true
+                    }
+                }
+            }
+        }
+        //would you look at that, we finished!
+        //remove the safety net, wasn't worth the investment
+        debug "Removing any existing ST safety nets"
+        unschedule(recoveryHandler)
+    } catch(all) {
+    	debug "ERROR: Error while executing processTasks: $all", null, "error"
     }
-    //would you look at that, we finished!
-    //remove the safety net, wasn't worth the investment
-    debug "Removing any existing ST safety nets"
-    unschedule(recoveryHandler)
 	//end of processTasks
 	perf = now() - perf
     debug "Task processing took ${perf}ms", -1    
@@ -3194,9 +3499,50 @@ private processTasks() {
 //the heavy lifting of commands
 //this executes each and every single command we have to give
 private processCommandTask(task) {
+    def action = getAction(task.ownerId)
+    if (!action || !(action.t)) return false
+    def devices = listActionDevices(action.id)
+    def device = devices.find{ it.id == task.deviceId }
+    def t = action.t.find{ it.i == task.taskId }
+    if (!t) return false
+    //found the actual task, let's figure out what command we're running
+    def cmd = t.c
+    def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
+    def custom = (cmd && cmd.startsWith(customCommandPrefix()))
+    cmd = cleanUpCommand(cmd)
+    def command = null
+    if (virtual) {
+        //dealing with a virtual command
+        command = getVirtualCommandByDisplay(cmd)
+        if (command && command.immediate) {
+        	//we can't run immediate tasks here
+            command = null
+        }
+    } else {
+        command = getCommandByDisplay(cmd)
+    }
+
+	if (command) {
+        if (device.hasCommand(command.name)) {
+        	def requiredParams = command.parameters ? command.parameters.size() : 0
+            def availableParams = t.p ? t.p.size() : 0
+            if (requiredParams == availableParams) {
+            	def params = []
+                t.p.sort{ it.i }.findAll() {
+                	params.push(it.d)
+                }
+                if (params.size()) {
+					debug "Executing [${device}].${command.name}($params)"
+            		device."${command.name}"(params as Object[])
+                } else {
+                    debug "Executing [${device}].${command.name}()"
+            		device."${command.name}"()
+                }
+            }
+        }
+    }
 	return true
 }
-
 
 
 
@@ -3274,7 +3620,8 @@ def getConditionStats() {
 /******************************************************************************/
 
 private debug(message, shift = null, cmd = null) {
-	if (!settings.debugging) {
+	def debugging = settings.debugging
+	if (!debugging && !(cmd in ["info", "warn", "error"])) {
     	return
     }
     
@@ -3311,17 +3658,23 @@ private debug(message, shift = null, cmd = null) {
 
     level += levelDelta
     state.debugLevel = level
+    
+    if (debugging) {
+    	prefix += " "
+    } else {
+    	prefix = ""
+    }
 
 	if (cmd == "info") {
-		log.info "$prefix $message"
+		log.info "$prefix$message"
     } else if (cmd == "trace") {
-		log.trace "$prefix $message"
+		log.trace "$prefix$message"
     } else if (cmd == "warn") {
-		log.warn "$prefix $message"
+		log.warn "$prefix$message"
     } else if (cmd == "error") {
-		log.error "$prefix $message"
+		log.error "$prefix$message"
     } else {
-		log.debug "$prefix $message"
+		log.debug "$prefix$message"
     }
 }
 
@@ -3873,6 +4226,7 @@ private cleanUpConditions(deleteGroups) {
 	//go through each condition in the state config and delete it if no associated settings exist
     _cleanUpCondition(state.config.app.conditions, deleteGroups)
     _cleanUpCondition(state.config.app.otherConditions, deleteGroups)
+    cleanUpActions()
 }
 
 //helper function for _cleanUpConditions
@@ -3978,10 +4332,11 @@ private getConditionDescription(id, level = 0) {
                         break                       
             	}
                 if (comp.timed) {
-                	if (condition.for && condition.fort) {
+                   	time = " for [ERROR]"
+                	if (comparison.contains("change")) {
+                    	time = " in the last " + (condition.fort ? condition.fort : "[ERROR]")
+                    } else if (condition.for && condition.fort) {
                 		time = " " + condition.for + " " + condition.fort
-                    } else {
-                    	time = " for [ERROR]"
                     }
                 }
             }
@@ -4215,12 +4570,12 @@ def getAction(actionId) {
     }
     return null
 }
-def listActions(conditionId, whileDo = false) {
+def listActions(conditionId, everyBranch = false) {
 	def result = []
     def parent = (state.run == "config" ? state.config : state)
 
 	for(action in parent.app.actions) {
-    	if ((action.pid == conditionId) && (action.w == whileDo)) {
+    	if ((action.pid == conditionId) && (action.e == everyBranch)) {
         	result.push(action)
         }
     }
@@ -4868,8 +5223,8 @@ private commands() {
 
 private virtualCommands() {
 	return [
-    	[ name: "wait",					requires: [],			 			display: "Wait",					parameters: ["Time (minutes):number[1..1440]"],												],
-    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",			parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]"],		],
+    	[ name: "wait",					requires: [],			 			display: "Wait",					parameters: ["Time (minutes):number[1..1440]"],												immediate: true,	],
+    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",			parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]"],		immediate: true,	],
     	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																												],
     	[ name: "captureAttribute",		requires: [],			 			display: "Capture attribute to variable", parameters: ["Attribute:attribute","Into variable...:string"],			singleDevice: true,	varEntry: 1],
     	[ name: "captureState",			requires: [],			 			display: "Capture state to variable",parameters: ["?Attributes:attributes","Into variable...:string"],		singleDevice: true,	varEntry: 1],
@@ -4954,6 +5309,8 @@ private comparisons() {
         [ condition: "was", trigger: "stays", parameters: 1, timed: true],
         [ condition: "was not", parameters: 1, timed: true],
         [ trigger: "changes", parameters: 0, timed: false],
+        [ condition: "changed", parameters: 0, timed: true],
+        [ condition: "did not change", parameters: 0, timed: true],
     ]
     def optionsNumber = [
         [ condition: "is equal to", trigger: "changes to", parameters: 1, timed: false],
@@ -4977,6 +5334,8 @@ private comparisons() {
         [ condition: "was even", trigger: "stays even", parameters: 0, timed: true],
         [ condition: "was odd", trigger: "stays odd", parameters: 0, timed: true],
         [ trigger: "changes", parameters: 0, timed: false],
+        [ condition: "changed", parameters: 0, timed: true],
+        [ condition: "did not change", parameters: 0, timed: true],
     ]
     def optionsTime = [
         [ trigger: "happens at", parameters: 1],
