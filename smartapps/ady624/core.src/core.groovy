@@ -2145,7 +2145,7 @@ private broadcastEvent(evt, primary, secondary) {
                             //flip on
                             state.currentState = true
                             state.currentStateSince = now()
-                            debug "♦♦♦ Latching Piston changed state to true ♦♦♦"
+                            debug "♦♦♦ Latching Piston changed state to true ♦♦♦", null, "info"
                         }
                     }
                     if (currentState in [null, true]) {
@@ -2153,7 +2153,7 @@ private broadcastEvent(evt, primary, secondary) {
                             //flip off
                             state.currentState = false
                             state.currentStateSince = now()
-                            debug "♦♦♦♦ Latching Piston changed state to false ♦♦♦"
+                            debug "♦♦♦♦ Latching Piston changed state to false ♦♦♦", null, "info"
                         }
                     }
                     break
@@ -2162,7 +2162,7 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != result1) {
                         state.currentState = result1
                         state.currentStateSince = now()
-                        debug "♦♦♦♦ Simple Piston changed state to $result1 ♦♦♦"
+                        debug "♦♦♦♦ Simple Piston changed state to $result1 ♦♦♦", null, "info"
                     }
                     break
                 case "Else-If":
@@ -2170,7 +2170,7 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != newState) {
                         state.currentState = newState
                         state.currentStateSince = now()
-                        debug "♦♦♦ Else-If Piston changed state to $result1 ♦♦♦"
+                        debug "♦♦♦ Else-If Piston changed state to $result1 ♦♦♦", null, "info"
                     }
                     break
             }
@@ -3536,10 +3536,10 @@ private processCommandTask(task) {
                 	params.push(it.d)
                 }
                 if (params.size()) {
-					debug "Executing [${device}].${command.name}($params)"
+					debug "Executing [${device}].${command.name}($params)", null, "info"
             		device."${command.name}"(params as Object[])
                 } else {
-                    debug "Executing [${device}].${command.name}()"
+                    debug "Executing [${device}].${command.name}()", null, "info"
             		device."${command.name}"()
                 }
             }
