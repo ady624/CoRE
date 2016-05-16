@@ -1091,6 +1091,9 @@ def pageActionDevices(params) {
             }
         }
         if (caps.size()) {
+            section() {
+            	paragraph "Please select devices from the list${caps.size() > 1 ? "s" : ""} below. When done, please tap the Done to continue"
+            }
             for(cap in caps) {
                 section() {
                     input "actDev$actionId#${cap.key}", "capability.${cap.key}", title: "Select ${buildNameList(cap.value, "or")}", multiple: true, required: false
