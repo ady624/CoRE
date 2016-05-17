@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.02c.20160517 - Alpha test version - Fixed time not between
  *	 5/17/2016 >>> v0.0.02b.20160517 - Alpha test version - Individual actions...
  *	 5/17/2016 >>> v0.0.02a.20160517 - Alpha test version - Fixed a problem with time subscriptions subscribe() failing
  *	 5/17/2016 >>> v0.0.029.20160517 - Alpha test version - Fixed a problem with time between - comparing only one variable, not both
@@ -81,7 +82,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.02b.20160517"
+	return "v0.0.02c.20160517"
 }
 
 
@@ -2738,7 +2739,11 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
         if (comparison.contains("between")) {
             def a1 = addOffsetToMinutes(m1, o1)
         	def a2 = addOffsetToMinutes(m2, o2)
-            if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1)) {
+            def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
+            if (comparison.contains("not")) {
+            	eval = !eval
+            }
+            if (eval) {
         		return false
             }
         }
