@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.02a.20160517 - Alpha test version - Fixed a problem with time subscriptions subscribe() failing
  *	 5/17/2016 >>> v0.0.029.20160517 - Alpha test version - Fixed a problem with time between - comparing only one variable, not both
  *	 5/17/2016 >>> v0.0.028.20160517 - Alpha test version - Fixed circulateFan misspelled, fixed is_one_of missing, progress to detecting location mode and alarm system
  *	 5/17/2016 >>> v0.0.027.20160517 - Alpha test version - More minor bugs with triggers
@@ -79,7 +80,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.029.20160517"
+	return "v0.0.02a.20160517"
 }
 
 
@@ -1667,7 +1668,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
         	if (condition.trg || !triggersOnly) {
             	//get the details
                 def capability = getCapabilityByDisplay(condition.cap)
-            	def devices = capability.virtualDevice ? [capability.virtualDevice] : settings["condDevices${condition.id}"]
+            	def devices = capability.virtualDevice ? (capability.attribute == "time" ? [] : [capability.virtualDevice]) : settings["condDevices${condition.id}"]
                 def attribute = capability.virtualDevice ? capability.attribute : condition.attr
                 if (devices) {
                 	for (device in devices) {
@@ -2688,7 +2689,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
             }
         	def a1 = addOffsetToMinutes(m1, -o1)
         	def a2 = addOffsetToMinutes(m1, +o1)
-            if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a1) && (m < a2)) {
+            if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1)) {
         		return false
             }
         }       
