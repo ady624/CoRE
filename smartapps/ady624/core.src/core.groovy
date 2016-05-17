@@ -378,13 +378,13 @@ private pageMainCoREPiston() {
             }
         }
         section() {
-            href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "" : null)
+            href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "" : "Tap to select conditions")
             buildIfContent()
         }
 
         section() {
         	def actions = listActions(0)
-            def desc = actions.size() ? "" : "Choose what should happen then"
+            def desc = actions.size() ? "" : "Tap to select actions"
             href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
             if (actions.size()) {
                 for (action in actions) {
@@ -418,7 +418,7 @@ private pageMainCoREPiston() {
             }
             section() {
                 def actions = listActions(-1)
-                def desc = actions.size() ? "" : "Choose what should happen then"
+                def desc = actions.size() ? "" : "Tap to select actions"
                 href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
                 if (actions.size()) {
                     for (action in actions) {
@@ -431,7 +431,7 @@ private pageMainCoREPiston() {
 		if (settings.mode != "Latching") {
             section() {
                 def actions = listActions(-2)
-                def desc = actions.size() ? "" : "Choose what should happen otherwise"
+                def desc = actions.size() ? "" : "Tap to select actions"
                 href "pageActionGroup", params:[conditionId: -2], title: "Else...", description: desc, state: null, submitOnChange: false
                 if (actions.size()) {
                     for (action in actions) {
