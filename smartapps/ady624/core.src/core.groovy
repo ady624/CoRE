@@ -2637,7 +2637,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
         	def val = i == 1 ? condition.val1 : condition.val2
             def t = null
             def v = 0
-            log.trace "i = $i, val = $val, condition = $condition"
             switch (val) {
             	case "custom time":
                 	t = (i == 1 ? (condition.t1 ? adjustTime(condition.t1) : null) : (condition.t2 ? adjustTime(condition.t2) : null))
@@ -2646,7 +2645,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
                         o1 = 0
                         o2 = 0
                     }
-                    log.trace "FOUND v = $v"
                    	break
 				case "midnight":
                 	v = (i == 1 ? 0 : 1440)
@@ -2695,12 +2693,10 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
             }
         }       
         
-        log.trace "GOT HERE $comparison $m1 $o1 >>> $m2 $o2"
         if (comparison.contains("between")) {
             def a1 = addOffsetToMinutes(m1, o1)
         	def a2 = addOffsetToMinutes(m2, o2)
-            log.trace "$a1 <> $a2"
-            if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a1) && (m < a2)) {
+            if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1)) {
         		return false
             }
         }
