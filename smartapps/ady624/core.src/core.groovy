@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.027.20160517 - Alpha test version - More minor bugs with triggers
  *	 5/17/2016 >>> v0.0.026.20160517 - Alpha test version - Minor bug with trigger support
  *	 5/17/2016 >>> v0.0.025.20160517 - Alpha test version - Live condition evaluation and fixed minor bugs
  *	 5/17/2016 >>> v0.0.024.20160517 - Alpha test version - Added three more piston modes. We now have Simple, Latching, And-If, Or-If, Then-If, and Else-If
@@ -76,7 +77,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.026.20160517"
+	return "v0.0.027.20160517"
 }
 
 
@@ -2585,7 +2586,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
     
     if (comp.trigger == comparison) {
 		//trigger
-		if ((evt.deviceId == "time") && (evt.conditionId == condition.id)) {
+		if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
         	condition.lt = evt.date.time
             //we have a time event returning as a result of a trigger, assume true
             return true
@@ -4564,7 +4565,7 @@ private getTimeConditionDescription(condition) {
     def attr = getAttributeByName(condition.attr)
     def comparison = cleanUpComparison(condition.comp)
     def comp = getComparisonOption(condition.attr, comparison)
-    def result = (condition.trg ? "Trigger " : "Time ") + comparison
+    def result = (condition.trg ? triggerPrefix() + "Trigger " : conditionPrefix() + "Time ") + comparison
     def val1 = condition.val1 ? condition.val1 : ""
     def val2 = condition.val2 ? condition.val2 : ""
     if (attr && comp) {
