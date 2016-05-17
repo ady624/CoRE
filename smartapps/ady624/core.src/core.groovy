@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.02b.20160517 - Alpha test version - Individual actions...
  *	 5/17/2016 >>> v0.0.02a.20160517 - Alpha test version - Fixed a problem with time subscriptions subscribe() failing
  *	 5/17/2016 >>> v0.0.029.20160517 - Alpha test version - Fixed a problem with time between - comparing only one variable, not both
  *	 5/17/2016 >>> v0.0.028.20160517 - Alpha test version - Fixed circulateFan misspelled, fixed is_one_of missing, progress to detecting location mode and alarm system
@@ -80,7 +81,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.02a.20160517"
+	return "v0.0.02b.20160517"
 }
 
 
@@ -558,23 +559,39 @@ private getConditionGroupPageContent(params, condition) {
 				def value = evaluateCondition(condition)
                 paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null ) 
                 paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )                
-                //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
             }       
 		}
-
-		section(title: "Advanced options", hideable: true, hidden: true) {
-           	input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, required: true, submitOnChange: true
-            input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-            input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
-            if (trigger) {
-                input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+        
+        if (id > 0) {
+            def actions = listActions(id)
+            if (actions.size() || state.config.expertMode) {
+                section(title: "Individual actions") {
+                    def desc = actions.size() ? "" : "Tap to select actions"
+                    href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                    if (actions.size()) {
+                        for (action in actions) {
+                            href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                        }
+                    }
+                }
+            }
+        }
+        
+        section(title: "Advanced options") {
+            input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, submitOnChange: true
+            if (state.config.expertMode) {
+                input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
+                if (trigger) {
+                    input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                    input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                    input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                    input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                }
             }
         }
 
-		if (id) {
+		if (id > 0) {
             section(title: "Required data - do not change", hideable: true, hidden: true) {            
                 input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
 			}
@@ -849,19 +866,37 @@ def pageCondition(params) {
 				paragraph "NOTE: To delete this condition, simply remove all devices from the list above and tap Done"
             }
             
-            section(title: "Advanced options", hideable: !state.config.expertMode, hidden: !state.config.expertMode) {
-	           	input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, required: true, submitOnChange: true
-                input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
-	            if (trigger) {
-                	input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                	input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                	input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                	input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+            if (id > 0) {
+                def actions = listActions(id)
+                if (actions.size() || state.config.expertMode) {
+                    section(title: "Individual actions") {
+                        def desc = actions.size() ? "" : "Tap to select actions"
+                        href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                        if (actions.size()) {
+                            for (action in actions) {
+                                href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                            }
+                        }
+                    }
                 }
             }
+
+            section(title: "Advanced options") {
+                input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, submitOnChange: true
+	            if (state.config.expertMode) {
+                    input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                    input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
+                    if (trigger) {
+                        input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                        input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                        input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                        input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                    }
+                }
+            }
+
             
-            section(title: "Required data - do not change") {            
+            section(title: "Required data - do not change", hideable: true, hidden: true) {            
                 input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "$pid..${pid+1}", defaultValue: pid
 			}
 	    }
@@ -914,7 +949,7 @@ def pageActionGroup(params) {
 	def conditionId = params?.conditionId != null ? (int) params?.conditionId : (int) state.config.conditionId
     state.config.conditionId = (int) conditionId
 	def value = conditionId < -1 ? false : true
-    def block = "IF"
+    def block = conditionId > 0 ? "WHEN TRUE, DO ..." : "IF"
     if (conditionId < 0) {
     	switch (settings.mode) {
         	case "Simple":
@@ -1131,7 +1166,10 @@ def pageAction(params) {
             
             if (actionUsed) {
             	section(title: "Action restrictions") {
-                	input "actRStateChange$id", "bool", title: "Execute on piston status change only", required: false
+                	if (action.pid < 1) {
+                    	//this option is only available for the three master action groups
+                		input "actRStateChange$id", "bool", title: "Execute on piston status change only", required: false
+                    }
                 	input "actRMode$id", "mode", title: "Execute in these modes only", description: "Any location mode", required: false, multiple: true
                 	input "actRAlarm$id", "enum", options: getAlarmOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
                 }
@@ -1614,11 +1652,10 @@ private configApp() {
             state.config.app.otherConditions = createCondition(true)
             state.config.app.otherConditions.id = -1
             state.config.app.actions = []
-		    //get expert savvy
-			state.config.expertMode = false//parent.expertMode()
         }
     }
-
+    //get expert savvy
+    state.config.expertMode = parent.expertMode()
 }
 private subscribeToAll(app) {
 	debug "Initializing subscriptions...", 1
@@ -2486,6 +2523,10 @@ private evaluateCondition(condition, evt = null) {
             if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
             if (condition.vw && !result) setVariable(condition.vw, evt.value)
         }
+        
+        if (result) {
+			scheduleActions(condition.id)
+		}
     }        
 
     perf = now() - perf
@@ -2809,17 +2850,17 @@ private eval_cond_is_greater_than_or_equal_to(condition, device, attribute, oldV
 }
 
 private eval_cond_is_even(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	if (currentValue.isInteger()) {
-    	return currentValue.toInteger().mod(2) == 0
-    }
-	return false
+	try {
+   		return Math.round(currentValue).mod(2) == 0
+    } catch(all) {}
+    return false
 }
 
 private eval_cond_is_odd(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	if (currentValue.isInteger()) {
-    	return currentValue.toInteger().mod(2) == 0
-    }
-	return false
+	try {
+   		return Math.round(currentValue).mod(2) == 1
+    } catch(all) {}
+    return false
 }
 
 private eval_cond_is_inside_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
@@ -3118,7 +3159,7 @@ private scheduleTimeTrigger(condition) {
     scheduleTask("evt", condition.id, null, null, time)
 }
 
-private scheduleActions(conditionId, stateChanged) {
+private scheduleActions(conditionId, stateChanged = false) {
 	debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
 	def actions = listActions(conditionId).sort{ it.id }
     for (action in actions) {
