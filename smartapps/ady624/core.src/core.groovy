@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.029.20160517 - Alpha test version - Fixed a problem with time between - comparing only one variable, not both
  *	 5/17/2016 >>> v0.0.028.20160517 - Alpha test version - Fixed circulateFan misspelled, fixed is_one_of missing, progress to detecting location mode and alarm system
  *	 5/17/2016 >>> v0.0.027.20160517 - Alpha test version - More minor bugs with triggers
  *	 5/17/2016 >>> v0.0.026.20160517 - Alpha test version - Minor bug with trigger support
@@ -78,7 +79,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.028.20160517"
+	return "v0.0.029.20160517"
 }
 
 
@@ -559,13 +560,17 @@ private getConditionGroupPageContent(params, condition) {
                 //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
             }       
 		}
-//        section() {
-//            href "pageConditionVsTrigger", title: "Uh oh, which should I use?", description: "Find out when to use a condition and when to use a trigger", state: complete, submitOnChange: false
-//        }
 
 		section(title: "Advanced options", hideable: true, hidden: true) {
-           	//input "condGrouping$id", "enum", title: "Grouping Method", description: "Choose the logical operation to be applied between all conditions in this group", options: ["AND", "OR", "XOR"], defaultValue: "AND", required: true, submitOnChange: true
            	input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, required: true, submitOnChange: true
+            input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+            input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
+            if (trigger) {
+                input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+            }
         }
 
 		if (id) {
@@ -844,6 +849,7 @@ def pageCondition(params) {
             }
             
             section(title: "Advanced options", hideable: !state.config.expertMode, hidden: !state.config.expertMode) {
+	           	input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, required: true, submitOnChange: true
                 input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
                 input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
 	            if (trigger) {
@@ -2444,10 +2450,7 @@ private evaluateCondition(condition, evt = null) {
         	result = evaluateTimeCondition(condition, evt)
         } else {
         	result = evaluateDeviceCondition(condition, evt)
-        }
-        
-        //apply the NOT, if needed
-        result = condition.not ? !result : result
+        }       
     } else {
     	//we evaluate a group
         result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
@@ -2469,6 +2472,8 @@ private evaluateCondition(condition, evt = null) {
         }
     }
 
+    //apply the NOT, if needed
+    result = condition.not ? !result : result
 
     //store variables (only if evt is available, i.e. not simulating)
     if (evt) {
@@ -2632,14 +2637,16 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
         	def val = i == 1 ? condition.val1 : condition.val2
             def t = null
             def v = 0
+            log.trace "i = $i, val = $val, condition = $condition"
             switch (val) {
             	case "custom time":
-                	t = condition.t1 ? adjustTime(condition.t1) : null
+                	t = (i == 1 ? (condition.t1 ? adjustTime(condition.t1) : null) : (condition.t2 ? adjustTime(condition.t2) : null))
                     v = t ? t.getHours() * 60 + t.getMinutes() : null
                     if (!comparison.contains("around")) {
                         o1 = 0
                         o2 = 0
                     }
+                    log.trace "FOUND v = $v"
                    	break
 				case "midnight":
                 	v = (i == 1 ? 0 : 1440)
@@ -2687,9 +2694,12 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
         		return false
             }
         }       
+        
+        log.trace "GOT HERE $comparison $m1 $o1 >>> $m2 $o2"
         if (comparison.contains("between")) {
             def a1 = addOffsetToMinutes(m1, o1)
         	def a2 = addOffsetToMinutes(m2, o2)
+            log.trace "$a1 <> $a2"
             if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a1) && (m < a2)) {
         		return false
             }
@@ -4565,13 +4575,13 @@ private getConditionDescription(id, level = 0) {
             if (virtualDevice) {
             	attribute = ""
             }
-            return tab + (condition.trg ? triggerPrefix() : conditionPrefix()) + evaluation + deviceList + attribute + comparison + values + time
+            return tab + (condition.not ? "!" : "") + (condition.trg ? triggerPrefix() : conditionPrefix()) + evaluation + deviceList + attribute + comparison + values + time
         }
         return "Sorry, incomplete rule"
 	} else {
     	//condition group
-        def grouping = settings["condGrouping$id"]
-        def negate = settings["condNegate$id"]
+        def grouping = condition.grp
+        def negate = condition.not
         def result = (negate ? preNot : pre) + "\n"
         def cnt = 1
         for (child in condition.children) {
