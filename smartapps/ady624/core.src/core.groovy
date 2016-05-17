@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.024.20160517 - Alpha test version - Added three more piston modes. We now have Simple, Latching, And-If, Or-If, Then-If, and Else-If
  *	 5/17/2016 >>> v0.0.023.20160517 - Alpha test version - Change SHM state now functional
  *	 5/17/2016 >>> v0.0.022.20160517 - Alpha test version - Change location mode now functional, fixes for Android (removed ranges on Parent ID)
  *	 5/16/2016 >>> v0.0.021.20160516 - Alpha test version - More bug fixes
@@ -73,7 +74,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.023.20160517"
+	return "v0.0.024.20160517"
 }
 
 
@@ -358,8 +359,15 @@ private pageMainCoREPiston() {
     	def currentState = state.currentState
     	section() {
         	def enabled = settings["enabled"] != false
+            def pistonModes = ["Simple", "Latching", "And-If", "Or-If"]
+            if (!getConditionTriggerCount(state.config.app.otherConditions)) {
+            	pistonModes += ["Then-If", "Else-If"]
+            }
+            if (listActions(-1).size()) {
+            	pistonModes.remove("Simple")
+            }
         	input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
-            input "mode", "enum", title: "Piston Mode", required: true, state: null, options: ["Simple", "Latching", "Else-If"], defaultValue: "Simple", submitOnChange: true
+            input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Simple", submitOnChange: true
             switch (settings.mode) {
                 case "Latching":
                 paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
@@ -370,54 +378,65 @@ private pageMainCoREPiston() {
             }
         }
         section() {
-            href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to edit the main If group or tap on any individual conditions below to edit them directly" : "Tap to select conditions")
+            href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "" : null)
             buildIfContent()
         }
 
         section() {
-        	def actionsDoOnce = listActions(0, false)
-        	def actionsDoEvery = listActions(0, true)
-            def desc = actionsDoOnce.size() + actionsDoEvery.size() ? "" : "Choose what should happen then"
+        	def actions = listActions(0)
+            def desc = actions.size() ? "" : "Choose what should happen then"
             href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
-            if (actionsDoOnce.size()) {
-                for (action in actionsDoOnce) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, "), required: true, state: "complete", submitOnChange: true
-                }
-            }
-            if (actionsDoEvery.size()) {
-                for (action in actionsDoEvery) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, "), required: true, state: "complete", submitOnChange: true
+            if (actions.size()) {
+                for (action in actions) {
+                    href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
                 }
             }
         }
 
-        if (settings.mode == "Latching") {
+        def title = ""
+        switch (settings.mode) {
+            case "Latching":
+            title = "But if..."
+            break
+            case "And-If":
+            title = "And if..."
+            break
+            case "Or-If":
+            title = "Or if..."
+            break
+            case "Then-If":
+            title = "Then if..."
+            break
+            case "Else-If":
+            title = "Else if..."
+            break                        
+        }
+		if (title) {
             section() {
-                href "pageIfOther", title: "But if...", description: (state.config.app.otherConditions.children.size() ? "" : "Tap to select conditions")
+                href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "" : "Tap to select conditions")
                 buildIfOtherContent()
             }
-        }
-
-        if (settings.mode == "Else-If") {
             section() {
-                href "pageIfOther", title: "Else if...", description: (state.config.app.otherConditions.children.size() ? "" : "Tap to select conditions")
-                buildIfOtherContent()
-            }
-        }
-
-        section() {
-        	def actionsDoOnce = listActions(-1, false)
-        	def actionsDoEvery = listActions(-1, true)
-            def desc = actionsDoOnce.size() + actionsDoEvery.size() ? "" : "Choose what should happen otherwise"
-            href "pageActionGroup", params:[conditionId: -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: desc, state: null, submitOnChange: false
-            if (actionsDoOnce.size()) {
-                for (action in actionsDoOnce) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, "), required: true, state: "complete", submitOnChange: true
+                def actions = listActions(-1)
+                def desc = actions.size() ? "" : "Choose what should happen then"
+                href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
+                if (actions.size()) {
+                    for (action in actions) {
+                        href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                    }
                 }
             }
-            if (actionsDoEvery.size()) {
-                for (action in actionsDoEvery) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, "), required: true, state: "complete", submitOnChange: true
+        }
+
+		if (settings.mode != "Latching") {
+            section() {
+                def actions = listActions(-2)
+                def desc = actions.size() ? "" : "Choose what should happen otherwise"
+                href "pageActionGroup", params:[conditionId: -2], title: "Else...", description: desc, state: null, submitOnChange: false
+                if (actions.size()) {
+                    for (action in actions) {
+                        href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                    }
                 }
             }
         }
@@ -545,7 +564,7 @@ private getConditionGroupPageContent(params, condition) {
 
 		if (id) {
             section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", rangeX: "$pid..$pid", defaultValue: pid
+                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
 			}
         }
     }
@@ -569,6 +588,9 @@ def pageCondition(params) {
         def showDateTimeRepeat = false
         def recurring = false
         def trigger = false
+        
+        def branchId = getConditionMasterId(condition.id)
+        def supportsTriggers = (branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"])
     	dynamicPage(name: "pageCondition", title: (condition.trg ? "Trigger" : "Condition") + " #$id", uninstall: false, install: false) {
 			section() {
             	if (!settings["condDevices$id"] || (settings["condDevices$id"].size() == 0)) {
@@ -584,7 +606,7 @@ def pageCondition(params) {
                             if (attribute == "time") {
                             	//Date & Time support
                                 def comparison = cleanUpComparison(settings["condComp$id"])
-                                input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, true), required: true, multiple: false, submitOnChange: true
+                                input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true
                                 if (comparison) {
 									def comp = getComparisonOption(attribute, comparison)
                                     if (attr && comp) {
@@ -638,7 +660,7 @@ def pageCondition(params) {
                             } else {
                             	//Location Mode, Smart Home Monitor support
                                 def comparison = cleanUpComparison(settings["condComp$id"])
-                                input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, true), required: true, multiple: false, submitOnChange: true                                
+                                input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
                                 if (comparison) {                                	
                                     //Value
                                     def comp = getComparisonOption(attribute, comparison)
@@ -673,7 +695,7 @@ def pageCondition(params) {
                                     //Condition
                                     def attr = getAttributeByName(attribute)
                                     def comparison = cleanUpComparison(settings["condComp$id"])
-                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, true), required: true, multiple: false, submitOnChange: true                                
+                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
                                     if (comparison) {                                	
                                         //Value
                                         def comp = getComparisonOption(attribute, comparison)
@@ -828,7 +850,7 @@ def pageCondition(params) {
             }
             
             section(title: "Required data - do not change") {            
-                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", rangeX: "$pid..$pid", defaultValue: pid
+                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "$pid..${pid+1}", defaultValue: pid
 			}
 	    }
     }
@@ -879,12 +901,22 @@ def pageActionGroup(params) {
 	state.run = "config"
 	def conditionId = params?.conditionId != null ? params?.conditionId : state.config.conditionId
     state.config.conditionId = conditionId
-	def value = true
+	def value = conditionId < -1 ? false : true
     def block = "IF"
     if (conditionId < 0) {
     	switch (settings.mode) {
         	case "Simple":
+            	block = ""
             	value = false
+                break
+        	case "And-If":
+            	block = "AND IF"
+                break
+        	case "Or-If":
+            	block = "OR IF"
+                break
+        	case "Then-If":
+            	block = "THEN IF"
                 break
         	case "Else-If":
             	block = "ELSE IF"
@@ -894,24 +926,33 @@ def pageActionGroup(params) {
                 break
         }
     }
+    
+    switch (conditionId) {
+    	case 0:
+        	block = "IF (?) THEN ..."
+        	break
+    	case -1:
+        	block = "IF (?) $block (?) THEN ..."
+        	break
+    	case -2:
+        	block = "IF (?) ${block ? "$block (?) " : ""}ELSE ..."
+        	break
+    }
+    
     cleanUpActions()
-	dynamicPage(name: "pageActionGroup", title: "$block ... THEN ..", uninstall: false, install: false) {
-    	section() {
-        	paragraph "Add actions below to be executed once, whenever the evaluation of your $block condition(s) changes to '$value'", title: "Do once when piston becomes '$value'..."
-            def actions = listActions(conditionId, false)
-            for(action in actions) {
-            	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+	dynamicPage(name: "pageActionGroup", title: "$block", uninstall: false, install: false) {
+        def actions = listActions(conditionId)
+        if (actions.size()) {
+            section() {
+                for(action in actions) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                }
             }
-            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "once"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", state: (actions.size() ? null : "complete"), submitOnChange: true
         }
-    	section() {
-        	paragraph "Add actions below to be executed every time the evaluation of your condition(s) is '$value'", title: "Do every time the condition set is true..."
-            def actions = listActions(conditionId, true)
-            for(action in actions) {
-            	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
-            }
-            href "pageAction", params:[command: "add", conditionId: conditionId, branch: "every"], title: "Add an action", description: "Actions allow control of various devices in your ecosystem", required: true, state: "complete", submitOnChange: true
-        }
+        
+        section() {
+			href "pageAction", params:[command: "add", conditionId: conditionId], title: "Add an action", required: !action.size(), state: (actions.size() ? null : "complete"), submitOnChange: true
+		}
         
     }
 }
@@ -923,7 +964,7 @@ def pageAction(params) {
     //if at least one device has been previously selected, the page will guide the user through setting up tasks for selected devices
     def action = null
     if (params?.command == "add") {
-        action = createAction(params?.conditionId, params?.branch == "every")
+        action = createAction(params?.conditionId)
     } else {   	
 		action = getAction(params?.actionId ? params?.actionId : state.config.actionId)
     }
@@ -1007,52 +1048,54 @@ def pageAction(params) {
                         }
                     }
                     def idx = 0
-                    for (tid in ids) {
-                        //display each 
-                        section(title: idx == 0 ? "Task list" : "") {
-                            input "$prefix$tid", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
-                            //parameters
-                            def cmd = settings["$prefix$tid"]
-                            def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
-                            def custom = (cmd && cmd.startsWith(customCommandPrefix()))
-                            cmd = cleanUpCommand(cmd)
-                            def command = null
-                            if (virtual) {
-                                //dealing with a virtual command
-                                command = getVirtualCommandByDisplay(cmd)
-                            } else {
-                                command = getCommandByDisplay(cmd)
-                            }
-                            if (command) {
-                                if (command.parameters) {
-                                    def i = 0
-                                    for (def parameter in command.parameters) {
-                                        def param = parseCommandParameter(parameter)
-                                        if (param) {
-                                            if (param.type == "attribute") {
-                                                input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                            } else if (param.type == "attributes") {
-                                                input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
-                                            } else if (param.type == "variable") {
-                                                input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                            } else if (param.type == "variables") {
-                                                input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                    if (ids.size()) {
+                    	section(title: "Task list") {
+                            for (tid in ids) {
+                                //display each 
+                                input "$prefix$tid", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
+                                //parameters
+                                def cmd = settings["$prefix$tid"]
+                                def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
+                                def custom = (cmd && cmd.startsWith(customCommandPrefix()))
+                                cmd = cleanUpCommand(cmd)
+                                def command = null
+                                if (virtual) {
+                                    //dealing with a virtual command
+                                    command = getVirtualCommandByDisplay(cmd)
+                                } else {
+                                    command = getCommandByDisplay(cmd)
+                                }
+                                if (command) {
+                                    if (command.parameters) {
+                                        def i = 0
+                                        for (def parameter in command.parameters) {
+                                            def param = parseCommandParameter(parameter)
+                                            if (param) {
+                                                if (param.type == "attribute") {
+                                                    input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                                } else if (param.type == "attributes") {
+                                                    input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else if (param.type == "variable") {
+                                                    input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                                } else if (param.type == "variables") {
+                                                    input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else {
+                                                    input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
+                                                }
+                                                if (param.last && settings["actParam$id#$tid-$i"]) {
+                                                    //this is the last parameter, if filled in
+                                                    break
+                                                }
                                             } else {
-                                                input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
+                                                paragraph "Invalid parameter definition for $parameter"
                                             }
-                                            if (param.last && settings["actParam$id#$tid-$i"]) {
-                                                //this is the last parameter, if filled in
-                                                break
-                                            }
-                                        } else {
-                                            paragraph "Invalid parameter definition for $parameter"
+                                            i += 1
                                         }
-                                        i++
                                     }
                                 }
+                                idx += 1
                             }
                         }
-                        idx++
                     }
                     section() {
                         input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
@@ -1070,14 +1113,20 @@ def pageAction(params) {
             
             if (!actionUsed || alarmAction) {
                 section() {
-	            	input "actAlarm$id", "enum", options: ["Disarmed", "Armed/Stay", "Armed/Away"], title: "Change Smart Home Monitor state", required: false, multiple: false, submitOnChange: true
+	            	input "actAlarm$id", "enum", options: getAlarmOptions(), title: "Change Smart Home Monitor state", required: false, multiple: false, submitOnChange: true
                 }
             }
             
             if (actionUsed) {
+            	section(title: "Action restrictions") {
+                	input "actRStateChange$id", "bool", title: "Execute on piston status change only", required: false
+                	input "actRMode$id", "mode", title: "Execute in these modes only", description: "Any location mode", required: false, multiple: true
+                	input "actRAlarm$id", "enum", options: getAlarmOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
+                }
+            
                 if (id) {
                     section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                        input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", rangeX: "$pid..$pid", defaultValue: pid
+                        input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
                     }
                 }
             }
@@ -1563,7 +1612,7 @@ private subscribeToAll(app) {
 	def hasTriggers = getConditionHasTriggers(app.conditions)
    	def hasLatchingTriggers = false
     
-   	if (settings.mode == "Latching") {
+   	if (settings.mode in ["Latching", "And-If", "Or-If"]) {
     	//we really get the count
     	hasLatchingTriggers = getConditionHasTriggers(app.otherConditions)
 		//simulate subscribing to both lists
@@ -1794,12 +1843,11 @@ private getLastConditionId(parent) {
 
 
 //creates a condition (grouped or not)
-private createAction(parentId, everyBranch) {
+private createAction(parentId) {
     def action = [:]
     //give the new condition an id
     action.id = (int) getNextActionId()
     action.pid = (int) parentId
-    action.e = !!everyBranch
     state.config.app.actions.push(action)
     return action
 }
@@ -1844,6 +1892,12 @@ private updateAction(action) {
     }
     action.a = settings["actAlarm$id"]
     action.m = settings["actMode$id"]
+    
+    //restrictions
+    action.rc = settings["actRStateChange$id"]
+    action.ra = settings["actRAlarm$id"]
+    action.rm = settings["actRMode$id"]
+    
     //look for tasks
     action.t = []
     def prefix = "actTask$id#"
@@ -1929,16 +1983,16 @@ private listActionDevices(actionId) {
     }
 	return devices
 }
-private getActionDescription(action, prefix = null) {
+private getActionDescription(action) {
 	if (!action) return null
     if (action.a) {
-    	return (prefix ? prefix + "change" : "Change") + " Smart Home Monitor state to ${action.a}"
+    	return "Change Smart Home Monitor state to ${action.a}"
     }
     if (action.m) {
-    	return (prefix ? prefix + "change" : "Change") + " Location Mode to ${action.m}"
+    	return "Change Location Mode to ${action.m}"
     }
     def devices = listActionDevices(action.id)
-    def result = (prefix ? prefix + "with " : "With ") + buildDeviceNameList(devices, "and")+ "..."
+    def result = "With " + buildDeviceNameList(devices, "and")+ "..."
     for (task in action.t.sort{it.i}) {
     	def t = cleanUpCommand(task.c)
         if (task.p && task.p.size()) {
@@ -2159,6 +2213,12 @@ private broadcastEvent(evt, primary, secondary) {
             //broadcast to primary IF block
             def result1 = null
             def result2 = null
+            if (mode in ["And-If", "Or-If"]) {
+            	//these two modes always evaluate both blocks
+            	primary = true
+                secondary = true
+            }
+            
             if (primary) {
                 result1 = evaluateConditionSet(evt, true)
                 state.lastPrimaryEvaluationResult = result1
@@ -2166,16 +2226,15 @@ private broadcastEvent(evt, primary, secondary) {
                 debug "Primary IF block evaluation result is $result1"
                 
                 switch (mode) {
-                	case "And-If":
-                    	//execute the second branch if the first one fails
+                	case "Then-If":
+                    	//execute the secondary branch if the primary one is true
                     	secondary = result1
                 		break
                 	case "Else-If":
-                    	//execute the second branch if the first one fails
+                    	//execute the second branch if the primary one is false
                     	secondary = !result1
                 		break
-                }
-                
+                }                
             }
             
             //broadcast to secondary IF block
@@ -2217,8 +2276,32 @@ private broadcastEvent(evt, primary, secondary) {
                         debug "♦♦♦♦ Simple Piston changed state to $result1 ♦♦♦", null, "info"
                     }
                     break
+                case "And-If":
+                	def newState = result1 && result2
+                    if (currentState != newState) {
+                        state.currentState = newState
+                        state.currentStateSince = now()
+                        debug "♦♦♦ And-If Piston changed state to $result1 ♦♦♦", null, "info"
+                    }
+                    break
+                case "Or-If":
+                	def newState = result1 || result2
+                    if (currentState != newState) {
+                        state.currentState = newState
+                        state.currentStateSince = now()
+                        debug "♦♦♦ Or-If Piston changed state to $result1 ♦♦♦", null, "info"
+                    }
+                    break
+                case "Then-If":
+                	def newState = result1 && result2
+                    if (currentState != newState) {
+                        state.currentState = newState
+                        state.currentStateSince = now()
+                        debug "♦♦♦ Then-If Piston changed state to $result1 ♦♦♦", null, "info"
+                    }
+                    break
                 case "Else-If":
-                	def newState = result1 ? true : (result2 ? false : currentState)
+                	def newState = result1 || result2
                     if (currentState != newState) {
                         state.currentState = newState
                         state.currentStateSince = now()
@@ -2226,7 +2309,9 @@ private broadcastEvent(evt, primary, secondary) {
                     }
                     break
             }
+            def stateChanged = false
             if (currentState != state.currentState) {
+            	stateChanged = true
             	//we have a state change
 	            setVariable("\$previousState", currentState, true)
 	            setVariable("\$previousStateSince", currentStateSince, true)
@@ -2235,15 +2320,14 @@ private broadcastEvent(evt, primary, secondary) {
 	            setVariable("\$currentStateSince", state.currentStateSince, true)
                 //new state
                 currentState = state.currentState
-                if (currentState) {
-                	scheduleActions(0, false)
-                } else {
-                	scheduleActions(-1, false)
-                }
             }
             //execute the DO EVERY TIME actions
-            if (result1) scheduleActions(0, true)
-            if (result2) scheduleActions(-1, true)
+            if (result1) scheduleActions(0, stateChanged)
+            if (result2) scheduleActions(-1, stateChanged)
+            if ((mode != "Latching") && (!currentState)) {
+            	//execute the else branch
+            	scheduleActions(-2, stateChanged)
+            }
         }
 	} catch(javax.script.ScriptException e) {
     	debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
@@ -2969,7 +3053,7 @@ private eval_trg_exits_range(condition, device, attribute, oldValue, currentValu
 private scheduleTimeTriggers() {
 	debug "Rescheduling time triggers"
 	withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
-	if (state.app.mode == "Latching") {
+	if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
     	withEachTrigger(state.app.otherConditions, "scheduleTimeTrigger")
     }
 }
@@ -2983,11 +3067,16 @@ private scheduleTimeTrigger(condition) {
     scheduleTask("evt", condition.id, null, null, time)
 }
 
-private scheduleActions(conditionId, everyBranch) {
-	debug "Scheduling actions for condition #${conditionId} and the ${everyBranch ? "DO EVERY" : "DO ONCE" } branch."
-	def actions = listActions(conditionId, everyBranch).sort{ it.id }
+private scheduleActions(conditionId, stateChanged) {
+	debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
+	def actions = listActions(conditionId).sort{ it.id }
     for (action in actions) {
-    	scheduleAction(action)
+    	//restrict on state changed
+    	if (action.rc && !stateChanged) continue
+    	if (action.rm && action.rm.size() && !(location.mode in action.rm)) continue
+    	if (action.ra && action.ra.size() && !(getAlarmStatus() in action.ra)) continue
+		//we survived all restrictions, pfew
+		scheduleAction(action)
     }
 }
 
@@ -3569,14 +3658,14 @@ private processCommandTask(task) {
     
     if (action.a) {
     	//set alarm mode
-        def shmState = "off"
+        def shmStatus = "off"
         if (action.a.contains("way")) {
-        	shmState = "away"
+        	shmStatus = "away"
         } else if (action.a.contains("tay")) {
-        	shmState = "stay"
+        	shmStatus = "stay"
         }
-        if (shmState != location.currentState("alarmSystemStatus")?.value) {
-	        sendLocationEvent(name: 'alarmSystemStatus', value: shmState)
+        if (shmStatus != getAlarmStatus()) {
+	        setAlarmStatus(shmStatus)
             return true
         }
         return false
@@ -4223,6 +4312,15 @@ private getCondition(conditionId, primary = null) {
 	return result
 }
 
+private getConditionMasterId(conditionId) {
+	if (condtionId <= 0) return conditionId
+	if (condition.parentId) {
+    	def condition = getCondition(conditionId)
+        if (condition) return getConditionMasterId(condition.id)
+    }
+    return null
+}
+
 //optimized version that returns true if any trigger is detected
 private getConditionHasTriggers(condition) {
 	def result = 0
@@ -4282,7 +4380,7 @@ private withEachTrigger(condition, callback) {
 }
 
 private getTriggerCount(app) {
-	return getConditionTriggerCount(app.conditions) + (settings.mode == "Latching" ? getConditionTriggerCount(app.otherConditions) : 0)
+	return getConditionTriggerCount(app.conditions) + (settings.mode in ["Latching", "And-If", "Or-If"] ? getConditionTriggerCount(app.otherConditions) : 0)
 }
 
 private getConditionConditionCount(condition) {
@@ -4308,7 +4406,7 @@ private getConditionConditionCount(condition) {
 }
 
 private getConditionCount(app) {
-	return getConditionConditionCount(app.conditions) + (settings.mode == "Latching" ? getConditionConditionCount(app.otherConditions) : 0)
+	return getConditionConditionCount(app.conditions) + (settings.mode != "Simple" ? getConditionConditionCount(app.otherConditions) : 0)
 }
 
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
@@ -4661,16 +4759,15 @@ def getAction(actionId) {
     }
     return null
 }
-def listActions(conditionId, everyBranch = false) {
+def listActions(conditionId) {
 	def result = []
     def parent = (state.run == "config" ? state.config : state)
 
 	for(action in parent.app.actions) {
-    	if ((action.pid == conditionId) && (action.e == everyBranch)) {
+    	if ((action.pid == conditionId)) {
         	result.push(action)
         }
-    }
-    
+    }    
     return result
 }
 
@@ -4756,8 +4853,13 @@ private buildNameList(list, suffix) {
     return result;
 }
 
+private getAlarmStatus() {
+	return location.currentState("alarmSystemStatus")?.value
+}
 
-
+private setAlarmStatus(status) {
+	sendLocationEvent(name: 'alarmSystemStatus', value: status)
+}
 
 
 
@@ -5388,7 +5490,7 @@ private attributes() {
     	[ name: "water",					type: "enum",				range: null,			unit: null,		options: ["dry", "wet"],																					],
     	[ name: "windowShade",				type: "enum",				range: null,			unit: null,		options: ["unknown", "open", "closed", "opening", "closing", "partially open"],								],
     	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: location.modes,																					],
-    	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: ["Disarmed", "Armed/Stay", "Armed/Away"],															],
+    	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: getAlarmOptions(),															],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
     ]
 }
@@ -5447,6 +5549,10 @@ private comparisons() {
     	[ type: "decimal",				options: optionsNumber	],
     	[ type: "time",					options: optionsTime,	],        
     ]
+}
+
+private getAlarmOptions() {
+	return ["Disarmed", "Armed/Stay", "Armed/Away"]
 }
 
 private initialSystemStore() {
