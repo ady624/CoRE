@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.023.20160517 - Alpha test version - Change SHM state now functional
  *	 5/17/2016 >>> v0.0.022.20160517 - Alpha test version - Change location mode now functional, fixes for Android (removed ranges on Parent ID)
  *	 5/16/2016 >>> v0.0.021.20160516 - Alpha test version - More bug fixes
  *	 5/16/2016 >>> v0.0.020.20160516 - Alpha test version - More float vs int problems fixed with Android
@@ -72,7 +73,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.022.20160517"
+	return "v0.0.023.20160517"
 }
 
 
@@ -3568,7 +3569,17 @@ private processCommandTask(task) {
     
     if (action.a) {
     	//set alarm mode
-        return
+        def shmState = "off"
+        if (action.a.contains("way")) {
+        	shmState = "away"
+        } else if (action.a.contains("tay")) {
+        	shmState = "stay"
+        }
+        if (shmState != location.currentState("alarmSystemStatus")?.value) {
+	        sendLocationEvent(name: 'alarmSystemStatus', value: shmState)
+            return true
+        }
+        return false
     }
     if (action.m) {
     	//set location mode
@@ -5296,9 +5307,9 @@ private commands() {
     	[ name: "speak",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
     	[ name: "musicPlayer.setLevel",			category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
     	[ name: "playText",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
-    	[ name: "configure",					category: "Tools",						group: "Configure [devices]",		display: "Configure",					parameters: [], ],
-    	[ name: "poll",							category: "Tools",						group: "Poll [devices]",			display: "Poll",						parameters: [], ],
-    	[ name: "refresh",						category: "Tools",						group: "Refresh [devices]",			display: "Refresh",						parameters: [], ],
+    	[ name: "configure",					category: "Tools",						group: null,		display: "Configure",					parameters: [], ],
+    	[ name: "poll",							category: "Tools",						group: null,			display: "Poll",						parameters: [], ],
+    	[ name: "refresh",						category: "Tools",						group: null,			display: "Refresh",						parameters: [], ],
     ]
 }
 
