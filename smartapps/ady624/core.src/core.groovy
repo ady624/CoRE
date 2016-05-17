@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.028.20160517 - Alpha test version - Fixed circulateFan misspelled, fixed is_one_of missing, progress to detecting location mode and alarm system
  *	 5/17/2016 >>> v0.0.027.20160517 - Alpha test version - More minor bugs with triggers
  *	 5/17/2016 >>> v0.0.026.20160517 - Alpha test version - Minor bug with trigger support
  *	 5/17/2016 >>> v0.0.025.20160517 - Alpha test version - Live condition evaluation and fixed minor bugs
@@ -77,7 +78,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.027.20160517"
+	return "v0.0.028.20160517"
 }
 
 
@@ -1151,7 +1152,7 @@ def pageActionDevices(params) {
     	//we don't have a list of capabilities to filter by, let's figure things out by using the command
         for(def cap in caps) {
         	def capability = getCapabilityByName(cap)
-            if (capability) capabilities.push(capability)
+            if (capability && !(capability in capabilities)) capabilities.push(capability)
         }
     } else {
 	    capabilities = listCommandCapabilities(command)
@@ -1165,7 +1166,7 @@ def pageActionDevices(params) {
             //go through each and look for "devices" - the user-friendly name of what kind of devices the capability stands for
             if (capability.devices) {
                 def cap = caps[capability.name] ? caps[capability.name] : []
-                if (!(capability.deviecs in cap)) cap.push(capability.devices)
+                if (!(capability.devices in cap)) cap.push(capability.devices)
                 caps[capability.name] = cap
             }
         }
@@ -1660,7 +1661,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
         	if (condition.trg || !triggersOnly) {
             	//get the details
                 def capability = getCapabilityByDisplay(condition.cap)
-            	def devices = capability.virtualDevice ? (capability.attribute == "time" ? [] : [capability.virtualDevice]) : settings["condDevices${condition.id}"]
+            	def devices = capability.virtualDevice ? [capability.virtualDevice] : settings["condDevices${condition.id}"]
                 def attribute = capability.virtualDevice ? capability.attribute : condition.attr
                 if (devices) {
                 	for (device in devices) {
@@ -2441,22 +2442,12 @@ private evaluateCondition(condition, evt = null) {
         //several types of conditions, device, mode, SMH, time, etc.
         if (condition.attr == "time") {
         	result = evaluateTimeCondition(condition, evt)
-        } else if (condition.dev && condition.dev.size()) {
+        } else {
         	result = evaluateDeviceCondition(condition, evt)
         }
         
         //apply the NOT, if needed
         result = condition.not ? !result : result
-        //store variables
-        if (condition.vd) setVariable(condition.vd, now())
-        if (condition.vs) setVariable(condition.vs, result)
-        if (condition.trg) {
-            if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
-            if (condition.vv && result) setVariable(condition.vv, evt.value)
-            if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
-            if (condition.vw && !result) setVariable(condition.vw, evt.value)
-        }
-        
     } else {
     	//we evaluate a group
         result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
@@ -2477,7 +2468,20 @@ private evaluateCondition(condition, evt = null) {
             }
         }
     }
-    
+
+
+    //store variables (only if evt is available, i.e. not simulating)
+    if (evt) {
+        if (condition.vd) setVariable(condition.vd, now())
+        if (condition.vs) setVariable(condition.vs, result)
+        if (condition.trg) {
+            if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
+            if (condition.vv && result) setVariable(condition.vv, evt.value)
+            if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
+            if (condition.vw && !result) setVariable(condition.vw, evt.value)
+        }
+    }        
+
     perf = now() - perf
 	return result
 }
@@ -2491,10 +2495,20 @@ private evaluateDeviceCondition(condition, evt) {
     
     //get list of devices
     def devices = settings["condDevices${condition.id}"]
+    def virtualCurrentValue = null
+    switch (condition.cap) {
+    	case "Location Mode":
+        	devices = [location]
+            virtualCurrentValue = location.mode
+            break
+        case "Smart Home Monitor":
+        	devices = [location]
+            virtualCurrentValue = getAlarmStatus()
+        	break    	
+    }
     if (!devices) {
     	//something went wrong
-        debug "ERROR: Something went wrong, we cannot find any devices for condition #${condition.id}", null, "error"
-    	
+        return false    	
     } else {
     	//the real deal goes here
         
@@ -2505,11 +2519,13 @@ private evaluateDeviceCondition(condition, evt) {
                 def deviceResult = false
                 def ownsEvent = evt && (evt.deviceId == device.id) && (evt.name == condition.attr)
                 def oldValue = null
-                def cache = atomicState.cache
-				cache = cache ? cache : [:]
-                def cachedValue = cache[device.id + "-" + condition.attr]
-                if (cachedValue) oldValue = cachedValue.o
-            	currentValue = ownsEvent ? evt.value : device.currentValue(condition.attr)
+                if (evt) {
+                	def cache = atomicState.cache
+					cache = cache ? cache : [:]
+                	def cachedValue = cache[device.id + "-" + condition.attr]
+                	if (cachedValue) oldValue = cachedValue.o
+                }
+            	currentValue = evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr))
                 def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
                 def offset1 = condition.var1 || condition.dev1 ? condition.o1 : 0
                 def value2 = condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr) : condition.val2)
@@ -2753,6 +2769,14 @@ private eval_cond_is_not(condition, device, attribute, oldValue, currentValue, v
 	return eval_cond_is_not_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
 }
 
+private eval_cond_is_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	return (currentValue in value1)
+}
+
+private eval_cond_is_not_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+}
+
 private eval_cond_is_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue == value1
 }
@@ -2809,8 +2833,9 @@ private eval_cond_is_outside_of_range(condition, device, attribute, oldValue, cu
 
 private listPreviousStates(device, attribute, currentValue, minutes, excludeLast) {
 //	def events = device.eventsSince(new Date(now() - minutes * 60000));
-	def events = device.events([all: true, max: 100]).findAll{it.name == attribute}
     def result = []
+	if (!(device instanceof physicalgraph.app.DeviceWrapper)) return result
+	def events = device.events([all: true, max: 100]).findAll{it.name == attribute}
     //if we got any events, let's go through them       
 	//if we need to exclude last event, we start at the second event, as the first one is the event that triggered this function. The attribute's value has to be different from the current one to qualify for quiet
     def value = currentValue
@@ -2848,7 +2873,7 @@ private eval_cond_was_not(condition, device, attribute, oldValue, currentValue, 
 }
 
 private eval_cond_was_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2863,7 +2888,7 @@ private eval_cond_was_equal_to(condition, device, attribute, oldValue, currentVa
 }
 
 private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2878,7 +2903,7 @@ private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, curre
 }
 
 private eval_cond_was_less_than(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2893,7 +2918,7 @@ private eval_cond_was_less_than(condition, device, attribute, oldValue, currentV
 }
 
 private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2908,7 +2933,7 @@ private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldVal
 }
 
 private eval_cond_was_greater_than(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2923,7 +2948,7 @@ private eval_cond_was_greater_than(condition, device, attribute, oldValue, curre
 }
 
 private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2938,7 +2963,7 @@ private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, old
 }
 
 private eval_cond_was_even(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2953,7 +2978,7 @@ private eval_cond_was_even(condition, device, attribute, oldValue, currentValue,
 }
 
 private eval_cond_was_odd(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2968,7 +2993,7 @@ private eval_cond_was_odd(condition, device, attribute, oldValue, currentValue, 
 }
 
 private eval_cond_was_inside_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -2983,7 +3008,7 @@ private eval_cond_was_inside_range(condition, device, attribute, oldValue, curre
 }
 
 private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-    def time = timeToMinutes(condition.time)
+    def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
@@ -3007,9 +3032,19 @@ private eval_trg_changes_to(condition, device, attribute, oldValue, currentValue
     		eval_cond_is_equal_to(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
+private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_one_of(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_one_of(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+}
+
 private eval_trg_changes_away_from(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
 	return !eval_cond_is_not_equal_to(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
     		eval_cond_is_not_equal_to(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+}
+
+private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_not_one_of(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_not_one_of(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
 private eval_trg_drops_below(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
@@ -3667,17 +3702,7 @@ private processCommandTask(task) {
     
     if (action.a) {
     	//set alarm mode
-        def shmStatus = "off"
-        if (action.a.contains("way")) {
-        	shmStatus = "away"
-        } else if (action.a.contains("tay")) {
-        	shmStatus = "stay"
-        }
-        if (shmStatus != getAlarmStatus()) {
-	        setAlarmStatus(shmStatus)
-            return true
-        }
-        return false
+        return setAlarmStatus(action.a)
     }
     if (action.m) {
     	//set location mode
@@ -4184,6 +4209,7 @@ private timeYearOptions() {
 }
 
 private timeToMinutes(time) {
+	if (!(time instanceof String)) return 0
 	def value = time.replace(" minutes", "").replace(" minute", "")
     if (value.isInteger()) {
     	return value.toInteger()
@@ -4862,11 +4888,36 @@ private buildNameList(list, suffix) {
 }
 
 private getAlarmStatus() {
-	return location.currentState("alarmSystemStatus")?.value
+	switch (location.currentState("alarmSystemStatus")?.value) {
+    	case "off":
+        	return getAlarmOptions()[0]
+    	case "stay":
+        	return getAlarmOptions()[1]
+    	case "away":
+        	return getAlarmOptions()[2]
+    }
+    return null
 }
 
 private setAlarmStatus(status) {
-	sendLocationEvent(name: 'alarmSystemStatus', value: status)
+	def value = null
+    def options = getAlarmOptions()
+	switch (status) {
+    	case options[0]:
+        	value = "off"
+            break
+    	case options[1]:
+        	value = "stay"
+            break
+    	case options[2]:
+        	value = "away"
+            break
+    }
+    if (value && (value != location.currentState("alarmSystemStatus")?.value)) {
+		sendLocationEvent(name: 'alarmSystemStatus', value: status)
+        return true
+    }
+    return false
 }
 
 
@@ -4904,16 +4955,17 @@ private listComparisonOptions(attributeName, allowTriggers) {
     def conditions = []
     def triggers = []
     def attribute = getAttributeByName(attributeName)
+    def allowTimedComparisons = !(attributeName in ["mode", "alarmSystemStatus"])
     if (attribute) {
     	def optionCount = attribute.options ? attribute.options.size() : 0
         def attributeType = attribute.type
         for (comparison in comparisons()) {
             if (comparison.type == attributeType) {
                 for (option in comparison.options) {
-                    if (option.condition && (!option.minOptions || option.minOptions <= optionCount)) {
+                    if (option.condition && (!option.minOptions || option.minOptions <= optionCount) && (allowTimedComparisons || !option.timed)) {
                         conditions.push(conditionPrefix() + option.condition)
                     }
-                    if (allowTriggers && option.trigger && (!option.minOptions || option.minOptions <= optionCount)) {
+                    if (allowTriggers && option.trigger && (!option.minOptions || option.minOptions <= optionCount) && (allowTimedComparisons || !option.timed)) {
                         triggers.push(triggerPrefix() + option.trigger)
                     }
                 }
@@ -5205,7 +5257,7 @@ private listCommandCapabilities(command) {
     //now get the capability names
     def result = []
     for(def c in capabilities()) {
-    	if (!(c.name in excludeList) && c.commands && (command.name in c.commands)) {
+    	if (!(c.name in excludeList) && c.commands && (command.name in c.commands) && !(c in result)) {
         	result.push(c)
         }
     }
@@ -5411,7 +5463,7 @@ private commands() {
     	[ name: "thermostat.auto",				category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
     	[ name: "thermostat.emergencyHeat",		category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
     	[ name: "fanOn",				category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",					parameters: [], ],
-    	[ name: "fanCiculate",		category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",					parameters: [], ],
+    	[ name: "fanCirculate",		category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",					parameters: [], ],
     	[ name: "fanAuto",			category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",					parameters: [], ],
     	[ name: "setThermostatFanMode",category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",					parameters: ["Fan mode:thermostatFanMode"], ],
     	[ name: "speak",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
@@ -5508,6 +5560,7 @@ private comparisons() {
         [ condition: "is", trigger: "changes to", parameters: 1, timed: false],
         [ condition: "is not", trigger: "changes away from", parameters: 1, timed: false],
         [ condition: "is one of", trigger: "changes to one of", parameters: 1, timed: false, multiple: true, minOptions: 3],
+        [ condition: "is not one of", trigger: "changes away from one of", parameters: 1, timed: false, multiple: true, minOptions: 3],
         [ condition: "was", trigger: "stays", parameters: 1, timed: true],
         [ condition: "was not", trigger: "stays away from", parameters: 1, timed: true],
         [ trigger: "changes", parameters: 0, timed: false],
