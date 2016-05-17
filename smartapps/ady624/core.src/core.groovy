@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.022.20160517 - Alpha test version - Change location mode now functional, fixes for Android (removed ranges on Parent ID)
  *	 5/16/2016 >>> v0.0.021.20160516 - Alpha test version - More bug fixes
  *	 5/16/2016 >>> v0.0.020.20160516 - Alpha test version - More float vs int problems fixed with Android
  *	 5/16/2016 >>> v0.0.01f.20160516 - Alpha test version - Fixed a problem with $previousStateDuration not being available on first run
@@ -71,7 +72,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.021.20160516"
+	return "v0.0.022.20160517"
 }
 
 
@@ -374,17 +375,17 @@ private pageMainCoREPiston() {
 
         section() {
         	def actionsDoOnce = listActions(0, false)
-        	def actionsDo = listActions(0, true)
-            def desc = actionsDoOnce.size() + actionsDoOnce.size() ? "" : "Choose what should happen then"
+        	def actionsDoEvery = listActions(0, true)
+            def desc = actionsDoOnce.size() + actionsDoEvery.size() ? "" : "Choose what should happen then"
             href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
             if (actionsDoOnce.size()) {
                 for (action in actionsDoOnce) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, with "), required: true, state: "complete", submitOnChange: true
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, "), required: true, state: "complete", submitOnChange: true
                 }
             }
-            if (actionsDo.size()) {
-                for (action in actionsDoOnce) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, with "), required: true, state: "complete", submitOnChange: true
+            if (actionsDoEvery.size()) {
+                for (action in actionsDoEvery) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, "), required: true, state: "complete", submitOnChange: true
                 }
             }
         }
@@ -405,17 +406,17 @@ private pageMainCoREPiston() {
 
         section() {
         	def actionsDoOnce = listActions(-1, false)
-        	def actionsDo = listActions(-1, true)
-            def desc = actionsDoOnce.size() + actionsDoOnce.size() ? "" : "Choose what should happen otherwise"
+        	def actionsDoEvery = listActions(-1, true)
+            def desc = actionsDoOnce.size() + actionsDoEvery.size() ? "" : "Choose what should happen otherwise"
             href "pageActionGroup", params:[conditionId: -1], title: ((settings.mode == "Latching") || (settings.mode == "Else-If") ? "Then..." : "Else..."), description: desc, state: null, submitOnChange: false
             if (actionsDoOnce.size()) {
                 for (action in actionsDoOnce) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, with "), required: true, state: "complete", submitOnChange: true
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "Only once, "), required: true, state: "complete", submitOnChange: true
                 }
             }
-            if (actionsDo.size()) {
-                for (action in actionsDoOnce) {
-                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, with "), required: true, state: "complete", submitOnChange: true
+            if (actionsDoEvery.size()) {
+                for (action in actionsDoEvery) {
+                    href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action, "On every evaluation, "), required: true, state: "complete", submitOnChange: true
                 }
             }
         }
@@ -475,12 +476,12 @@ def pageConditionGroup(params, level) {
     if (params?.command == "add") {
         condition = createCondition(params?.parentConditionId, true)
     } else {
-		condition = getCondition(params?.conditionId ? params?.conditionId : state.config["conditionGroupIdL$level"])
+		condition = getCondition(params?.conditionId ? (int) params?.conditionId : state.config["conditionGroupIdL$level"])
     }
     if (condition) {
-    	def id = condition.id
+    	def id = (int) condition.id
         state.config["conditionGroupIdL$level"] = id
-        def pid = condition.parentId
+        def pid = (int) condition.parentId
     	dynamicPage(name: "pageConditionGroupL$level", title: "Group $id (level $level)", uninstall: false, install: false) {
 	    	getConditionGroupPageContent(params, condition)
 	    }
@@ -489,9 +490,9 @@ def pageConditionGroup(params, level) {
 
 private getConditionGroupPageContent(params, condition) {	
 	if (condition) {
-        def id = condition.id
-        def pid = condition.parentId ? (int) condition.parentId : (int)condition.id
-        def nextLevel = (condition.level ? condition.level : 0) + 1
+        def id = (int) condition.id
+        def pid = (int) condition.parentId ? (int) condition.parentId : (int)condition.id
+        def nextLevel = (int) (condition.level ? condition.level : 0) + 1
         def cnt = 0
         section() {
         	if (settings["condNegate$id"]) {
@@ -543,7 +544,7 @@ private getConditionGroupPageContent(params, condition) {
 
 		if (id) {
             section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..$pid", defaultValue: pid
+                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", rangeX: "$pid..$pid", defaultValue: pid
 			}
         }
     }
@@ -825,8 +826,8 @@ def pageCondition(params) {
                 }
             }
             
-            section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..$pid", defaultValue: pid
+            section(title: "Required data - do not change") {            
+                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", rangeX: "$pid..$pid", defaultValue: pid
 			}
 	    }
     }
@@ -905,9 +906,6 @@ def pageActionGroup(params) {
     	section() {
         	paragraph "Add actions below to be executed every time the evaluation of your condition(s) is '$value'", title: "Do every time the condition set is true..."
             def actions = listActions(conditionId, true)
-            if (!actions.size()) {
-                paragraph "CAUTION: Only use this section if you know what you are doing. Because evaluations may happen whenever various attributes of various devices involved in your condition(s) change, actions in this list may be executed very often and may therefore yield unexpected results\n\nYE BE WARNED!", required: true, state: null
-			}
             for(action in actions) {
             	href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
             }
@@ -951,7 +949,11 @@ def pageAction(params) {
                     }
                 }
             }
-            if (devices.size() == 0) {
+            def locationAction = !!settings["actMode$id"]
+            def alarmAction = !!settings["actAlarm$id"]
+            def deviceAction = !!devices.size()
+            def actionUsed = deviceAction || locationAction || alarmAction
+            if (!actionUsed) {
             	//category selection page
                 for(def category in listCommandCategories()) {
                     section(title: category) {
@@ -967,96 +969,114 @@ def pageAction(params) {
                 }
             } else {
             	//actual action page
-                section() {
-                    def names=[]
-                    for(device in devices) {
-                        if (!(device.label in names)) {
-                            names.push(device.label)
+                if (deviceAction) {
+                    section() {
+                        def names=[]
+                        for(device in devices) {
+                            if (!(device.label in names)) {
+                                names.push(device.label)
+                            }
                         }
+                        href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
                     }
-                    href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
-                }
-                def prefix = "actTask$id#"
-                def tasks = settings.findAll{it.key.startsWith(prefix)}
-                def maxId = 1
-                def ids = []
-                //we need to get a list of all existing ids that are used
-                for (task in tasks) {
-                    if (task.value) {
-                        def tid = task.key.replace(prefix, "")
-                        if (tid.isInteger()) {
-                            tid = tid.toInteger()
-                            maxId = tid >= maxId ? tid + 1 : maxId
-                            ids.push(tid)
-                        }
-                    }
-                }
-                //sort the ids, we really want to have these in the proper order
-                ids = ids.sort()
-                def availableCommands = listCommonDeviceCommands(devices, usedCapabilities)
-                for (vcmd in virtualCommands()) {
-                    if (!vcmd.requires || !(vcmd.display in availableCommands)) {
-                        //single device support - some virtual commands require only one device, can't handle more at a time
-                        if (!vcmd.singleDevice || (devices.size() == 1)) {
-                            availableCommands.push(virtualCommandPrefix() + vcmd.display)
-                        }
-                    }
-                }
-                def idx = 0
-                for (tid in ids) {
-                    //display each 
-                    section(title: idx == 0 ? "Task list" : "") {
-                        input "$prefix$tid", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
-                        //parameters
-                        def cmd = settings["$prefix$tid"]
-                        def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
-                        def custom = (cmd && cmd.startsWith(customCommandPrefix()))
-                        cmd = cleanUpCommand(cmd)
-                        def command = null
-                        if (virtual) {
-                            //dealing with a virtual command
-                            command = getVirtualCommandByDisplay(cmd)
-                        } else {
-                            command = getCommandByDisplay(cmd)
-                        }
-                        if (command) {
-                            if (command.parameters) {
-                                def i = 0
-                                for (def parameter in command.parameters) {
-                                    def param = parseCommandParameter(parameter)
-                                    if (param) {
-                                        if (param.type == "attribute") {
-                                            input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                        } else if (param.type == "attributes") {
-                                            input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
-                                        } else if (param.type == "variable") {
-                                            input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
-                                        } else if (param.type == "variables") {
-                                            input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
-                                        } else {
-                                            input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
-                                        }
-                                        if (param.last && settings["actParam$id#$tid-$i"]) {
-                                            //this is the last parameter, if filled in
-                                            break
-                                        }
-                                    } else {
-                                        paragraph "Invalid parameter definition for $parameter"
-                                    }
-                                    i++
-                                }
+                    def prefix = "actTask$id#"
+                    def tasks = settings.findAll{it.key.startsWith(prefix)}
+                    def maxId = 1
+                    def ids = []
+                    //we need to get a list of all existing ids that are used
+                    for (task in tasks) {
+                        if (task.value) {
+                            def tid = task.key.replace(prefix, "")
+                            if (tid.isInteger()) {
+                                tid = tid.toInteger()
+                                maxId = tid >= maxId ? tid + 1 : maxId
+                                ids.push(tid)
                             }
                         }
                     }
-                    idx++
-                }
+                    //sort the ids, we really want to have these in the proper order
+                    ids = ids.sort()
+                    def availableCommands = listCommonDeviceCommands(devices, usedCapabilities)
+                    for (vcmd in virtualCommands()) {
+                        if (!vcmd.requires || !(vcmd.display in availableCommands)) {
+                            //single device support - some virtual commands require only one device, can't handle more at a time
+                            if (!vcmd.singleDevice || (devices.size() == 1)) {
+                                availableCommands.push(virtualCommandPrefix() + vcmd.display)
+                            }
+                        }
+                    }
+                    def idx = 0
+                    for (tid in ids) {
+                        //display each 
+                        section(title: idx == 0 ? "Task list" : "") {
+                            input "$prefix$tid", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
+                            //parameters
+                            def cmd = settings["$prefix$tid"]
+                            def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
+                            def custom = (cmd && cmd.startsWith(customCommandPrefix()))
+                            cmd = cleanUpCommand(cmd)
+                            def command = null
+                            if (virtual) {
+                                //dealing with a virtual command
+                                command = getVirtualCommandByDisplay(cmd)
+                            } else {
+                                command = getCommandByDisplay(cmd)
+                            }
+                            if (command) {
+                                if (command.parameters) {
+                                    def i = 0
+                                    for (def parameter in command.parameters) {
+                                        def param = parseCommandParameter(parameter)
+                                        if (param) {
+                                            if (param.type == "attribute") {
+                                                input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                            } else if (param.type == "attributes") {
+                                                input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                            } else if (param.type == "variable") {
+                                                input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                            } else if (param.type == "variables") {
+                                                input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                            } else {
+                                                input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
+                                            }
+                                            if (param.last && settings["actParam$id#$tid-$i"]) {
+                                                //this is the last parameter, if filled in
+                                                break
+                                            }
+                                        } else {
+                                            paragraph "Invalid parameter definition for $parameter"
+                                        }
+                                        i++
+                                    }
+                                }
+                            }
+                        }
+                        idx++
+                    }
+                    section() {
+                        input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
+                    }
+				}
+            }
+            
+            
+            if (!actionUsed || locationAction) {
+	            def modes = ["a", "b"]//location.modes
                 section() {
-                    input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
+	            	input "actMode$id", "mode", title: "Change location mode", required: false, multiple: false, submitOnChange: true
                 }
-                
+            }
+            
+            if (!actionUsed || alarmAction) {
+                section() {
+	            	input "actAlarm$id", "enum", options: ["Disarmed", "Armed/Stay", "Armed/Away"], title: "Change Smart Home Monitor state", required: false, multiple: false, submitOnChange: true
+                }
+            }
+            
+            if (actionUsed) {
                 if (id) {
                     section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                        input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..$pid", defaultValue: pid
+                        input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", rangeX: "$pid..$pid", defaultValue: pid
                     }
                 }
             }
@@ -1529,7 +1549,7 @@ private configApp() {
             state.config.app.otherConditions.id = -1
             state.config.app.actions = []
 		    //get expert savvy
-			state.config.expertMode = parent.expertMode()
+			state.config.expertMode = false//parent.expertMode()
         }
     }
 
@@ -1821,6 +1841,8 @@ private updateAction(action) {
     		action.d.push(device.id)
         }
     }
+    action.a = settings["actAlarm$id"]
+    action.m = settings["actMode$id"]
     //look for tasks
     action.t = []
     def prefix = "actTask$id#"
@@ -1881,7 +1903,7 @@ private cleanUpActions() {
     while (dirty) {
     	dirty = false
 		for(action in state.config.app.actions) {
-			if (!action.d || !action.d.size()) {
+			if (!((action.d && action.d.size()) || action.a || action.m)) {
             	state.config.app.actions.remove(action)
                 dirty = true
                 break
@@ -1908,8 +1930,14 @@ private listActionDevices(actionId) {
 }
 private getActionDescription(action, prefix = null) {
 	if (!action) return null
+    if (action.a) {
+    	return (prefix ? prefix + "change" : "Change") + " Smart Home Monitor state to ${action.a}"
+    }
+    if (action.m) {
+    	return (prefix ? prefix + "change" : "Change") + " Location Mode to ${action.m}"
+    }
     def devices = listActionDevices(action.id)
-    def result = (prefix ? prefix : "With ") + buildDeviceNameList(devices, "and")+ "..."
+    def result = (prefix ? prefix + "with " : "With ") + buildDeviceNameList(devices, "and")+ "..."
     for (task in action.t.sort{it.i}) {
     	def t = cleanUpCommand(task.c)
         if (task.p && task.p.size()) {
@@ -2470,6 +2498,11 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
             //we have a time event returning as a result of a trigger, assume true
             return true
         } else {
+        
+        
+        	if (comparison.contains("stay")) {
+            	//we have a stay condition
+            }
         	return false
         }
 	}
@@ -2958,7 +2991,11 @@ private scheduleActions(conditionId, everyBranch) {
 }
 
 private scheduleAction(action) {
-	if (!action) return null   
+	if (!action) return null
+    if (action.a || action.m) {
+    	scheduleTask("cmd", action.id, null, null, now())
+        return
+    }
     for (deviceId in action.d) {
     	//remove all tasks for all involved devices
         unscheduleTask("cmd", null, deviceId)
@@ -3490,9 +3527,7 @@ private processTasks() {
                         def task = firstSubTask.value
                         //remove from tasks
                         tasks = atomicState.tasks
-                        debug "Removing task ${firstSubTask.key}"
                         tasks.remove(firstSubTask.key)
-                        debug "Saving atomic state tasks: $tasks"
                         atomicState.tasks = tasks
                         //throw away the task list as this procedure below may take time, making our list stale
                         //not to worry, we'll read it again on our next iteration
@@ -3529,7 +3564,22 @@ private processTasks() {
 //this executes each and every single command we have to give
 private processCommandTask(task) {
     def action = getAction(task.ownerId)
-    if (!action || !(action.t)) return false
+	if (!action) return false
+    
+    if (action.a) {
+    	//set alarm mode
+        return
+    }
+    if (action.m) {
+    	//set location mode
+        if (location.mode != action.m) {
+        	location.setMode(action.m)
+            return true
+        }
+        return false
+    }
+    
+	if (!action.t) return false
     def devices = listActionDevices(action.id)
     def device = devices.find{ it.id == task.deviceId }
     def t = action.t.find{ it.i == task.taskId }
@@ -5164,7 +5214,7 @@ private capabilities() {
         [ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			],
     	[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						commands: null,																		multiple: true,			],
     	[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-        [ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		, virtualDevice: location	],
+        [ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
         [ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],														multiple: true,			devices: "electronic locks", ],
     	[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			],
     	[ name: "momentary",						display: "Momentary",						attribute: null,						commands: ["push"],																	multiple: true,			],
@@ -5184,7 +5234,7 @@ private capabilities() {
     	[ name: "signalStrength",					display: "Signal Strength",					attribute: "lqi",						commands: null,																		multiple: true,			],
     	[ name: "alarm",							display: "Siren",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
     	[ name: "sleepSensor",						display: "Sleep Sensor",					attribute: "sleeping",					commands: null,																		multiple: true,			],
-    	[ name: "smartHomeMonitor",					display: "Smart Home Monitor",				attribute: "alarmSystemStatus",			commands: null,																		multiple: true,			, virtualDevice: location,	virtualDeviceName: "Smart Home Monitor"	],
+    	[ name: "smartHomeMonitor",					display: "Smart Home Monitor",				attribute: "alarmSystemStatus",			commands: null,																		multiple: true,			devices: "Smart Home Monitor", virtualDevice: location,	virtualDeviceName: "Smart Home Monitor"	],
     	[ name: "smokeDetector",					display: "Smoke Detector",					attribute: "smoke",						commands: null,																		multiple: true,			],
         [ name: "soundSensor",						display: "Sound Sensor",					attribute: "sound",						commands: null,																		multiple: true,			],
     	[ name: "speechSynthesis",					display: "Speech Synthesis",				attribute: null,						commands: ["speak"],																multiple: true,			devices: "speech synthesizers", ],
@@ -5239,11 +5289,10 @@ private commands() {
     	[ name: "thermostat.cool",				category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
     	[ name: "thermostat.auto",				category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
     	[ name: "thermostat.emergencyHeat",		category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
-    	[ name: "thermostat.fanOn",				category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",					parameters: [], ],
-    	[ name: "thermostat.fanCiculate",		category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",					parameters: [], ],
-    	[ name: "thermostat.fanAuto",			category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",					parameters: [], ],
-    	[ name: "thermostat.setThermostatFanMode",category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",					parameters: ["Fan mode:thermostatFanMode"], ],
-    	[ name: "thermostat.off",				category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					parameters: [], ],
+    	[ name: "fanOn",				category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",					parameters: [], ],
+    	[ name: "fanCiculate",		category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",					parameters: [], ],
+    	[ name: "fanAuto",			category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",					parameters: [], ],
+    	[ name: "setThermostatFanMode",category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",					parameters: ["Fan mode:thermostatFanMode"], ],
     	[ name: "speak",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
     	[ name: "musicPlayer.setLevel",			category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
     	[ name: "playText",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
@@ -5339,7 +5388,7 @@ private comparisons() {
         [ condition: "is not", trigger: "changes away from", parameters: 1, timed: false],
         [ condition: "is one of", trigger: "changes to one of", parameters: 1, timed: false, multiple: true, minOptions: 3],
         [ condition: "was", trigger: "stays", parameters: 1, timed: true],
-        [ condition: "was not", parameters: 1, timed: true],
+        [ condition: "was not", trigger: "stays away from", parameters: 1, timed: true],
         [ trigger: "changes", parameters: 0, timed: false],
         [ condition: "changed", parameters: 0, timed: true],
         [ condition: "did not change", parameters: 0, timed: true],
