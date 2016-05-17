@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.025.20160517 - Alpha test version - Live condition evaluation and fixed minor bugs
  *	 5/17/2016 >>> v0.0.024.20160517 - Alpha test version - Added three more piston modes. We now have Simple, Latching, And-If, Or-If, Then-If, and Else-If
  *	 5/17/2016 >>> v0.0.023.20160517 - Alpha test version - Change SHM state now functional
  *	 5/17/2016 >>> v0.0.022.20160517 - Alpha test version - Change location mode now functional, fixes for Android (removed ranges on Parent ID)
@@ -74,7 +75,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.024.20160517"
+	return "v0.0.025.20160517"
 }
 
 
@@ -549,7 +550,9 @@ private getConditionGroupPageContent(params, condition) {
         
         if (condition.children.size()) {
             section(title: "Group Overview") {
-                paragraph getConditionDescription(id)
+				def value = evaluateCondition(condition)
+                paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null ) 
+                paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )                
                 //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
             }       
 		}
@@ -812,25 +815,24 @@ def pageCondition(params) {
             }
 
 			section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
-                paragraph getConditionDescription(id)
+				def value = evaluateCondition(condition)
+                paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
                 if (condition.attr == "time") {
                 	if (condition.trg) {
-                		def value = ""
+                		def v = ""
                         def nextTime = null
                         for (def i = 0; i < 5; i++) {
                        		nextTime = getNextTimeTriggerTime(condition, nextTime)
                             if (nextTime) {
-                            	value = value + ( value ? "\n" : "") + formatLocalTime(nextTime)
+                            	v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
                             } else {
                             	break
                             }
                         }
-                    	paragraph value ? value : "(not happenning any time soon)", title: "Next scheduled trigger(s)", required: true, state: ( value ? "complete" : null )
-                    } else {
-                		def value = evaluateTimeCondition(condition)
-                    	paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
+                    	paragraph v ? v : "(not happenning any time soon)", title: "Next scheduled trigger(s)", required: true, state: ( v ? "complete" : null )
                     }
                 }
+                paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
 	            //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
 			}
 
@@ -899,8 +901,8 @@ def pageVariables() {
 
 def pageActionGroup(params) {
 	state.run = "config"
-	def conditionId = params?.conditionId != null ? params?.conditionId : state.config.conditionId
-    state.config.conditionId = conditionId
+	def conditionId = params?.conditionId != null ? (int) params?.conditionId : (int) state.config.conditionId
+    state.config.conditionId = (int) conditionId
 	def value = conditionId < -1 ? false : true
     def block = "IF"
     if (conditionId < 0) {
@@ -929,29 +931,29 @@ def pageActionGroup(params) {
     
     switch (conditionId) {
     	case 0:
-        	block = "IF (?) THEN ..."
+        	block = "IF (condition) THEN ..."
         	break
     	case -1:
-        	block = "IF (?) $block (?) THEN ..."
+        	block = "IF (condition) $block (condition) THEN ..."
         	break
     	case -2:
-        	block = "IF (?) ${block ? "$block (?) " : ""}ELSE ..."
+        	block = "IF (condition) ${block ? "$block (condition) " : ""}ELSE ..."
         	break
     }
     
     cleanUpActions()
 	dynamicPage(name: "pageActionGroup", title: "$block", uninstall: false, install: false) {
-        def actions = listActions(conditionId)
+	    def actions = listActions(conditionId)
         if (actions.size()) {
             section() {
-                for(action in actions) {
+                for(def action in actions) {
                     href "pageAction", params:[actionId: action.id], title: "Action #${action.id}", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
                 }
             }
         }
         
         section() {
-			href "pageAction", params:[command: "add", conditionId: conditionId], title: "Add an action", required: !action.size(), state: (actions.size() ? null : "complete"), submitOnChange: true
+			href "pageAction", params:[command: "add", conditionId: conditionId], title: "Add an action", required: !actions.size(), state: (actions.size() ? null : "complete"), submitOnChange: true
 		}
         
     }
@@ -1242,6 +1244,10 @@ private buildIfContent(id, level) {
         if (aft) {
 			href "pageConditionGroupL${level}", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/folder.png",*/ params: ["conditionId": id], title: "", description: aft, state: "complete", required: true, submitOnChange: false
         }
+    }
+    if (condition.id <= 0) {
+		def value = evaluateCondition(condition)
+		paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )                
     }
 }
 
@@ -2423,7 +2429,7 @@ private evaluateConditionSet(evt, primary) {
     return evaluation
 }
 
-private evaluateCondition(condition, evt) {
+private evaluateCondition(condition, evt = null) {
 	//evaluates a condition
     def perf = now()  
     def result = false
@@ -2451,7 +2457,7 @@ private evaluateCondition(condition, evt) {
         
     } else {
     	//we evaluate a group
-        result = (condition.grp == "AND") //we need to start with a true when doing AND or with a false when doing OR/XOR
+        result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
         for (child in condition.children) {
         	//evaluate the child
            	def subResult = evaluateCondition(child, evt)
@@ -2495,7 +2501,7 @@ private evaluateDeviceCondition(condition, evt) {
             if (comp) {
             	//if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
                 def deviceResult = false
-                def ownsEvent = (evt.deviceId == device.id) && (evt.name == condition.attr)
+                def ownsEvent = evt && (evt.deviceId == device.id) && (evt.name == condition.attr)
                 def oldValue = null
                 def cache = atomicState.cache
 				cache = cache ? cache : [:]
@@ -2822,6 +2828,7 @@ private listPreviousStates(device, attribute, currentValue, minutes, excludeLast
 }
 
 private eval_cond_changed(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+	def minutes = timeToMinutes(condition.fort)
 	def events = device.eventsSince(new Date(now() - minutes * 60000)).findAll{it.name == attribute}
     return (events.size() > 0)
 }
@@ -4759,6 +4766,7 @@ def getAction(actionId) {
     }
     return null
 }
+
 def listActions(conditionId) {
 	def result = []
     def parent = (state.run == "config" ? state.config : state)
