@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.026.20160517 - Alpha test version - Minor bug with trigger support
  *	 5/17/2016 >>> v0.0.025.20160517 - Alpha test version - Live condition evaluation and fixed minor bugs
  *	 5/17/2016 >>> v0.0.024.20160517 - Alpha test version - Added three more piston modes. We now have Simple, Latching, And-If, Or-If, Then-If, and Else-If
  *	 5/17/2016 >>> v0.0.023.20160517 - Alpha test version - Change SHM state now functional
@@ -75,7 +76,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.025.20160517"
+	return "v0.0.026.20160517"
 }
 
 
@@ -4320,12 +4321,10 @@ private getCondition(conditionId, primary = null) {
 }
 
 private getConditionMasterId(conditionId) {
-	if (condtionId <= 0) return conditionId
-	if (condition.parentId) {
-    	def condition = getCondition(conditionId)
-        if (condition) return getConditionMasterId(condition.id)
-    }
-    return null
+	if (conditionId <= 0) return conditionId
+    def condition = getCondition(conditionId)
+	if (condition && (condition.parentId != null)) return getConditionMasterId(condition.parentId)
+    return condition.id
 }
 
 //optimized version that returns true if any trigger is detected
