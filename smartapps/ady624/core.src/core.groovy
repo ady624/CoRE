@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/18/2016 >>> v0.0.02e.20160518 - Alpha test version - Broken debugging mode down into several levels, info, trace, debug, warn and error. Fixed display of device names where device has no label.
  *	 5/18/2016 >>> v0.0.02d.20160518 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
  *	 5/17/2016 >>> v0.0.02c.20160517 - Alpha test version - Fixed time not between
  *	 5/17/2016 >>> v0.0.02b.20160517 - Alpha test version - Individual actions...
@@ -83,7 +84,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.02d.20160517"
+	return "v0.0.02e.20160517"
 }
 
 
@@ -195,6 +196,14 @@ private pageMainCoRE() {
         section(title: "Advanced options", hideable: true, hidden: true) {
             input "expertMode", "bool", title: "Expert Mode", defaultValue: false
             input "debugging", "bool", title: "Enable debugging", defaultValue: false
+            def debugging = settings.debugging
+            if (debugging) {
+	            input "log#info", "bool", title: "Log info messages", defaultValue: true
+	            input "log#trace", "bool", title: "Log trace messages", defaultValue: true
+	            input "log#debug", "bool", title: "Log debug messages", defaultValue: true
+	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
+	            input "log#error", "bool", title: "Log error messages", defaultValue: true
+            }
         }
 
     }
@@ -387,13 +396,13 @@ private pageMainCoREPiston() {
             }
         }
         section() {
-            href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "" : "Tap to select conditions")
+            href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
             buildIfContent()
         }
 
         section() {
         	def actions = listActions(0)
-            def desc = actions.size() ? "" : "Tap to select actions"
+            def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
             href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
             if (actions.size()) {
                 for (action in actions) {
@@ -422,12 +431,12 @@ private pageMainCoREPiston() {
         }
 		if (title) {
             section() {
-                href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "" : "Tap to select conditions")
+                href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
                 buildIfOtherContent()
             }
             section() {
                 def actions = listActions(-1)
-                def desc = actions.size() ? "" : "Tap to select actions"
+                def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
                 href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
                 if (actions.size()) {
                     for (action in actions) {
@@ -440,7 +449,7 @@ private pageMainCoREPiston() {
 		if (settings.mode != "Latching") {
             section() {
                 def actions = listActions(-2)
-                def desc = actions.size() ? "" : "Tap to select actions"
+                def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
                 href "pageActionGroup", params:[conditionId: -2], title: "Else...", description: desc, state: null, submitOnChange: false
                 if (actions.size()) {
                     for (action in actions) {
@@ -464,6 +473,14 @@ private pageMainCoREPiston() {
         
         section(title: "Advanced options", hideable: true, hidden: true) {
             input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
+            def debugging = settings.debugging
+            if (debugging) {
+	            input "log#info", "bool", title: "Log info messages", defaultValue: true
+	            input "log#trace", "bool", title: "Log trace messages", defaultValue: true
+	            input "log#debug", "bool", title: "Log debug messages", defaultValue: true
+	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
+	            input "log#error", "bool", title: "Log error messages", defaultValue: true
+            }
         }
     }
 }
@@ -1592,11 +1609,11 @@ def generatePistonName() {
 /******************************************************************************/
 
 def initializeCoREPiston() {
-	debug "", 0
-	debug "Initializing app...", 1
 	// TODO: subscribe to attributes, devices, locations, etc.
     //move app to production
 	state.run = "config"
+    state.debugLevel = 0
+	debug "Initializing app...", 1
     cleanUpConditions(true)
     state.app = state.config ? state.config.app : state.app
     //save misc
@@ -2089,7 +2106,6 @@ def deviceHandler(evt) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
-    debug "", 0
 	debug "Received a primary block device event", 1
     broadcastEvent(evt, true, false)
     //process tasks
@@ -2105,7 +2121,6 @@ def latchingDeviceHandler(evt) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
-    debug "", 0
 	debug "Received a secondary block device event", 1
     broadcastEvent(evt, false, true)
     //process tasks
@@ -2121,7 +2136,6 @@ def bothDeviceHandler(evt) {
 	//executes whenever a common use device has an event
 	//broadcast to both IF blocks
     def perf = now()
-    debug "", 0
 	debug "Received a dual block device event", 1
     broadcastEvent(evt, true, true)
     //process tasks
@@ -2136,7 +2150,6 @@ def timeHandler() {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
-    debug "", 0
     debug "Received a time event", 1
     processTasks()
     perf = now() - perf
@@ -2149,7 +2162,6 @@ def recoveryHandler() {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
-    debug "", 0
     debug "CAUTION: Received a recovery event", 1, "warn"
     processTasks()
     perf = now() - perf
@@ -2160,6 +2172,7 @@ private entryPoint() {
 	//initialize whenever app runs
     //use the "app" version throughout
     state.run = "app"
+	state.debugLevel = 0
 	state.tasker = state.tasker ? state.tasker : []
 }
 
@@ -2215,7 +2228,7 @@ private broadcastEvent(evt, primary, secondary) {
 	//filter duplicate events and broadcast event to proper IF blocks
     def perf = now()
     def delay = perf - evt.date.getTime()
-	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago", 1
+	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago", 1, "trace"
     //save previous event
 	setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
     setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
@@ -2265,14 +2278,17 @@ private broadcastEvent(evt, primary, secondary) {
             //broadcast to primary IF block
             def result1 = null
             def result2 = null
+            //some piston modes require evaluation of secondary conditions regardless of eligibility - we use force then
+            def force = false
             if (mode in ["And-If", "Or-If"]) {
             	//these two modes always evaluate both blocks
             	primary = true
                 secondary = true
+                force = true
             }
             
             if (primary) {
-                result1 = evaluateConditionSet(evt, true)
+                result1 = evaluateConditionSet(evt, true, force)
                 state.lastPrimaryEvaluationResult = result1
                 state.lastPrimaryEvaluationDate = now()
                 debug "Primary IF block evaluation result is $result1"
@@ -2281,17 +2297,19 @@ private broadcastEvent(evt, primary, secondary) {
                 	case "Then-If":
                     	//execute the secondary branch if the primary one is true
                     	secondary = result1
+                        force = true
                 		break
                 	case "Else-If":
                     	//execute the second branch if the primary one is false
                     	secondary = !result1
+                        force = true
                 		break
                 }                
             }
             
             //broadcast to secondary IF block
             if (secondary) {
-                result2 = evaluateConditionSet(evt, false)
+                result2 = evaluateConditionSet(evt, false, force)
                 state.lastSecondaryEvaluationResult = result2
                 state.lastSecondaryEvaluationDate = now()
                 debug "Secondary IF block evaluation result is $result1"
@@ -2385,7 +2403,7 @@ private broadcastEvent(evt, primary, secondary) {
     	debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
     }
     perf = now() - perf
-    if (evt) debug "Event processing took ${perf}ms", -1
+    if (evt) debug "Event processing took ${perf}ms", -1, "trace"
 }
 
 private checkEventEligibility(condition, evt) {
@@ -2448,7 +2466,7 @@ private checkEventEligibility(condition, evt) {
 /*** CONDITION EVALUATION FUNCTIONS											***/
 /******************************************************************************/
 
-private evaluateConditionSet(evt, primary) {
+private evaluateConditionSet(evt, primary, force = false) {
 	//executes whenever a device in the primary or secondary if block has an event
     def perf = now()
     def pushNote = null
@@ -2458,9 +2476,11 @@ private evaluateConditionSet(evt, primary) {
     //then we don't want to evaluate anything, as only triggers should be executed
     //this check ensures that an event that is used in both blocks, but as different types, one as a trigger
     //and one as a condition do not interfere with each other
-    def eligibilityStatus = checkEventEligibility(primary ? state.app.conditions: state.app.otherConditions , evt)
+    def eligibilityStatus = force ? 1 : checkEventEligibility(primary ? state.app.conditions: state.app.otherConditions , evt)
     def evaluation = null
-    debug "Event eligibility for the ${primary ? "primary" : "secondary"} IF block is $eligibilityStatus  - ${eligibilityStatus > 0 ? "ELIGIBLE" : "INELIGIBLE"} (" + (eligibilityStatus == 2 ? "triggers required, event is a trigger" : (eligibilityStatus == 1 ? "triggers not required, event is a condition" : (eligibilityStatus == -2 ? "triggers required, but event is a condition" : "something is messed up"))) + ")"
+    if (!force) {
+    	debug "Event eligibility for the ${primary ? "primary" : "secondary"} IF block is $eligibilityStatus  - ${eligibilityStatus > 0 ? "ELIGIBLE" : "INELIGIBLE"} (" + (eligibilityStatus == 2 ? "triggers required, event is a trigger" : (eligibilityStatus == 1 ? "triggers not required, event is a condition" : (eligibilityStatus == -2 ? "triggers required, but event is a condition" : "something is messed up"))) + ")"
+    }
     if (eligibilityStatus > 0) {
         evaluation = evaluateCondition(primary ? state.app.conditions: state.app.otherConditions, evt)
         //log.info "${primary ? "PRIMARY" : "SECONDARY"} EVALUATION IS $evaluation\n${getConditionDescription(primary ? 0 : -1)}\n"
@@ -2543,6 +2563,7 @@ private evaluateDeviceCondition(condition, evt) {
     def devices = settings["condDevices${condition.id}"]
     def virtualCurrentValue = null
     switch (condition.cap) {
+    	case "Mode":
     	case "Location Mode":
         	devices = [location]
             virtualCurrentValue = location.mode
@@ -3148,7 +3169,7 @@ private eval_trg_exits_range(condition, device, attribute, oldValue, currentValu
 /******************************************************************************/
 
 private scheduleTimeTriggers() {
-	debug "Rescheduling time triggers"
+	debug "Rescheduling time triggers", null, "trace"
     if (getTriggerCount(state.app) > 0) {
         withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
         if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
@@ -3173,7 +3194,7 @@ private scheduleTimeTrigger(condition) {
 }
 
 private scheduleActions(conditionId, stateChanged = false) {
-	//debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
+	debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
 	def actions = listActions(conditionId).sort{ it.id }
     for (action in actions) {
     	//restrict on state changed
@@ -3219,9 +3240,7 @@ private scheduleAction(action) {
                 for (deviceId in action.d) {
 		            scheduleTask("cmd", action.id, deviceId, task.i, time)
                 }            	
-            }
-        	debug "Scheduling task $task for action $action"
-            
+            }           
         }
     }
 }
@@ -3600,9 +3619,9 @@ private processTasks() {
     //first, we make a variable to help us pick up where we left off
     def tasks = null
     def perf = now()
-    debug "Processing tasks", 1
+    debug "Processing tasks", 1, "trace"
     
-  //  try {
+    try {
 
         def safetyNet = false
 
@@ -3630,17 +3649,17 @@ private processTasks() {
                     //since we may timeout here, install the safety net
                     if (!safetyNet) {
                         safetyNet = true
-                        debug "Installing ST safety net"
+                        debug "Installing ST safety net", null, "trace"
                         runIn(90, recoveryHandler)
                     }
                     //trigger an event
                     if (getCondition(task.ownerId, true)) {
                         //look for condition in primary block
-                        debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task"
+                        debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task", null, "trace"
                         broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], true, false)
                     } else if (getCondition(task.ownerId, false)) {
                         //look for condition in secondary block
-                        debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}"
+                        debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
                         broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
                     } else {
                         debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"
@@ -3718,7 +3737,7 @@ private processTasks() {
             runIn(seconds, timeHandler)
             state.nextScheduledTime = nextTime
             setVariable("\$nextScheduledTime", nextTime, true)
-            debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}"
+            debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
         }
 
         //we're done with the scheduling, let's do some real work, if we have any
@@ -3726,11 +3745,11 @@ private processTasks() {
             if (!safetyNet) {
                 //setup a safety net ST schedule to resume the process if we fail
                 safetyNet = true
-                debug "Installing ST safety net"
+                debug "Installing ST safety net", null, "trace"
                 runIn(90, recoveryHandler)
             }
 
-            //debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
+            debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
             //we loop a seemingly infinite loop
             //no worries, we'll break out of it, maybe :)
             def found = true
@@ -3769,14 +3788,14 @@ private processTasks() {
         }
         //would you look at that, we finished!
         //remove the safety net, wasn't worth the investment
-        debug "Removing any existing ST safety nets"
+        debug "Removing any existing ST safety nets", null, "trace"
         unschedule(recoveryHandler)
-    //} catch(all) {
-//    	debug "ERROR: Error while executing processTasks: $all", null, "error"
-//    }
+    } catch(all) {
+    	debug "ERROR: Error while executing processTasks: $all", null, "error"
+    }
 	//end of processTasks
 	perf = now() - perf
-    debug "Task processing took ${perf}ms", -1    
+    debug "Task processing took ${perf}ms", -1, "trace"
 }
 
 
@@ -3920,10 +3939,13 @@ def getConditionStats() {
 
 private debug(message, shift = null, cmd = null) {
 	def debugging = settings.debugging
-	if (!debugging && !(cmd in ["info", "warn", "error"])) {
+	if (!debugging) {
     	return
     }
-    
+    cmd = cmd ? cmd : "debug"
+    if (!settings["log#$cmd"]) {
+    	return
+    }
     //mode is
     // 0 - initialize level, level set to 1
     // 1 - start of routine, level up
@@ -4576,7 +4598,7 @@ private _cleanUpCondition(condition, deleteGroups) {
 	if (condition.id > 0) {
     	if (condition.children == null) {
         	//if regular condition
-        	if ((condition.cap != "Location Mode") && (condition.cap != "Smart Home Monitor") && (condition.cap != "Date & Time") && settings["condDevices${condition.id}"] == null) {
+        	if ((condition.cap != "Mode") && (condition.cap != "Location Mode") && (condition.cap != "Smart Home Monitor") && (condition.cap != "Date & Time") && settings["condDevices${condition.id}"] == null) {
 	        	deleteCondition(condition.id);
 	            return true
 	        //} else {
@@ -4972,7 +4994,7 @@ private buildDeviceNameList(devices, suffix) {
 	def cnt = 1
     def result = ""
 	for (device in devices) {
-        result += device?.label + (cnt < devices.size() ? (cnt == devices.size() - 1 ? " $suffix " : ", ") : "")
+        result += "$device" + (cnt < devices.size() ? (cnt == devices.size() - 1 ? " $suffix " : ", ") : "")
         cnt++
     }
     return result;
@@ -5491,6 +5513,7 @@ private capabilities() {
         [ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
         [ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],														multiple: true,			devices: "electronic locks", ],
     	[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
+        [ name: "locationMode",						display: "Mode",							attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
     	[ name: "momentary",						display: "Momentary",						attribute: null,						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
     	[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					commands: null,																		multiple: true,			],
     	[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
