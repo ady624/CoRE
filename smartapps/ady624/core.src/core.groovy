@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/18/2016 >>> v0.0.02f.20160518 - Alpha test version - Minor bug fixes - including time condition scheduling, unscheduling of all event tasks prior to rescheduling (deleting a time trigger left the schedule behind)
  *	 5/18/2016 >>> v0.0.02e.20160518 - Alpha test version - Broken debugging mode down into several levels, info, trace, debug, warn and error. Fixed display of device names where device has no label.
  *	 5/18/2016 >>> v0.0.02d.20160518 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
  *	 5/17/2016 >>> v0.0.02c.20160517 - Alpha test version - Fixed time not between
@@ -84,7 +85,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.02e.20160517"
+	return "v0.0.02f.20160518"
 }
 
 
@@ -1819,6 +1820,9 @@ private updateCondition(condition) {
 	condition.cap = settings["condCap${condition.id}"]
 	condition.dev = []
     condition.attr = cleanUpAttribute(settings["condAttr${condition.id}"])
+    if (condition.cap == "Date & Time") {
+    	condition.attr = "time"
+    }
     if (!condition.attr) {
 	    def cap = getCapabilityByDisplay(condition.cap)
         if (cap && cap.attribute) {
@@ -3170,6 +3174,8 @@ private eval_trg_exits_range(condition, device, attribute, oldValue, currentValu
 
 private scheduleTimeTriggers() {
 	debug "Rescheduling time triggers", null, "trace"
+    //remove all pending events
+    unscheduleTask("evt", null, null)
     if (getTriggerCount(state.app) > 0) {
         withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
         if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
@@ -3306,7 +3312,10 @@ private getNextTimeConditionTime(condition, startTime = null) {
     unixTime = unixTime - unixTime.mod(60000)
     //we give it up to 25 hours to find the next time when the condition state would change
     def comparison = cleanUpComparison(condition.comp)
-	def comp = getComparisonOption(condition.attr, comparison)    
+	def comp = getComparisonOption(condition.attr, comparison)
+    if ((!comparison) || (!comp)) {
+    	return null
+    }
     def state = evaluateTimeCondition(condition, null, unixTime, comparison, comp)
     def perf = now()
 	for (def i = 1; i < 1500; i++) {
