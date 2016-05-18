@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 5/17/2016 >>> v0.0.02d.20160517 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
+ *	 5/18/2016 >>> v0.0.02d.20160518 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
  *	 5/17/2016 >>> v0.0.02c.20160517 - Alpha test version - Fixed time not between
  *	 5/17/2016 >>> v0.0.02b.20160517 - Alpha test version - Individual actions...
  *	 5/17/2016 >>> v0.0.02a.20160517 - Alpha test version - Fixed a problem with time subscriptions subscribe() failing
