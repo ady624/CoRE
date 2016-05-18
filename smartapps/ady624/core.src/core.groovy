@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/17/2016 >>> v0.0.02d.20160517 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
  *	 5/17/2016 >>> v0.0.02c.20160517 - Alpha test version - Fixed time not between
  *	 5/17/2016 >>> v0.0.02b.20160517 - Alpha test version - Individual actions...
  *	 5/17/2016 >>> v0.0.02a.20160517 - Alpha test version - Fixed a problem with time subscriptions subscribe() failing
@@ -82,7 +83,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.02c.20160517"
+	return "v0.0.02d.20160517"
 }
 
 
@@ -844,23 +845,20 @@ def pageCondition(params) {
 			section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
 				def value = evaluateCondition(condition)
                 paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
-                if (condition.attr == "time") {
-                	if (condition.trg) {
-                		def v = ""
-                        def nextTime = null
-                        for (def i = 0; i < 5; i++) {
-                       		nextTime = getNextTimeTriggerTime(condition, nextTime)
-                            if (nextTime) {
-                            	v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
-                            } else {
-                            	break
-                            }
-                        }
-                    	paragraph v ? v : "(not happenning any time soon)", title: "Next scheduled trigger(s)", required: true, state: ( v ? "complete" : null )
-                    }
-                }
                 paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
-	            //href "pageActionGroup", params:[conditionId: id], title: "Individual actions", description: "Tap to set individual actions for this condition", state: complete, submitOnChange: true
+                if (condition.attr == "time") {
+                    def v = ""
+                    def nextTime = null
+                    for (def i = 0; i < (condition.trg ? 3 : 1); i++) {
+                        nextTime = condition.trg ? getNextTimeTriggerTime(condition, nextTime) : getNextTimeConditionTime(condition, nextTime)
+                        if (nextTime) {
+                            v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
+                        } else {
+                            break
+                        }
+                    }
+                    paragraph v ? v : "(not happenning any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
+                }
 			}
 
 			section() {
@@ -2255,7 +2253,7 @@ private broadcastEvent(evt, primary, secondary) {
     	atomicState.cache = cache
         state.cache = cache
 		if (cachedValue) {
-	    	if ((cachedValue.v == evt.value) && ((cachedValue.v instanceof String) || (eventTime < cachedValue.t) || (cachedValue.t + 2000 > eventTime))) {
+	    	if ((cachedValue.v == evt.value) && ((cachedValue.v instanceof String) || (eventTime < cachedValue.t) || (cachedValue.t + 60000 > eventTime))) {
 	        	//duplicate event
 	    		debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
 	            evt = null
@@ -2631,38 +2629,42 @@ private evaluateDeviceCondition(condition, evt) {
     return  result
 }
 
-private evaluateTimeCondition(condition, evt = null, unixTime = null) {
-	//no condition? not time condition? false!
-	if (!condition || (condition.attr != "time")) {
-    	return false
-    }
-	//get UTC now if no unixTime is provided
-	unixTime = unixTime ? unixTime : now()
-    //convert that to location's timezone, for comparison
-	def now = adjustTime(unixTime)
-	def attr = getAttributeByName(condition.attr)
-    def comparison = cleanUpComparison(condition.comp)
-    def comp = getComparisonOption(condition.attr, comparison)    
-    //if we can't find the attribute (can't be...) or the comparison object, or we're dealing with a trigger, exit stage false
-    if (!attr || !comp) {
-    	return false
-    }
-    
-    if (comp.trigger == comparison) {
-		//trigger
-		if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
-        	condition.lt = evt.date.time
-            //we have a time event returning as a result of a trigger, assume true
-            return true
-        } else {
-        
-        
-        	if (comparison.contains("stay")) {
-            	//we have a stay condition
+private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison = null, comp = null) {
+    //we sometimes optimize this and sent the comparison text and object
+    if (!comparison || !comp) {    
+        //no condition? not time condition? false!
+        if (!condition || (condition.attr != "time")) {
+            return false
+        }
+        //get UTC now if no unixTime is provided
+        unixTime = unixTime ? unixTime : now()
+        //convert that to location's timezone, for comparison
+        def attr = getAttributeByName(condition.attr)
+        comparison = cleanUpComparison(condition.comp)
+        comp = getComparisonOption(condition.attr, comparison)    
+        //if we can't find the attribute (can't be...) or the comparison object, or we're dealing with a trigger, exit stage false
+        if (!attr || !comp) {
+            return false
+        }
+
+        if (evt && (comp.trigger == comparison)) {
+            //trigger
+            if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
+                condition.lt = evt.date.time
+                //we have a time event returning as a result of a trigger, assume true
+                return true
+            } else {
+
+
+                if (comparison.contains("stay")) {
+                    //we have a stay condition
+                }
+                return false
             }
-        	return false
         }
 	}
+
+    def time = adjustTime(unixTime)
 
 	//check comparison
     def result = true
@@ -2670,7 +2672,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
     	//we match any time
     } else {
         //convert times to number of minutes since midnight for easy comparison
-        def m = now ? now.getHours() * 60 + now.getMinutes() : 0
+        def m = time ? time.getHours() * 60 + time.getMinutes() : 0
         def m1 = null
         def m2 = null
        	//go through each parameter
@@ -2711,7 +2713,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
             }
         }
         
-        
         if (comparison.contains("before")) {
         	if ((m1 == null) || (m >= addOffsetToMinutes(m1, o1))) {
         		//m before m1?
@@ -2735,7 +2736,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
         		return false
             }
         }       
-        
         if (comparison.contains("between")) {
             def a1 = addOffsetToMinutes(m1, o1)
         	def a2 = addOffsetToMinutes(m2, o2)
@@ -2749,7 +2749,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null) {
         }
     }
 
-	return result && testDateTimeFilters(condition, now)
+	return result && testDateTimeFilters(condition, time)
 }
 
 private testDateTimeFilters(condition, now) {
@@ -3149,9 +3149,17 @@ private eval_trg_exits_range(condition, device, attribute, oldValue, currentValu
 
 private scheduleTimeTriggers() {
 	debug "Rescheduling time triggers"
-	withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
-	if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
-    	withEachTrigger(state.app.otherConditions, "scheduleTimeTrigger")
+    if (getTriggerCount(state.app) > 0) {
+        withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
+        if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
+            withEachTrigger(state.app.otherConditions, "scheduleTimeTrigger")
+        }
+    } else {
+    	//we're not using triggers, let's mess up with time conditions
+        withEachCondition(state.app.conditions, "scheduleTimeTrigger")
+        if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
+            withEachCondition(state.app.otherConditions, "scheduleTimeTrigger")
+        }
     }
 }
 
@@ -3159,13 +3167,13 @@ private scheduleTimeTrigger(condition) {
 	if (!condition || !(condition.attr) || (condition.attr != "time")) {
     	return
     }
-    def time = getNextTimeTriggerTime(condition, condition.lt)
+    def time = condition.trg ? getNextTimeTriggerTime(condition, condition.lt) : getNextTimeConditionTime(condition, condition.lt)
     condition.nt = time
     scheduleTask("evt", condition.id, null, null, time)
 }
 
 private scheduleActions(conditionId, stateChanged = false) {
-	debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
+	//debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
 	def actions = listActions(conditionId).sort{ it.id }
     for (action in actions) {
     	//restrict on state changed
@@ -3268,6 +3276,31 @@ private unscheduleTask(task, ownerId, deviceId) {
 	state.tasker.push([idx: idx, del: task, ownerId: ownerId, deviceId: deviceId, created: now()])
 }
 
+private getNextTimeConditionTime(condition, startTime = null) {
+	//no condition? not time condition? false!
+	if (!condition || (condition.attr != "time")) {
+    	return null
+    }
+	//get UTC now if no unixTime is provided
+	def unixTime = startTime ? startTime : now()
+    //remove the seconds...
+    unixTime = unixTime - unixTime.mod(60000)
+    //we give it up to 25 hours to find the next time when the condition state would change
+    def comparison = cleanUpComparison(condition.comp)
+	def comp = getComparisonOption(condition.attr, comparison)    
+    def state = evaluateTimeCondition(condition, null, unixTime, comparison, comp)
+    def perf = now()
+	for (def i = 1; i < 1500; i++) {
+    	//increment one minute
+    	unixTime = unixTime + 60000
+    	def nextState = evaluateTimeCondition(condition, null, unixTime, comparison, comp)
+        if (state != nextState) {
+        	return unixTime
+        }    	
+    }
+    return null
+}
+
 private getNextTimeTriggerTime(condition, startTime = null) {
 	//no condition? not time condition? false!
 	if (!condition || (condition.attr != "time")) {
@@ -3302,7 +3335,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
         if (repeat == "minute") {
             //increment minutes
             now = new Date(now.time + interval * 60000)
-            cycles = 1440
+            cycles = 1500 //up to 25 hours
         } else if (repeat == "hour") {
             //increment hours
             def m = now.minutes
@@ -3697,7 +3730,7 @@ private processTasks() {
                 runIn(90, recoveryHandler)
             }
 
-            debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
+            //debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
             //we loop a seemingly infinite loop
             //no worries, we'll break out of it, maybe :)
             def found = true
@@ -4448,6 +4481,21 @@ private getConditionTriggerCount(condition) {
     return result
 }
 
+private withEachCondition(condition, callback) {
+	def result = 0
+    if (condition) {
+        if (condition.children != null) {
+            //we're dealing with a group
+            for (child in condition.children) {
+                withEachCondition(child, callback)
+            }
+        } else {
+           	"$callback"(condition)
+        }
+    }
+    return result
+}
+
 private withEachTrigger(condition, callback) {
 	def result = 0
     if (condition) {
@@ -4638,7 +4686,7 @@ private getConditionDescription(id, level = 0) {
 
 
 private getTimeConditionDescription(condition) {
-	if (condition.attr != "time") {
+    if (condition.attr != "time") {
     	return "[ERROR]"
     }
     def attr = getAttributeByName(condition.attr)
@@ -4651,11 +4699,11 @@ private getTimeConditionDescription(condition) {
     	//is the condition a trigger?
     	def trigger = (comp.trigger == comparison)
         def repeating = trigger
-        
     	for (def i = 1; i <= comp.parameters; i++) {
         	def val = (i == 1 ? val1 : val2)
             def recurring = false
             def preciseTime = false
+            
             if (val.contains("custom")) {
                 //custom time
                 val = formatTime(i == 1 ? condition.t1 : condition.t2)
@@ -5430,20 +5478,20 @@ private capabilities() {
     	[ name: "colorControl",						display: "Color Control",					attribute: "color",						commands: ["setColor", "setHue", "setSaturation"],									multiple: true,			devices: "RGB/W lights"		],
         [ name: "colorTemperature",					display: "Color Temperature",				attribute: "colorTemperature",			commands: ["setColorTemperature"],													multiple: true,			devices: "RGB/W lights"],
     	[ name: "configure",						display: "Configure",						attribute: null,						commands: ["configure"],															multiple: true,			],
-    	[ name: "consumable",						display: "Consumable",						attribute: "consumable",				commands: ["setConsumableStatus"],													multiple: true,			],
+    	[ name: "consumable",						display: "Consumable",						attribute: "consumable",				commands: ["setConsumableStatus"],													multiple: true,			devices: "consumables"],
 		[ name: "contactSensor",					display: "Contact Sensor",					attribute: "contact",					commands: null,																		multiple: true,			],
     	[ name: "dateAndTime",						display: "Date & Time",						attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "dt"],		virtualDeviceName: "Date & Time"	],
     	[ name: "switchLevel",						display: "Dimmable Light",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
     	[ name: "switchLevel",						display: "Dimmer",							attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers",			],
     	[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					commands: null,																		multiple: true,			],
         [ name: "illuminanceMeasurement",			display: "Illuminance Measurement",			attribute: "illuminance",				commands: null,																		multiple: true,			],
-        [ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			],
+        [ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
     	[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						commands: null,																		multiple: true,			],
     	[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
         [ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
         [ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],														multiple: true,			devices: "electronic locks", ],
-    	[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			],
-    	[ name: "momentary",						display: "Momentary",						attribute: null,						commands: ["push"],																	multiple: true,			],
+    	[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
+    	[ name: "momentary",						display: "Momentary",						attribute: null,						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
     	[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					commands: null,																		multiple: true,			],
     	[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
     	[ name: "notification",						display: "Notification",					attribute: null,						commands: ["deviceNotification"],													multiple: true,			],
@@ -5479,8 +5527,8 @@ private capabilities() {
     	[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	commands: null,																		multiple: true,			],
     	[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		commands: null,																		multiple: true,			],
     	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "threeAxis",					commands: null,																		multiple: true,			],
-    	[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			],
-    	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["tone"],																	multiple: true,			devices: "tone generators",	],
+    	[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			devices: "timed sessions"],
+    	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
     	[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						commands: null,																		multiple: true,			],
     	[ name: "valve",							display: "Valve",							attribute: "contact",					commands: ["open", "close"],														multiple: true,			devices: "valves",			],
     	[ name: "voltageMeasurement",				display: "Voltage Measurement",				attribute: "voltage",					commands: null,																		multiple: true,			],
@@ -5491,40 +5539,66 @@ private capabilities() {
 
 private commands() {
 	return [
-    	[ name: "on",							category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
-    	[ name: "off",							category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
-    	[ name: "toggle",						category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
-    	[ name: "setLevel",						category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], ],
-    	[ name: "setColor",						category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","Hue:hue","Saturation:saturation","Level:level"], ],
-    	[ name: "setHue",						category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], ],
-    	[ name: "setSaturation",				category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], ],
-    	[ name: "setColorTemperature",			category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], ],
-    	[ name: "open",							category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
-    	[ name: "close",						category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
-    	[ name: "windowShade.open",				category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
-    	[ name: "windowShade.close",			category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
-    	[ name: "windowShade.presetPosition",	category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
-    	[ name: "lock",							category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
-    	[ name: "unlock",						category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], ],
-    	[ name: "alarm.off",					category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						parameters: [], ],
-    	[ name: "alarm.strobe",					category: "Safety and Security",		group: "Control [devices]",			display: "Strobe",						parameters: [], ],
-    	[ name: "alarm.siren",					category: "Safety and Security",		group: "Control [devices]",			display: "Siren",						parameters: [], ],
-    	[ name: "alarm.both",					category: "Safety and Security",		group: "Control [devices]",			display: "Strobe and Siren",			parameters: [], ],
-    	[ name: "thermostat.off",				category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					parameters: [], ],
-    	[ name: "thermostat.heat",				category: "Comfort",					group: "Control [devices]",			display: "Set to Heat",					parameters: [], ],
-    	[ name: "thermostat.cool",				category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
-    	[ name: "thermostat.auto",				category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
-    	[ name: "thermostat.emergencyHeat",		category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
-    	[ name: "fanOn",				category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",					parameters: [], ],
-    	[ name: "fanCirculate",		category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",					parameters: [], ],
-    	[ name: "fanAuto",			category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",					parameters: [], ],
-    	[ name: "setThermostatFanMode",category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",					parameters: ["Fan mode:thermostatFanMode"], ],
-    	[ name: "speak",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
-    	[ name: "musicPlayer.setLevel",			category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
-    	[ name: "playText",						category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
-    	[ name: "configure",					category: "Tools",						group: null,		display: "Configure",					parameters: [], ],
-    	[ name: "poll",							category: "Tools",						group: null,			display: "Poll",						parameters: [], ],
-    	[ name: "refresh",						category: "Tools",						group: null,			display: "Refresh",						parameters: [], ],
+    	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
+    	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
+    	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
+    	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], ],
+    	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","Hue:hue","Saturation:saturation","Level:level"], ],
+    	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], ],
+    	[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], ],
+    	[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], ],
+    	[ name: "open",										category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
+    	[ name: "close",									category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
+    	[ name: "windowShade.open",							category: "Convenience",				group: "Control [devices]",			display: "Open fully",					parameters: [], ],
+    	[ name: "windowShade.close",						category: "Convenience",				group: "Control [devices]",			display: "Close fully",					parameters: [], ],
+    	[ name: "windowShade.presetPosition",				category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
+		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
+    	[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], ],
+    	[ name: "take",										category: "Safety and Security",		group: "Control [devices]",			display: "Take a picture",				parameters: [], ],
+    	[ name: "alarm.off",								category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						parameters: [], ],
+    	[ name: "alarm.strobe",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe",						parameters: [], ],
+    	[ name: "alarm.siren",								category: "Safety and Security",		group: "Control [devices]",			display: "Siren",						parameters: [], ],
+    	[ name: "alarm.both",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe and Siren",			parameters: [], ],
+    	[ name: "thermostat.off",							category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					parameters: [], ],
+    	[ name: "thermostat.heat",							category: "Comfort",					group: "Control [devices]",			display: "Set to Heat",					parameters: [], ],
+    	[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
+    	[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
+    	[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
+    	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
+    	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
+    	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], ],
+		[ name: "fanOn",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",				parameters: [], ],
+    	[ name: "fanCirculate",								category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",		parameters: [], ],
+    	[ name: "fanAuto",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",				parameters: [], ],
+    	[ name: "setThermostatFanMode",						category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",				parameters: ["Fan mode:thermostatFanMode"], ],
+    	[ name: "play",										category: "Entertainment",				group: "Control [devices]",			display: "Play",						parameters: [], ],
+    	[ name: "pause",									category: "Entertainment",				group: "Control [devices]",			display: "Pause",						parameters: [], ],
+    	[ name: "stop",										category: "Entertainment",				group: "Control [devices]",			display: "Stop",						parameters: [], ],
+    	[ name: "nextTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Next track",					parameters: [], ],
+    	[ name: "previousTrack",							category: "Entertainment",				group: "Control [devices]",			display: "Previous track",				parameters: [], ],
+    	[ name: "mute",										category: "Entertainment",				group: "Control [devices]",			display: "Mute",						parameters: [], ],
+    	[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",						parameters: [], ],
+		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
+    	[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], ],
+    	[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: [], ],
+    	[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			display: "Set track",					parameters: [], ],
+    	[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				parameters: [], ],
+    	[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				parameters: [], ],
+    	[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
+    	[ name: "startActivity",							category: "Entertainment",				group: "Control [devices]",			display: "Start activity",				parameters: [], ],
+    	[ name: "getCurrentActivity",						category: "Entertainment",				group: "Control [devices]",			display: "Get current activity",		parameters: [], ],
+    	[ name: "getAllActivities",							category: "Entertainment",				group: "Control [devices]",			display: "Get all activities",			parameters: [], ],
+    	[ name: "push",										category: "Other",						group: "Control [devices]",			display: "Push",						parameters: [], ],
+    	[ name: "beep",										category: "Other",						group: "Control [devices]",			display: "Beep",						parameters: [], ],
+    	[ name: "timedSession.setTimeRemaining",			category: "Other",						group: "Control [devices]",			display: "Set remaining time",			parameters: ["Remaining time [s]:number"], ],
+    	[ name: "timedSession.start",						category: "Other",						group: "Control [devices]",			display: "Start timed session",			parameters: [], ],
+    	[ name: "timedSession.stop",						category: "Other",						group: "Control [devices]",			display: "Stop timed session",			parameters: [], ],
+    	[ name: "timedSession.pause",						category: "Other",						group: "Control [devices]",			display: "Pause timed session",			parameters: [], ],
+    	[ name: "timedSession.cancel",						category: "Other",						group: "Control [devices]",			display: "Cancel timed session",		parameters: [], ],
+    	[ name: "setConsumableStatus",						category: "Other",						group: "Control [devices]",			display: "Set consumable status",		parameters: ["Status:consumable"], ],
+		[ name: "configure",								category: null,							group: null,						display: "Configure",					parameters: [], ],
+    	[ name: "poll",										category: null,							group: null,						display: "Poll",						parameters: [], ],
+    	[ name: "refresh",									category: null,							group: null,						display: "Refresh",						parameters: [], ],
     ]
 }
 
