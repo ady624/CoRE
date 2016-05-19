@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/19/2016 >>> v0.0.030.20160519 - Alpha test version - Implemented the Toggle and Flash virtual commands, ability to control any device using Capability selection, and unified the way location control works. Minor fixes, spelling and others
  *	 5/18/2016 >>> v0.0.02f.20160518 - Alpha test version - Minor bug fixes - including time condition scheduling, unscheduling of all event tasks prior to rescheduling (deleting a time trigger left the schedule behind)
  *	 5/18/2016 >>> v0.0.02e.20160518 - Alpha test version - Broken debugging mode down into several levels, info, trace, debug, warn and error. Fixed display of device names where device has no label.
  *	 5/18/2016 >>> v0.0.02d.20160518 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
@@ -85,7 +86,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.02f.20160518"
+	return "v0.0.030.20160519"
 }
 
 
@@ -875,7 +876,7 @@ def pageCondition(params) {
                             break
                         }
                     }
-                    paragraph v ? v : "(not happenning any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
+                    paragraph v ? v : "(not happening any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
                 }
 			}
 
@@ -1055,10 +1056,9 @@ def pageAction(params) {
                     }
                 }
             }
-            def locationAction = !!settings["actMode$id"]
-            def alarmAction = !!settings["actAlarm$id"]
+            def locationAction = !!settings["actDev$id#location"]
             def deviceAction = !!devices.size()
-            def actionUsed = deviceAction || locationAction || alarmAction
+            def actionUsed = deviceAction || locationAction
             if (!actionUsed) {
             	//category selection page
                 for(def category in listCommandCategories()) {
@@ -1068,22 +1068,34 @@ def pageAction(params) {
                             def option = getCommandGroupName(command)
                             if (option && !(option in options)) {
                                 options.push option
-                                href "pageActionDevices", params:[actionId: id, command: command], title: option, submitOnChange: true
+                                if (option == "Control location") {
+                                	input "actDev$id#location", "bool", title: option, defaultValue: false, submitOnChange: true
+                                } else {
+                                	href "pageActionDevices", params:[actionId: id, command: command], title: option, submitOnChange: true
+                                }
                             }
                         }
                     }
                 }
+                section(title: "All devices") {
+					href "pageActionDevices", params:[actionId: id, command: ""], title: "Control any device", submitOnChange: true
+                }
             } else {
             	//actual action page
-                if (deviceAction) {
+                if (true || deviceAction) {
                     section() {
                         def names=[]
-                        for(device in devices) {
-                            if (!(device.label in names)) {
-                                names.push(device.label)
+                        if (deviceAction) {
+                            for(device in devices) {
+                                if (!(device.label in names)) {
+                                    names.push(device.label)
+                                }
                             }
+                            href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
+                        } else {
+                        	names.push "location"
+                            input "actDev$id#location", "bool", title: "With location...", state: "complete", defaultValue: true, submitOnChange: true
                         }
-                        href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
                     }
                     def prefix = "actTask$id#"
                     def tasks = settings.findAll{it.key.startsWith(prefix)}
@@ -1102,21 +1114,34 @@ def pageAction(params) {
                     }
                     //sort the ids, we really want to have these in the proper order
                     ids = ids.sort()
-                    def availableCommands = listCommonDeviceCommands(devices, usedCapabilities)
+                    def availableCommands = (deviceAction ? listCommonDeviceCommands(devices, usedCapabilities) : [])
                     for (vcmd in virtualCommands()) {
-                        if (!vcmd.requires || !(vcmd.display in availableCommands)) {
+                        if ((!(vcmd.display in availableCommands)) && (vcmd.location || deviceAction)) {
+                            def ok = true
+                        	if (vcmd.requires && vcmd.requires.size()) {
+                            	//we have requirements, let's make sure they're fulfilled
+                                for (device in devices) {
+                                	for (cmd in vcmd.requires) {
+                                    	if (!device.hasCommand(cmd)) {
+                                        	ok = false
+                                            break
+                                        }
+                                    }
+                                    if (!ok) break
+                                }
+                            }
                             //single device support - some virtual commands require only one device, can't handle more at a time
-                            if (!vcmd.singleDevice || (devices.size() == 1)) {
+                            if (ok && (!vcmd.singleDevice || (devices.size() == 1))) {
                                 availableCommands.push(virtualCommandPrefix() + vcmd.display)
                             }
                         }
                     }
                     def idx = 0
                     if (ids.size()) {
-                    	section(title: "Task list") {
-                            for (tid in ids) {
+						for (tid in ids) {
+	                    	section(title: idx == 0 ? "First," : "And then") {
                                 //display each 
-                                input "$prefix$tid", "enum", options: availableCommands, title: (idx == 0 ? "" : "And then"), required: true, state: "complete", submitOnChange: true
+                                input "$prefix$tid", "enum", options: availableCommands, title: "", required: true, state: "complete", submitOnChange: true
                                 //parameters
                                 def cmd = settings["$prefix$tid"]
                                 def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
@@ -1166,21 +1191,7 @@ def pageAction(params) {
                     }
 				}
             }
-            
-            
-            if (!actionUsed || locationAction) {
-	            def modes = ["a", "b"]//location.modes
-                section() {
-	            	input "actMode$id", "mode", title: "Change location mode", required: false, multiple: false, submitOnChange: true
-                }
-            }
-            
-            if (!actionUsed || alarmAction) {
-                section() {
-	            	input "actAlarm$id", "enum", options: getAlarmOptions(), title: "Change Smart Home Monitor state", required: false, multiple: false, submitOnChange: true
-                }
-            }
-            
+                       
             if (actionUsed) {
             	section(title: "Action restrictions") {
                 	if (action.pid < 1) {
@@ -1188,7 +1199,7 @@ def pageAction(params) {
                 		input "actRStateChange$id", "bool", title: "Execute on piston status change only", required: false
                     }
                 	input "actRMode$id", "mode", title: "Execute in these modes only", description: "Any location mode", required: false, multiple: true
-                	input "actRAlarm$id", "enum", options: getAlarmOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
+                	input "actRAlarm$id", "enum", options: getAlarmSystemStatusOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
                 }
             
                 if (id) {
@@ -1209,27 +1220,32 @@ def pageActionDevices(params) {
     actionId = (int) actionId
 	def command = params?.command
 	def caps = params?.capabilities
-    def capabilities = []
+    def capabilities = capabilities().findAll{ it.devices }
 	if (caps && caps.size()) {
+    	capabilities = []
     	//we don't have a list of capabilities to filter by, let's figure things out by using the command
         for(def cap in caps) {
         	def capability = getCapabilityByName(cap)
             if (capability && !(capability in capabilities)) capabilities.push(capability)
         }
     } else {
-	    capabilities = listCommandCapabilities(command)
+    	if (command) capabilities = listCommandCapabilities(command)
     }
 
     if (!capabilities) return
 	dynamicPage(name: "pageActionDevices", title: "", uninstall: false, install: false) {
         caps = [:]
         //we got a list of capabilities to display
-        for(def capability in capabilities) {
+        def used = []
+        for(def capability in capabilities.sort{ it.devices.toLowerCase() }) {
             //go through each and look for "devices" - the user-friendly name of what kind of devices the capability stands for
             if (capability.devices) {
-                def cap = caps[capability.name] ? caps[capability.name] : []
-                if (!(capability.devices in cap)) cap.push(capability.devices)
-                caps[capability.name] = cap
+            	if (!(capability.devices in used)) {
+                	used.push capability.devices
+                	def cap = caps[capability.name] ? caps[capability.name] : []
+                	if (!(capability.devices in cap)) cap.push(capability.devices)
+                	caps[capability.name] = cap
+                }
             }
         }
         if (caps.size()) {
@@ -1963,8 +1979,7 @@ private updateAction(action) {
     		action.d.push(device.id)
         }
     }
-    action.a = settings["actAlarm$id"]
-    action.m = settings["actMode$id"]
+    action.l = settings["actDev$id#location"]
     
     //restrictions
     action.rc = settings["actRStateChange$id"]
@@ -2021,6 +2036,8 @@ private updateAction(action) {
             }
         }
     }
+    //clean up for memory optimization
+    action = cleanUpMap(action)    
 }
 
 private cleanUpActions() {
@@ -2031,7 +2048,7 @@ private cleanUpActions() {
     while (dirty) {
     	dirty = false
 		for(action in state.config.app.actions) {
-			if (!((action.d && action.d.size()) || action.a || action.m)) {
+			if (!((action.d && action.d.size()) || action.l)) {
             	state.config.app.actions.remove(action)
                 dirty = true
                 break
@@ -2058,13 +2075,7 @@ private listActionDevices(actionId) {
 }
 private getActionDescription(action) {
 	if (!action) return null
-    if (action.a) {
-    	return "Change Smart Home Monitor state to ${action.a}"
-    }
-    if (action.m) {
-    	return "Change Location Mode to ${action.m}"
-    }
-    def devices = listActionDevices(action.id)
+    def devices = (action.l ? ["location"] : listActionDevices(action.id))
     def result = "With " + buildDeviceNameList(devices, "and")+ "..."
     for (task in action.t.sort{it.i}) {
     	def t = cleanUpCommand(task.c)
@@ -2261,7 +2272,7 @@ private broadcastEvent(evt, primary, secondary) {
     } catch(all) {
     	debug "ERROR: Could not update delay chart", null, "error"
     }
-    if (!evt.deviceId == "time") {
+    if (evt.deviceId != "time") {
     	def cache = atomicState.cache
         cache = cache ? cache : [:]
     	def cachedValue = cache[evt.deviceId + '-' + evt.name]
@@ -2394,6 +2405,8 @@ private broadcastEvent(evt, primary, secondary) {
 	            setVariable("\$currentStateSince", state.currentStateSince, true)
                 //new state
                 currentState = state.currentState
+                //resume all tasks that are waiting for a state change
+                resumeTasks(currentState)
             }
             //execute the DO EVERY TIME actions
             if (result1) scheduleActions(0, stateChanged)
@@ -2574,7 +2587,7 @@ private evaluateDeviceCondition(condition, evt) {
             break
         case "Smart Home Monitor":
         	devices = [location]
-            virtualCurrentValue = getAlarmStatus()
+            virtualCurrentValue = getAlarmSystemStatus()
         	break    	
     }
     if (!devices) {
@@ -3206,7 +3219,7 @@ private scheduleActions(conditionId, stateChanged = false) {
     	//restrict on state changed
     	if (action.rc && !stateChanged) continue
     	if (action.rm && action.rm.size() && !(location.mode in action.rm)) continue
-    	if (action.ra && action.ra.size() && !(getAlarmStatus() in action.ra)) continue
+    	if (action.ra && action.ra.size() && !(getAlarmSystemStatus() in action.ra)) continue
 		//we survived all restrictions, pfew
 		scheduleAction(action)
     }
@@ -3214,16 +3227,15 @@ private scheduleActions(conditionId, stateChanged = false) {
 
 private scheduleAction(action) {
 	if (!action) return null
-    if (action.a || action.m) {
-    	scheduleTask("cmd", action.id, null, null, now())
-        return
-    }
-    for (deviceId in action.d) {
+    def deviceIds = action.l ? ["location"] : (action.d ? action.d : [])
+    for (deviceId in deviceIds) {
     	//remove all tasks for all involved devices
         unscheduleTask("cmd", null, deviceId)
     }
     def time = now()
-    if (action.t && action.t.size() && action.d && action.d.size() ) {
+    def waitFor = null
+    def waitSince = null
+    if (action.t && action.t.size() && deviceIds.size() ) {
     	for (task in action.t.sort{ it.i }) {
         	def cmd = task.c
             def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
@@ -3237,14 +3249,24 @@ private scheduleAction(action) {
                		def function = "cmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
 					def result = "$function"(action, task, time)
                 	time = (result && result.time) ? result.time : time
+                    if (result && result.waitFor) {
+                    	waitFor = result.waitFor
+                        waitSince = time
+                    }
                     command = null
                 }
             } else {
                 command = getCommandByDisplay(cmd)
             }
             if (command) {
-                for (deviceId in action.d) {
-		            scheduleTask("cmd", action.id, deviceId, task.i, time)
+                for (deviceId in deviceIds) {
+                	def data = task.p && task.p.size() ? [p: task.p] : null
+                    if (waitFor) {
+                    	data = data ? data : [:]
+                    	data.w = waitFor //what to wait for
+						data.o = time - waitSince //delay after state change
+                    }
+		            scheduleTask("cmd", action.id, deviceId, task.i, time, data)
                 }            	
             }           
         }
@@ -3253,8 +3275,20 @@ private scheduleAction(action) {
 
 private cmd_wait(action, task, time) {
 	def result = [:]
-    if (task && task.p && task.p.size() == 1) {
-       	def offset = task.p[0].d * 60000
+    if (task && task.p && task.p.size() == 2) {
+        def unit = 60000
+        switch (task.p[1].d) {
+        	case "seconds":
+            	unit = 1000
+                break
+        	case "minutes":
+            	unit = 60000
+                break
+        	case "hours":
+            	unit = 3600000
+                break
+        }
+       	def offset = task.p[0].d * unit
        	result.time = time + offset
     }
     return result
@@ -3262,9 +3296,21 @@ private cmd_wait(action, task, time) {
 
 private cmd_waitRandom(action, task, time) {
 	def result = [:]
-    if (task && task.p && task.p.size() == 2) {
-    	def min = task.p[0].d * 60000
-        def max = task.p[1].d * 60000
+    if (task && task.p && task.p.size() == 3) {
+        def unit = 60000
+        switch (task.p[2].d) {
+        	case "seconds":
+            	unit = 1000
+                break
+        	case "minutes":
+            	unit = 60000
+                break
+        	case "hours":
+            	unit = 3600000
+                break
+        }
+    	def min = task.p[0].d * unit
+        def max = task.p[1].d * unit
         if (min > max) {
         	//swap the numbers
         	def x = min
@@ -3273,6 +3319,23 @@ private cmd_waitRandom(action, task, time) {
         }
        	def offset = (long)(min + Math.round(Math.random() * (max - min)))
        	result.time = time + offset
+    }
+    return result
+}
+
+private cmd_waitState(action, task, time) {
+	def result = [:]
+    if (task && task.p && task.p.size() == 1) {
+        def state = "${task.p[0].d}"
+        if (state.contains("any")) {
+        	result.waitFor = "a"
+        }
+        if (state.contains("true")) {
+        	result.waitFor = "t"
+        }
+        if (state.contains("false")) {
+        	result.waitFor = "f"
+        }
     }
     return result
 }
@@ -3645,7 +3708,7 @@ private processTasks() {
             //we always need to work with a fresh list.
             tasks = tasks ? tasks : atomicState.tasks
             tasks = tasks ? tasks : [:]
-            for (item in tasks.findAll{ it.value.type == "evt"}.sort{ it.value.time }) {
+            for (item in tasks.findAll{it.value.type == "evt"}.sort{ it.value.time }) {
                 def task = item.value
                 if (task.time <= now() + threshold) {
                     //remove from tasks
@@ -3694,11 +3757,12 @@ private processTasks() {
                 idx = task.value.idx + 1
             }
         }
+        
         //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
         if (state.tasker && state.tasker.size()) {
             for (task in state.tasker.sort{ it.idx }) {
                 if (task.add) {
-                    def t = [type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created]
+                    def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data])
                     def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}"
                     idx++
                     tasks[n] = t
@@ -3732,12 +3796,15 @@ private processTasks() {
         def thresholdTime = now() + threshold
         for (item in tasks) {
             def task = item.value
-            //if a task is already due, we keep track of it
-            if (task.time <= thresholdTime) {
-                immediateTasks++
-            } else {
-                //we try to get the nearest time in the future
-                nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
+            //if a command task is waiting, we ignore it
+            if (!task.data || !task.data.w) {
+            	//if a task is already due, we keep track of it
+            	if (task.time <= thresholdTime) {
+	                immediateTasks++
+	            } else {
+	                //we try to get the nearest time in the future
+	                nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
+    	        }
             }
         }
         //if we found a time that's after 
@@ -3768,9 +3835,9 @@ private processTasks() {
                 //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
                 tasks = tasks ? tasks : atomicState.tasks
                 tasks = tasks ? tasks : [:]
-                def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (it.value.time <= (now() + threshold)) }
+                def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time <= (now() + threshold)) }
                 if (firstTask) {
-                    def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (it.value.time == firstTask.value.time) }
+                    def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time == firstTask.value.time) }
                     if (firstSubTask) {
                         def task = firstSubTask.value
                         //remove from tasks
@@ -3807,26 +3874,29 @@ private processTasks() {
     debug "Task processing took ${perf}ms", -1, "trace"
 }
 
+private resumeTasks(state) {
+	def tasks = tasks ? tasks : atomicState.tasks
+	tasks = tasks ? tasks : [:]
+    def resumableStates = ["a", (state ? "t" : "f")]
+	//debug "Resuming tasks on piston state change, resumable states are $resumableStates", null, "trace"
+    def time = now()
+    def list = tasks.findAll{ (it.value.type == "cmd") && (it.value.data && (it.value.data.w in resumableStates))}
+    //todo: support for multiple wait for state commands during same action
+    if (list.size()) {
+        for (item in list) {
+            tasks[item.key].time = time + (tasks[item.key].data.o ? tasks[item.key].data.o  : 0)
+            tasks[item.key].data.w = null
+            tasks[item.key].data.o = null
+        }
+		atomicState.tasks = tasks
+    }
+}
 
 //the heavy lifting of commands
 //this executes each and every single command we have to give
 private processCommandTask(task) {
     def action = getAction(task.ownerId)
 	if (!action) return false
-    
-    if (action.a) {
-    	//set alarm mode
-        return setAlarmStatus(action.a)
-    }
-    if (action.m) {
-    	//set location mode
-        if (location.mode != action.m) {
-        	location.setMode(action.m)
-            return true
-        }
-        return false
-    }
-    
 	if (!action.t) return false
     def devices = listActionDevices(action.id)
     def device = devices.find{ it.id == task.deviceId }
@@ -3841,38 +3911,105 @@ private processCommandTask(task) {
     if (virtual) {
         //dealing with a virtual command
         command = getVirtualCommandByDisplay(cmd)
-        if (command && command.immediate) {
+        if (command && !command.immediate) {
         	//we can't run immediate tasks here
-            command = null
+            //execute the virtual task
+            debug "Executing virtual command ${command.name}", null, "info"
+            def function = "task_vcmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
+            return "$function"(device, task)
         }
     } else {
         command = getCommandByDisplay(cmd)
-    }
-
-	if (command) {
-        if (device.hasCommand(command.name)) {
-        	def requiredParams = command.parameters ? command.parameters.size() : 0
-            def availableParams = t.p ? t.p.size() : 0
-            if (requiredParams == availableParams) {
-            	def params = []
-                t.p.sort{ it.i }.findAll() {
-                	params.push(it.d)
-                }
-                if (params.size()) {
-					debug "Executing [${device}].${command.name}($params)", null, "info"
-            		device."${command.name}"(params as Object[])
-                } else {
-                    debug "Executing [${device}].${command.name}()", null, "info"
-            		device."${command.name}"()
+        if (command) {
+            if (device.hasCommand(command.name)) {
+                def requiredParams = command.parameters ? command.parameters.size() : 0
+                def availableParams = t.p ? t.p.size() : 0
+                if (requiredParams == availableParams) {
+                    def params = []
+                    t.p.sort{ it.i }.findAll() {
+                        params.push(it.d)
+                    }
+                    if (params.size()) {
+                        debug "Executing with parameters: [${device}].${command.name}($params)", null, "info"
+                        device."${command.name}"(params as Object[])
+                        return true
+                    } else {
+                        debug "Executing: [${device}].${command.name}()", null, "info"
+                        device."${command.name}"([])
+                        return true
+                    }
                 }
             }
         }
     }
-	return true
+	return false
 }
 
+private task_vcmd_toggle(device, task) {
+    if (!device || !device.hasCommand("on") || !device.hasCommand("off")) {
+    	//we need a device that has both on and off commands
+    	return false
+    }
+    if (device.currentState("switch") == "on") {
+    	device.off()
+    } else {
+    	device.on()
+    }
+    return true
+}
 
+private task_vcmd_flash(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 3)) {
+    	//we need a device that has both on and off commands
+        //we also need three parameters
+        //p[0] represents the on interval
+        //p[1] represents the off interval
+        //p[2] represents the number of flashes
+    	return false
+    }
+    def onInterval = params[0].d
+    def offInterval = params[1].d
+    def flashes = params[2].d
+    def delay = 0
+    for (def i = 0; i < flashes; i++) {
+    	device.on([delay: delay])
+        delay = delay + onInterval
+    	device.off([delay: delay])
+        delay = delay + offInterval
+    }
+    return true
+}
 
+private task_vcmd_setLocationMode(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 1) {
+    	return false
+    }
+    def mode = params[0].d
+    if (location.mode != mode) {
+        location.setMode(mode)
+        return true
+    } else {
+    	debug "Not changing location mode because location is already in the $mode mode"
+    }
+    return false
+}
+
+private task_vcmd_setAlarmSystemStatus(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 1) {
+    	return false
+    }
+    def status = params[0].d
+    if (getAlarmSystemStatus() != status) {
+        setAlarmSystemStatus(status)
+        return true
+    } else {
+    	debug "Not changing SHM's status because it already is $status"
+    }
+    return false
+}
 
 
 
@@ -5019,21 +5156,21 @@ private buildNameList(list, suffix) {
     return result;
 }
 
-private getAlarmStatus() {
+private getAlarmSystemStatus() {
 	switch (location.currentState("alarmSystemStatus")?.value) {
     	case "off":
-        	return getAlarmOptions()[0]
+        	return getAlarmSystemStatusOptions()[0]
     	case "stay":
-        	return getAlarmOptions()[1]
+        	return getAlarmSystemStatusOptions()[1]
     	case "away":
-        	return getAlarmOptions()[2]
+        	return getAlarmSystemStatusOptions()[2]
     }
     return null
 }
 
-private setAlarmStatus(status) {
+private setAlarmSystemStatus(status) {
 	def value = null
-    def options = getAlarmOptions()
+    def options = getAlarmSystemStatusOptions()
 	switch (status) {
     	case options[0]:
         	value = "off"
@@ -5087,7 +5224,7 @@ private listComparisonOptions(attributeName, allowTriggers) {
     def conditions = []
     def triggers = []
     def attribute = getAttributeByName(attributeName)
-    def allowTimedComparisons = !(attributeName in ["mode", "alarmSystemStatus"])
+    def allowTimedComparisons = !(attributeName in ["locationMode", "alarmSystemStatus"])
     if (attribute) {
     	def optionCount = attribute.options ? attribute.options.size() : 0
         def attributeType = attribute.type
@@ -5495,62 +5632,62 @@ private parseCommandParameter(parameter) {
 
 private capabilities() {
 	return [
-    	[ name: "accelerationSensor",				display: "Acceleration Sensor",				attribute: "acceleration",				commands: null,																		multiple: true,			],
+    	[ name: "accelerationSensor",				display: "Acceleration Sensor",				attribute: "acceleration",				commands: null,																		multiple: true,			devices: "acceleration sensors",	],
     	[ name: "alarm",							display: "Alarm",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
     	[ name: "doorControl",						display: "Automatic Door",					attribute: "door",						commands: ["open", "close"],														multiple: true,			devices: "doors",			],
     	[ name: "garageDoorControl",				display: "Automatic Garage Door",			attribute: "door",						commands: ["open", "close"],														multiple: true,			devices: "garage doors",		],
-        [ name: "battery",							display: "Battery",							attribute: "battery",					commands: null,																		multiple: true,			],
-    	[ name: "beacon",							display: "Beacon",							attribute: "presence",					commands: null,																		multiple: true,			],
+        [ name: "battery",							display: "Battery",							attribute: "battery",					commands: null,																		multiple: true,			devices: "battery powered devices",	],
+    	[ name: "beacon",							display: "Beacon",							attribute: "presence",					commands: null,																		multiple: true,			devices: "beacons",	],
     	[ name: "switch",							display: "Bulb",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-        [ name: "button",							display: "Button",							attribute: "button",					commands: null,																		multiple: true,			],
+        [ name: "button",							display: "Button",							attribute: "button",					commands: null,																		multiple: true,			devices: "buttons",			],
         [ name: "imageCapture",						display: "Camera",							attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras",			],
-    	[ name: "carbonDioxideMeasurement",			display: "Carbon Dioxide Measurement",		attribute: "carbonDioxide",				commands: null,																		multiple: true,			],
-        [ name: "carbonMonoxideDetector",			display: "Carbon Monoxide Detector",		attribute: "carbonMonoxide",			commands: null,																		multiple: true,			],
+    	[ name: "carbonDioxideMeasurement",			display: "Carbon Dioxide Measurement",		attribute: "carbonDioxide",				commands: null,																		multiple: true,			devices: "carbon dioxide sensors",	],
+        [ name: "carbonMonoxideDetector",			display: "Carbon Monoxide Detector",		attribute: "carbonMonoxide",			commands: null,																		multiple: true,			devices: "carbon monoxide detectors",	],
     	[ name: "colorControl",						display: "Color Control",					attribute: "color",						commands: ["setColor", "setHue", "setSaturation"],									multiple: true,			devices: "RGB/W lights"		],
-        [ name: "colorTemperature",					display: "Color Temperature",				attribute: "colorTemperature",			commands: ["setColorTemperature"],													multiple: true,			devices: "RGB/W lights"],
-    	[ name: "configure",						display: "Configure",						attribute: null,						commands: ["configure"],															multiple: true,			],
-    	[ name: "consumable",						display: "Consumable",						attribute: "consumable",				commands: ["setConsumableStatus"],													multiple: true,			devices: "consumables"],
-		[ name: "contactSensor",					display: "Contact Sensor",					attribute: "contact",					commands: null,																		multiple: true,			],
+        [ name: "colorTemperature",					display: "Color Temperature",				attribute: "colorTemperature",			commands: ["setColorTemperature"],													multiple: true,			devices: "RGB/W lights",	],
+    	[ name: "configure",						display: "Configure",						attribute: null,						commands: ["configure"],															multiple: true,			devices: "configurable devices",	],
+    	[ name: "consumable",						display: "Consumable",						attribute: "consumable",				commands: ["setConsumableStatus"],													multiple: true,			devices: "consumables",	],
+		[ name: "contactSensor",					display: "Contact Sensor",					attribute: "contact",					commands: null,																		multiple: true,			devices: "contact sensors",	],
     	[ name: "dateAndTime",						display: "Date & Time",						attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "dt"],		virtualDeviceName: "Date & Time"	],
     	[ name: "switchLevel",						display: "Dimmable Light",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
     	[ name: "switchLevel",						display: "Dimmer",							attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers",			],
-    	[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					commands: null,																		multiple: true,			],
-        [ name: "illuminanceMeasurement",			display: "Illuminance Measurement",			attribute: "illuminance",				commands: null,																		multiple: true,			],
+    	[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					commands: null,																		multiple: true,			devices: "energy meters"],
+        [ name: "illuminanceMeasurement",			display: "Illuminance Measurement",			attribute: "illuminance",				commands: null,																		multiple: true,			devices: "illuminance sensors",	],
         [ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
-    	[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						commands: null,																		multiple: true,			],
+    	[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						commands: null,																		multiple: true,			devices: "leak sensors",	],
     	[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-        [ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
+        [ name: "locationMode",						display: "Location Mode",					attribute: "locationMode",				commands: ["setMode"],																multiple: false,		virtualDevice: location	],
         [ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],														multiple: true,			devices: "electronic locks", ],
     	[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
-        [ name: "locationMode",						display: "Mode",							attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
+        [ name: "locationMode",						display: "Mode",							attribute: "locationMode",				commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
     	[ name: "momentary",						display: "Momentary",						attribute: null,						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
-    	[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					commands: null,																		multiple: true,			],
+    	[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					commands: null,																		multiple: true,			devices: "motion sensors",	],
     	[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
-    	[ name: "notification",						display: "Notification",					attribute: null,						commands: ["deviceNotification"],													multiple: true,			],
-    	[ name: "pHMeasurement",					display: "pH Measurement",					attribute: "pH",						commands: null,																		multiple: true,			],
+    	[ name: "notification",						display: "Notification",					attribute: null,						commands: ["deviceNotification"],													multiple: true,			devices: "notification devices",	],
+    	[ name: "pHMeasurement",					display: "pH Measurement",					attribute: "pH",						commands: null,																		multiple: true,			devices: "pH sensors",	],
     	[ name: "switch",							display: "Outlet",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "outlets",			],
-    	[ name: "polling",							display: "Polling",							attribute: null,						commands: ["poll"],																	multiple: true,			],
-        [ name: "powerMeter",						display: "Power Meter",						attribute: "power",						commands: null,																		multiple: true,			],
-        [ name: "powerSource",						display: "Power Source",					attribute: "powerSource",				commands: null,																		multiple: true,			],
-    	[ name: "presenceSensor",					display: "Presence Sensor",					attribute: "presence",					commands: null,																		multiple: true,			],
-    	[ name: "refresh",							display: "Refresh",							attribute: null,						commands: ["refresh"],																multiple: true,			],
-    	[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					commands: null,																		multiple: true,			],
+    	[ name: "polling",							display: "Polling",							attribute: null,						commands: ["poll"],																	multiple: true,			devices: "pollable devices",	],
+        [ name: "powerMeter",						display: "Power Meter",						attribute: "power",						commands: null,																		multiple: true,			devices: "power meters",	],
+        [ name: "powerSource",						display: "Power Source",					attribute: "powerSource",				commands: null,																		multiple: true,			devices: "powered devices",	],
+    	[ name: "presenceSensor",					display: "Presence Sensor",					attribute: "presence",					commands: null,																		multiple: true,			devices: "presence sensors",	],
+    	[ name: "refresh",							display: "Refresh",							attribute: null,						commands: ["refresh"],																multiple: true,			devices: "refreshable devices",	],
+    	[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					commands: null,																		multiple: true,			devices: "humidity sensors",	],
     	[ name: "relaySwitch",						display: "Relay Switch",					attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "relays",			],
-    	[ name: "shockSensor",						display: "Shock Sensor",					attribute: "shock",						commands: null,																		multiple: true,			],
-    	[ name: "signalStrength",					display: "Signal Strength",					attribute: "lqi",						commands: null,																		multiple: true,			],
+    	[ name: "shockSensor",						display: "Shock Sensor",					attribute: "shock",						commands: null,																		multiple: true,			devices: "shock sensors",	],
+    	[ name: "signalStrength",					display: "Signal Strength",					attribute: "lqi",						commands: null,																		multiple: true,			devices: "wireless devices",	],
     	[ name: "alarm",							display: "Siren",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
-    	[ name: "sleepSensor",						display: "Sleep Sensor",					attribute: "sleeping",					commands: null,																		multiple: true,			],
-    	[ name: "smartHomeMonitor",					display: "Smart Home Monitor",				attribute: "alarmSystemStatus",			commands: null,																		multiple: true,			devices: "Smart Home Monitor", virtualDevice: location,	virtualDeviceName: "Smart Home Monitor"	],
-    	[ name: "smokeDetector",					display: "Smoke Detector",					attribute: "smoke",						commands: null,																		multiple: true,			],
-        [ name: "soundSensor",						display: "Sound Sensor",					attribute: "sound",						commands: null,																		multiple: true,			],
+    	[ name: "sleepSensor",						display: "Sleep Sensor",					attribute: "sleeping",					commands: null,																		multiple: true,			devices: "sleep sensors",	],
+    	[ name: "smartHomeMonitor",					display: "Smart Home Monitor",				attribute: "alarmSystemStatus",			commands: ["setAlarmSystemStatus"],																		multiple: true,			, virtualDevice: location,	virtualDeviceName: "Smart Home Monitor"	],
+    	[ name: "smokeDetector",					display: "Smoke Detector",					attribute: "smoke",						commands: null,																		multiple: true,			devices: "smoke detectors",	],
+        [ name: "soundSensor",						display: "Sound Sensor",					attribute: "sound",						commands: null,																		multiple: true,			devices: "sound sensors",	],
     	[ name: "speechSynthesis",					display: "Speech Synthesis",				attribute: null,						commands: ["speak"],																multiple: true,			devices: "speech synthesizers", ],
-        [ name: "stepSensor",						display: "Step Sensor",						attribute: "steps",						commands: null,																		multiple: true,			],
+        [ name: "stepSensor",						display: "Step Sensor",						attribute: "steps",						commands: null,																		multiple: true,			devices: "step sensors",	],
     	[ name: "switch",							display: "Switch",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "switches",			],
     	[ name: "switchLevel",						display: "Switch Level",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers" ],
-        [ name: "soundPressureLevel",				display: "Sound Pressure Level",			attribute: "soundPressureLevel",		commands: null,																		multiple: true,			],
-    	[ name: "consumable",						display: "Stock Management",				attribute: "consumable",				commands: null,																		multiple: true,			],
-    	[ name: "tamperAlert",						display: "Tamper Alert",					attribute: "tamper",					commands: null,																		multiple: true,			],
-    	[ name: "temperatureMeasurement",			display: "Temperature Measurement",			attribute: "temperature",				commands: null,																		multiple: true,			],
+        [ name: "soundPressureLevel",				display: "Sound Pressure Level",			attribute: "soundPressureLevel",		commands: null,																		multiple: true,			devices: "sound pressure sensors",	],
+    	[ name: "consumable",						display: "Stock Management",				attribute: "consumable",				commands: null,																		multiple: true,			devices: "consumables",	],
+    	[ name: "tamperAlert",						display: "Tamper Alert",					attribute: "tamper",					commands: null,																		multiple: true,			devices: "tamper sensors",	],
+    	[ name: "temperatureMeasurement",			display: "Temperature Measurement",			attribute: "temperature",				commands: null,																		multiple: true,			devices: "temperature sensors",	],
         [ name: "thermostat",						display: "Thermostat",						attribute: "temperature",				commands: ["setHeatingSetpoint", "setCoolingSetpoint", "off", "heat", "emergencyHeat", "cool", "setThermostatMode", "fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode", "auto"],	multiple: true,		devices: "thermostats"	],
         [ name: "thermostatCoolingSetpoint",		display: "Thermostat Cooling Setpoint",		attribute: "coolingSetpoint",			commands: ["setCoolingSetpoint"],													multiple: true,			],
     	[ name: "thermostatFanMode",				display: "Thermostat Fan Mode",				attribute: "thermostatFanMode",			commands: ["fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode"],				multiple: true,			devices: "fans",	],
@@ -5558,13 +5695,13 @@ private capabilities() {
     	[ name: "thermostatMode",					display: "Thermostat Mode",					attribute: "thermostatMode",			commands: ["off", "heat", "emergencyHeat", "cool", "auto", "setThermostatMode"],	multiple: true,			],
     	[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	commands: null,																		multiple: true,			],
     	[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		commands: null,																		multiple: true,			],
-    	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "threeAxis",					commands: null,																		multiple: true,			],
+    	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "threeAxis",					commands: null,																		multiple: true,			devices: "three axis sensors",	],
     	[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			devices: "timed sessions"],
     	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
     	[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						commands: null,																		multiple: true,			],
     	[ name: "valve",							display: "Valve",							attribute: "contact",					commands: ["open", "close"],														multiple: true,			devices: "valves",			],
-    	[ name: "voltageMeasurement",				display: "Voltage Measurement",				attribute: "voltage",					commands: null,																		multiple: true,			],
-    	[ name: "waterSensor",						display: "Water Sensor",					attribute: "water",						commands: null,																		multiple: true,			],
+    	[ name: "voltageMeasurement",				display: "Voltage Measurement",				attribute: "voltage",					commands: null,																		multiple: true,			devices: "volt meters",	],
+    	[ name: "waterSensor",						display: "Water Sensor",					attribute: "water",						commands: null,																		multiple: true,			devices: "leak sensors",	],
         [ name: "windowShade",						display: "Window Shade",					attribute: "windowShade",				commands: ["open", "close", "presetPosition"],										multiple: true,			devices: "window shades",	],
     ]
 }
@@ -5584,6 +5721,8 @@ private commands() {
     	[ name: "windowShade.open",							category: "Convenience",				group: "Control [devices]",			display: "Open fully",					parameters: [], ],
     	[ name: "windowShade.close",						category: "Convenience",				group: "Control [devices]",			display: "Close fully",					parameters: [], ],
     	[ name: "windowShade.presetPosition",				category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
+        [ name: "locationMode.setMode",						category: "Location",					group: "Control location",			display: "Set location mode",			parameters: [], ],
+        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location",			display: "Set Smart Home Monitor status",parameters: [], ],
 		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
     	[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], ],
     	[ name: "take",										category: "Safety and Security",		group: "Control [devices]",			display: "Take a picture",				parameters: [], ],
@@ -5636,17 +5775,21 @@ private commands() {
 
 private virtualCommands() {
 	return [
-    	[ name: "wait",					requires: [],			 			display: "Wait",					parameters: ["Time (minutes):number[1..1440]"],												immediate: true,	],
-    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",			parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]"],		immediate: true,	],
-    	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																												],
-    	[ name: "captureAttribute",		requires: [],			 			display: "Capture attribute to variable", parameters: ["Attribute:attribute","Into variable...:string"],			singleDevice: true,	varEntry: 1],
-    	[ name: "captureState",			requires: [],			 			display: "Capture state to variable",parameters: ["?Attributes:attributes","Into variable...:string"],		singleDevice: true,	varEntry: 1],
-    	[ name: "captureStateLocally",	requires: [],			 			display: "Capture local state",		parameters: ["?Attributes:attributes"],														],
-    	[ name: "captureStateGlobally",	requires: [],			 			display: "Capture global state",	parameters: ["?Attributes:attributes"],														],
-    	[ name: "restoreAttribute",		requires: [],			 			display: "Restore attribute from variable",	parameters: ["Attribute:attribute","From variable...:variable"],								],
-    	[ name: "restoreState",			requires: [],			 			display: "Restore state from variable",parameters: ["?Attributes:attributes","From variable...:variable"],							],
-    	[ name: "restoreStateLocally",	requires: [],			 			display: "Restore local state",		parameters: ["?Attributes:attributes"],														],
-    	[ name: "restoreStateGlobally",	requires: [],			 			display: "Restore global state",	parameters: ["?Attributes:attributes"],														],
+    	[ name: "wait",					requires: [],			 			display: "Wait",							parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	],
+    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	],
+    	[ name: "waitState",			requires: [],			 			display: "Wait for piston state change",	parameters: ["Change to:enum[any state,false state,true state]"],															immediate: true,	location: true,	],
+    	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																																															],
+    	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"]					],
+    	[ name: "captureAttribute",		requires: [],			 			display: "Capture attribute to variable", 	parameters: ["Attribute:attribute","Into variable...:string"],							singleDevice: true,	varEntry: 1,										],
+    	[ name: "captureState",			requires: [],			 			display: "Capture state to variable",		parameters: ["?Attributes:attributes","Into variable...:string"],						singleDevice: true,	varEntry: 1,										],
+    	[ name: "captureStateLocally",	requires: [],			 			display: "Capture local state",				parameters: ["?Attributes:attributes"],																															],
+    	[ name: "captureStateGlobally",	requires: [],			 			display: "Capture global state",			parameters: ["?Attributes:attributes"],																															],
+    	[ name: "restoreAttribute",		requires: [],			 			display: "Restore attribute from variable",	parameters: ["Attribute:attribute","From variable...:variable"],																								],
+    	[ name: "restoreState",			requires: [],			 			display: "Restore state from variable",		parameters: ["?Attributes:attributes","From variable...:variable"],																								],
+    	[ name: "restoreStateLocally",	requires: [],			 			display: "Restore local state",				parameters: ["?Attributes:attributes"],																															],
+    	[ name: "restoreStateGlobally",	requires: [],			 			display: "Restore global state",			parameters: ["?Attributes:attributes"],																															],
+    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	],
+    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	],
     ]
 }
 
@@ -5709,7 +5852,7 @@ private attributes() {
     	[ name: "water",					type: "enum",				range: null,			unit: null,		options: ["dry", "wet"],																					],
     	[ name: "windowShade",				type: "enum",				range: null,			unit: null,		options: ["unknown", "open", "closed", "opening", "closing", "partially open"],								],
     	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: location.modes,																					],
-    	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: getAlarmOptions(),															],
+    	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: getAlarmSystemStatusOptions(),															],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
     ]
 }
@@ -5771,7 +5914,7 @@ private comparisons() {
     ]
 }
 
-private getAlarmOptions() {
+private getAlarmSystemStatusOptions() {
 	return ["Disarmed", "Armed/Stay", "Armed/Away"]
 }
 
