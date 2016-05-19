@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/19/2016 >>> v0.0.032.20160519 - Alpha test version - Added delayed turn on, off and toggle
  *	 5/19/2016 >>> v0.0.031.20160519 - Alpha test version - Minor fixes, removed [] from no-parameter device commands
  *	 5/19/2016 >>> v0.0.030.20160519 - Alpha test version - Implemented the Toggle and Flash virtual commands, ability to control any device using Capability selection, and unified the way location control works. Minor fixes, spelling and others
  *	 5/18/2016 >>> v0.0.02f.20160518 - Alpha test version - Minor bug fixes - including time condition scheduling, unscheduling of all event tasks prior to rescheduling (deleting a time trigger left the schedule behind)
@@ -87,7 +88,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.031.20160519"
+	return "v0.0.032.20160519"
 }
 
 
@@ -3959,6 +3960,43 @@ private task_vcmd_toggle(device, task) {
     return true
 }
 
+private task_vcmd_delayedToggle(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 1)) {
+    	//we need a device that has both on and off commands
+    	return false
+    }
+    def delay = params[0].d
+    if (device.currentState("switch") == "on") {
+    	device.off([delay: delay])
+    } else {
+    	device.on([delay: delay])
+    }
+    return true
+}
+
+private task_vcmd_delayedOn(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("on") || (params.size() != 1)) {
+    	//we need a device that has both on and off commands
+    	return false
+    }
+    def delay = params[0].d
+   	device.on([delay: delay])
+    return true
+}
+
+private task_vcmd_delayedOff(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("off") || (params.size() != 1)) {
+    	//we need a device that has both on and off commands
+    	return false
+    }
+    def delay = params[0].d
+   	device.off([delay: delay])
+    return true
+}
+
 private task_vcmd_flash(device, task) {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 3)) {
@@ -5780,6 +5818,9 @@ private virtualCommands() {
     	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	],
     	[ name: "waitState",			requires: [],			 			display: "Wait for piston state change",	parameters: ["Change to:enum[any state,false state,true state]"],															immediate: true,	location: true,	],
     	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																																															],
+    	[ name: "delayedOn",			requires: ["on"], 					display: "Turn on (delayed)",				parameters: ["Delay (ms):number[1..60000]"]																														],
+    	[ name: "delayedOff",			requires: ["off"], 					display: "Turn off (delayed)",				parameters: ["Delay (ms):number[1..60000]"]																														],
+    	[ name: "delayedToggle",		requires: ["on", "off"], 			display: "Toggle (delayed)",				parameters: ["Delay (ms):number[1..60000]"]																														],
     	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"]					],
     	[ name: "captureAttribute",		requires: [],			 			display: "Capture attribute to variable", 	parameters: ["Attribute:attribute","Into variable...:string"],							singleDevice: true,	varEntry: 1,										],
     	[ name: "captureState",			requires: [],			 			display: "Capture state to variable",		parameters: ["?Attributes:attributes","Into variable...:string"],						singleDevice: true,	varEntry: 1,										],
