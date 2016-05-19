@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/19/2016 >>> v0.0.031.20160519 - Alpha test version - Minor fixes, removed [] from no-parameter device commands
  *	 5/19/2016 >>> v0.0.030.20160519 - Alpha test version - Implemented the Toggle and Flash virtual commands, ability to control any device using Capability selection, and unified the way location control works. Minor fixes, spelling and others
  *	 5/18/2016 >>> v0.0.02f.20160518 - Alpha test version - Minor bug fixes - including time condition scheduling, unscheduling of all event tasks prior to rescheduling (deleting a time trigger left the schedule behind)
  *	 5/18/2016 >>> v0.0.02e.20160518 - Alpha test version - Broken debugging mode down into several levels, info, trace, debug, warn and error. Fixed display of device names where device has no label.
@@ -86,7 +87,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.030.20160519"
+	return "v0.0.031.20160519"
 }
 
 
@@ -3935,7 +3936,7 @@ private processCommandTask(task) {
                         return true
                     } else {
                         debug "Executing: [${device}].${command.name}()", null, "info"
-                        device."${command.name}"([])
+                        device."${command.name}"()
                         return true
                     }
                 }
