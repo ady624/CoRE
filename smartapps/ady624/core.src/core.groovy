@@ -2797,7 +2797,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison
         if (comparison.contains("between")) {
             def a1 = addOffsetToMinutes(m1, o1)
         	def a2 = addOffsetToMinutes(m2, o2)
-        log.trace "$a1 <<< $m1, $o1 ---- $a2 <<< $m2, $o2"
             def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
             if (comparison.contains("not")) {
             	eval = !eval
@@ -5816,6 +5815,8 @@ private capabilities() {
 
 private commands() {
 	return [
+        [ name: "locationMode.setMode",						category: "Location",					group: "Control location",			display: "Set location mode",			parameters: [], ],
+        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location",			display: "Set Smart Home Monitor status",parameters: [], ],
     	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
     	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
     	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
@@ -5829,8 +5830,6 @@ private commands() {
     	[ name: "windowShade.open",							category: "Convenience",				group: "Control [devices]",			display: "Open fully",					parameters: [], ],
     	[ name: "windowShade.close",						category: "Convenience",				group: "Control [devices]",			display: "Close fully",					parameters: [], ],
     	[ name: "windowShade.presetPosition",				category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
-        [ name: "locationMode.setMode",						category: "Location",					group: "Control location",			display: "Set location mode",			parameters: [], ],
-        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location",			display: "Set Smart Home Monitor status",parameters: [], ],
 		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
     	[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], ],
     	[ name: "take",										category: "Safety and Security",		group: "Control [devices]",			display: "Take a picture",				parameters: [], ],
