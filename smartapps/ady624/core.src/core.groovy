@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/20/2016 >>> v0.0.036.20160520 - Alpha test version - Optimized time condition evaluation for next event time - limitations: events only happen at designated times, with no regards to any existing time restrictions (i.e. will trigger an event on Fri even if Fri is restricted - the evaluation at that time, however, will take restrictions into account)
  *	 5/19/2016 >>> v0.0.035.20160519 - Alpha test version - Fixed a problem where custom time in a "between" condition would reset the offset for sunrise/sunset
  *	 5/19/2016 >>> v0.0.034.20160519 - Alpha test version - Notification support. Push/SMS/Notification. Coming soon: variable support in message.
  *	 5/19/2016 >>> v0.0.033.20160519 - Alpha test version - Location Mode and SHM status now trigger events
@@ -91,7 +92,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.035.20160519"
+	return "v0.0.036.20160520"
 }
 
 
@@ -2681,42 +2682,40 @@ private evaluateDeviceCondition(condition, evt) {
     return  result
 }
 
-private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison = null, comp = null) {
+private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEventTime = false) {
     //we sometimes optimize this and sent the comparison text and object
-    if (!comparison || !comp) {    
-        //no condition? not time condition? false!
-        if (!condition || (condition.attr != "time")) {
-            return false
-        }
-        //get UTC now if no unixTime is provided
-        unixTime = unixTime ? unixTime : now()
-        //convert that to location's timezone, for comparison
-        def attr = getAttributeByName(condition.attr)
-        comparison = cleanUpComparison(condition.comp)
-        comp = getComparisonOption(condition.attr, comparison)    
-        //if we can't find the attribute (can't be...) or the comparison object, or we're dealing with a trigger, exit stage false
-        if (!attr || !comp) {
-            return false
-        }
+    //no condition? not time condition? false!
+    if (!condition || (condition.attr != "time")) {
+        return false
+    }
+    //get UTC now if no unixTime is provided
+    unixTime = unixTime ? unixTime : now()
+    //convert that to location's timezone, for comparison
+    def attr = getAttributeByName(condition.attr)
+    def comparison = cleanUpComparison(condition.comp)
+    def comp = getComparisonOption(condition.attr, comparison)    
+    //if we can't find the attribute (can't be...) or the comparison object, or we're dealing with a trigger, exit stage false
+    if (!attr || !comp) {
+        return false
+    }
 
-        if (evt && (comp.trigger == comparison)) {
-            //trigger
-            if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
-                condition.lt = evt.date.time
-                //we have a time event returning as a result of a trigger, assume true
-                return true
-            } else {
+    if (evt && (comp.trigger == comparison)) {
+        //trigger
+        if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
+            condition.lt = evt.date.time
+            //we have a time event returning as a result of a trigger, assume true
+            return true
+        } else {
 
 
-                if (comparison.contains("stay")) {
-                    //we have a stay condition
-                }
-                return false
+            if (comparison.contains("stay")) {
+                //we have a stay condition
             }
+            return false
         }
-	}
+    }
 
-    def time = adjustTime(unixTime)
+	def time = adjustTime(unixTime)
 
 	//check comparison
     def result = true
@@ -2724,7 +2723,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison
     	//we match any time
     } else {
         //convert times to number of minutes since midnight for easy comparison
-        def m = time ? time.getHours() * 60 + time.getMinutes() : 0
+        def m = time ? time.hours * 60 + time.minutes : 0
         def m1 = null
         def m2 = null
        	//go through each parameter
@@ -2754,14 +2753,14 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison
                     break
                 case "sunrise":
                 	t = getSunrise()
-                    v = t ? t.getHours() * 60 + t.getMinutes() : null
+                    v = t ? t.hours * 60 + t.minutes : null
                 	break
 				case "noon":
                 	v = 12 * 60 //noon is 720 minutes away from midnight
                     break
                 case "sunset":
                 	t = getSunset()
-                    v = t ? t.getHours() * 60 + t.getMinutes() : null
+                    v = t ? t.hours * 60 + t.minutes : null
                 	break
             }
             if (i == 1) {
@@ -2771,39 +2770,94 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison
             }
         }
         
-        if (comparison.contains("before")) {
-        	if ((m1 == null) || (m >= addOffsetToMinutes(m1, o1))) {
-        		//m before m1?
-        		return false
-            }
-        }
-        if (comparison.contains("after")) {
-        	if ((m1 == null) || (m < addOffsetToMinutes(m1, o1))) {
-        		//m after m1?
-        		return false
-            }
-        }
-        if (comparison.contains("around")) {
-        	//if no offset, we can't really match anything
-            if (!o1) {
-            	return false
-            }
-        	def a1 = addOffsetToMinutes(m1, -o1)
-        	def a2 = addOffsetToMinutes(m1, +o1)
-            if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1)) {
-        		return false
-            }
-        }       
-        if (comparison.contains("between")) {
-            def a1 = addOffsetToMinutes(m1, o1)
-        	def a2 = addOffsetToMinutes(m2, o2)
-            def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
-            if (comparison.contains("not")) {
-            	eval = !eval
-            }
-            if (eval) {
-        		return false
-            }
+        def rightNow = time.time
+        def lastMidnight =  rightNow - rightNow.mod(86400000)
+        def nextMidnight =  lastMidnight + 86400000
+        
+        switch (comparison) {
+        	case { comparison.contains("before") }:
+                if ((m1 == null) || (m >= addOffsetToMinutes(m1, o1))) {
+                    //m before m1?
+                    result = false
+                }
+                if (getNextEventTime) {
+                	if (result) {
+                    	//we're looking for the next time when time is not before given amount, that's exactly the time we're looking at
+                        return convertDateToUnixTime(lastMidnight + addOffsetToMinutes(m1, o1) * 60000)
+                    } else {
+                    	//the next time time is before a certain time is... next midnight...
+                        return convertDateToUnixTime(nextMidnight)
+                    }
+                }
+                if (!result) return false
+                break
+        	case { comparison.contains("after") }:
+        		if ((m1 == null) || (m < addOffsetToMinutes(m1, o1))) {
+        			//m after m1?
+	        		result = false
+	            }
+                if (getNextEventTime) {
+                	if (result) {
+                    	//we're looking for the next time when time is not after given amount, next midnight
+                        return convertDateToUnixTime(nextMidnight)
+                    } else {
+                    	//the next time time is before a certain time is... next midnight...
+                        return convertDateToUnixTime(lastMidnight + addOffsetToMinutes(m1, o1) * 60000)
+                    }
+                }
+                if (!result) return result               
+                break
+            case { comparison.contains("around") }:
+                //if no offset, we can't really match anything
+                def a1 = addOffsetToMinutes(m1, -o1)
+                def a2 = addOffsetToMinutes(m1, +o1)
+                if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1)) {                
+                    result = false
+                }
+                if (getNextEventTime) {
+                	if (result) {
+                    	//we're in between the +/- time, the a2 is the next time we are looking for
+                        return convertDateToUnixTime(lastMidnight + a2 * 60000)
+                    } else {
+                    	//return a1 time either today or tomorrow
+                    	return convertDateToUnixTime((a1 < m ? nextMidnight : lastMidnight) + a1 * 60000)
+                    }
+                }
+                if (!result) return result               
+                break
+            case { comparison.contains("between") }:
+                def a1 = addOffsetToMinutes(m1, o1)
+                def a2 = addOffsetToMinutes(m2, o2)
+                def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
+                if (comparison.contains("not")) {
+                    eval = !eval
+                }
+                if (eval) {
+                    result = false
+                }
+                if (getNextEventTime) {
+                	if (result) {
+                    	//we're in between the a1 and a2
+                        if (a1 < a2) {
+                        	//normal range, a2 is our time
+                            return convertDateToUnixTime(lastMidnight + a2 * 60000)
+                        } else {
+                        	//reverse range, we exit the interval at every a2, today or tomorrow
+                            return convertDateToUnixTime((a2 < m ? nextMidnight : lastMidnight) + a2 * 60000)
+                        }
+                    } else {
+                    	//we're not in between the a1 and a2
+                        if (a1 < a2) {
+                        	//normal range, a1 is our time, either today or tomorrow
+	                    	return convertDateToUnixTime((a1 < m ? nextMidnight : lastMidnight) + a1 * 60000)
+                        } else {
+                        	//reverse range, a1 is our time
+                            return convertDateToUnixTime(lastMidnight + a1 * 60000)
+                        }
+                    }
+                }                
+                if (!result) return result
+                break
         }
     }
 
@@ -3385,6 +3439,8 @@ private unscheduleTask(task, ownerId, deviceId) {
 }
 
 private getNextTimeConditionTime(condition, startTime = null) {
+def perf = now()
+
 	//no condition? not time condition? false!
 	if (!condition || (condition.attr != "time")) {
     	return null
@@ -3394,22 +3450,8 @@ private getNextTimeConditionTime(condition, startTime = null) {
     //remove the seconds...
     unixTime = unixTime - unixTime.mod(60000)
     //we give it up to 25 hours to find the next time when the condition state would change
-    def comparison = cleanUpComparison(condition.comp)
-	def comp = getComparisonOption(condition.attr, comparison)
-    if ((!comparison) || (!comp)) {
-    	return null
-    }
-    def state = evaluateTimeCondition(condition, null, unixTime, comparison, comp)
-    def perf = now()
-	for (def i = 1; i < 1500; i++) {
-    	//increment one minute
-    	unixTime = unixTime + 60000
-    	def nextState = evaluateTimeCondition(condition, null, unixTime, comparison, comp)
-        if (state != nextState) {
-        	return unixTime
-        }    	
-    }
-    return null
+    //optimized procedure - limitations : this will only trigger on strict condition times, without actually accounting for time restrictions...
+    return evaluateTimeCondition(condition, null, unixTime, true)
 }
 
 private getNextTimeTriggerTime(condition, startTime = null) {
@@ -4281,6 +4323,9 @@ private formatLocalTime(time, format = "EEE, MMM d yyyy @ h:mm a z") {
 }
 
 private convertDateToUnixTime(date) {
+	if (!(date instanceof Date)) {
+    	date = new Date(date)
+    }
 	return date.time - location.timeZone.getOffset(date.time)
 }
 
@@ -5285,7 +5330,20 @@ private setAlarmSystemStatus(status) {
 }
 
 private formatMessage(message) {
-	
+	if (!message) {
+    	return message
+    }
+    def dirty = true
+    while (dirty) {
+    	dirty = false
+		def var = message.find{ it ==~ /\{(.*)?\}/ }
+        if (var) {
+        	log.trace "FOUND VARIABLE $var"
+        	dirty = true
+            message.replace(var, "---")
+        }
+    }
+    return message
 }
 
 
@@ -6077,4 +6135,5 @@ private initialSystemStore() {
 /******************************************************************************/
 
 private dev() {
+	log.trace formatMessage("Adrian face {variable} multa")
 }
