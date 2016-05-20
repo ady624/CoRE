@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/19/2016 >>> v0.0.034.20160519 - Alpha test version - Notification support. Push/SMS/Notification. Coming soon: variable support in message.
  *	 5/19/2016 >>> v0.0.033.20160519 - Alpha test version - Location Mode and SHM status now trigger events
  *	 5/19/2016 >>> v0.0.032.20160519 - Alpha test version - Added delayed turn on, off and toggle
  *	 5/19/2016 >>> v0.0.031.20160519 - Alpha test version - Minor fixes, removed [] from no-parameter device commands
@@ -89,7 +90,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.033.20160519"
+	return "v0.0.034.20160519"
 }
 
 
@@ -4060,6 +4061,44 @@ private task_vcmd_setAlarmSystemStatus(device, task) {
     return false
 }
 
+private task_vcmd_sendNotification(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 1) {
+    	return false
+    }
+    def message = params[0].d
+    sendNotificationEvent(message)
+}
+
+private task_vcmd_sendPushNotification(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 2) {
+    	return false
+    }
+    def message = params[0].d
+    def saveNotification = !!params[1].d
+    if (saveNotification) {
+    	sendPush(message)
+    } else {
+		sendPushMessage(message)
+	}
+}
+
+private task_vcmd_sendSMSNotification(device, task) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 3) {
+    	return false
+    }
+    def message = params[0].d
+    def phone = params[1].d
+    def saveNotification = !!params[2].d
+    if (saveNotification) {
+    	sendSms(phone, message)
+    } else {
+		sendSmsMessage(phone, message)
+	}
+}
+
 
 
 
@@ -5640,6 +5679,11 @@ private parseCommandParameter(parameter) {
                 	case "string":
                 	case "text":
                     	return [title: title, type: "text", required: required, last: last]
+                	case "bool":
+                	case "email":
+                	case "time":
+                	case "phone":
+                	case "contact":
                 	case "number":
                 	case "decimal":
                     	return [title: title, type: dataType, required: required, last: last]
@@ -5650,6 +5694,11 @@ private parseCommandParameter(parameter) {
                 	case "string":
                 	case "text":
                     	return [title: title, type: "text", required: required, last: last]
+                	case "bool":
+                	case "email":
+                	case "time":
+                	case "phone":
+                	case "contact":
                 	case "number":
                 	case "decimal":
                     	return [title: title, type: dataType, range: tokens[1], required: required, last: last]
@@ -5842,6 +5891,9 @@ private virtualCommands() {
     	[ name: "restoreStateGlobally",	requires: [],			 			display: "Restore global state",			parameters: ["?Attributes:attributes"],																															],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	],
+    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	],
+    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	],
+    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true,	],
     ]
 }
 
