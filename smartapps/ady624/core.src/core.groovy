@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/19/2016 >>> v0.0.033.20160519 - Alpha test version - Location Mode and SHM status now trigger events
  *	 5/19/2016 >>> v0.0.032.20160519 - Alpha test version - Added delayed turn on, off and toggle
  *	 5/19/2016 >>> v0.0.031.20160519 - Alpha test version - Minor fixes, removed [] from no-parameter device commands
  *	 5/19/2016 >>> v0.0.030.20160519 - Alpha test version - Implemented the Toggle and Flash virtual commands, ability to control any device using Capability selection, and unified the way location control works. Minor fixes, spelling and others
@@ -88,7 +89,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.032.20160519"
+	return "v0.0.033.20160519"
 }
 
 
@@ -1117,7 +1118,7 @@ def pageAction(params) {
                     //sort the ids, we really want to have these in the proper order
                     ids = ids.sort()
                     def availableCommands = (deviceAction ? listCommonDeviceCommands(devices, usedCapabilities) : [])
-                    for (vcmd in virtualCommands()) {
+                    for (vcmd in virtualCommands().sort { it.display }) {
                         if ((!(vcmd.display in availableCommands)) && (vcmd.location || deviceAction)) {
                             def ok = true
                         	if (vcmd.requires && vcmd.requires.size()) {
@@ -1838,23 +1839,32 @@ private updateCondition(condition) {
 	condition.cap = settings["condCap${condition.id}"]
 	condition.dev = []
     condition.attr = cleanUpAttribute(settings["condAttr${condition.id}"])
-    if (condition.cap == "Date & Time") {
-    	condition.attr = "time"
+    switch (condition.cap) {
+    	case "Date & Time":
+        	condition.attr = "time"
+            condition.dev.push "time"
+        	break
+        case "Mode":
+        case "Location Mode":
+        	condition.attr = "mode"
+            condition.dev.push "location"
+            break
+        case "Smart Home Monitor":
+        	condition.attr = "alarmSystemStatus"
+            condition.dev.push "location"
+            break
     }
     if (!condition.attr) {
 	    def cap = getCapabilityByDisplay(condition.cap)
         if (cap && cap.attribute) {
     		condition.attr = cap.attribute
+            if (cap.virtualDevice) condition.dev.push(cap.virtualDevice)
         }
     }
-    if (condition.attr == "time") {
-    	condition.dev.push(condition.attr)
-    } else {
-        for (device in settings["condDevices${condition.id}"])
-        {
-            //save the list of device IDs - we can't have the actual device objects in the state
-            condition.dev.push(device.id)
-        }
+    for (device in settings["condDevices${condition.id}"])
+    {
+        //save the list of device IDs - we can't have the actual device objects in the state
+        condition.dev.push(device.id)
     }
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
     condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
@@ -2462,7 +2472,7 @@ private checkEventEligibility(condition, evt) {
                 }
             }
             for (deviceId in condition.dev) {
-                if ((evt.deviceId == deviceId) && (evt.name == condition.attr)) {
+                if ((evt.deviceId ? evt.deviceId : "location" == deviceId) && (evt.name == condition.attr)) {
                 	if (condition.trg) {
                     	//we found a trigger that matches the event, exit immediately
                     	return 2
@@ -5263,7 +5273,7 @@ private listComparisonOptions(attributeName, allowTriggers) {
     def conditions = []
     def triggers = []
     def attribute = getAttributeByName(attributeName)
-    def allowTimedComparisons = !(attributeName in ["locationMode", "alarmSystemStatus"])
+    def allowTimedComparisons = !(attributeName in ["mode", "alarmSystemStatus"])
     if (attribute) {
     	def optionCount = attribute.options ? attribute.options.size() : 0
         def attributeType = attribute.type
@@ -5687,7 +5697,7 @@ private capabilities() {
     	[ name: "configure",						display: "Configure",						attribute: null,						commands: ["configure"],															multiple: true,			devices: "configurable devices",	],
     	[ name: "consumable",						display: "Consumable",						attribute: "consumable",				commands: ["setConsumableStatus"],													multiple: true,			devices: "consumables",	],
 		[ name: "contactSensor",					display: "Contact Sensor",					attribute: "contact",					commands: null,																		multiple: true,			devices: "contact sensors",	],
-    	[ name: "dateAndTime",						display: "Date & Time",						attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "dt"],		virtualDeviceName: "Date & Time"	],
+    	[ name: "dateAndTime",						display: "Date & Time",						attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "time", name: "time"],		virtualDeviceName: "Date & Time"	],
     	[ name: "switchLevel",						display: "Dimmable Light",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
     	[ name: "switchLevel",						display: "Dimmer",							attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers",			],
     	[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					commands: null,																		multiple: true,			devices: "energy meters"],
@@ -5695,10 +5705,10 @@ private capabilities() {
         [ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
     	[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						commands: null,																		multiple: true,			devices: "leak sensors",	],
     	[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-        [ name: "locationMode",						display: "Location Mode",					attribute: "locationMode",				commands: ["setMode"],																multiple: false,		virtualDevice: location	],
+        [ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
         [ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],														multiple: true,			devices: "electronic locks", ],
     	[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
-        [ name: "locationMode",						display: "Mode",							attribute: "locationMode",				commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
+        [ name: "locationMode",						display: "Mode",							attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
     	[ name: "momentary",						display: "Momentary",						attribute: null,						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
     	[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					commands: null,																		multiple: true,			devices: "motion sensors",	],
     	[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
