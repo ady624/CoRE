@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/20/2016 >>> v0.0.03a.20160520 - Alpha test version - Color support. Added all 140 standard CSS colors, plus 4 white light colors. Partially tested with Osram (Green is green and Crimson is crimson)
  *	 5/20/2016 >>> v0.0.039.20160520 - Alpha test version - Fixed an error where an incomplete (during building) time condition would fail due to next event calculation introduced in v0.0.036.20160520
  *	 5/20/2016 >>> v0.0.038.20160520 - Alpha test version - Displaying individual actions (when true) in the main piston page and showing action restrictions as per https://github.com/ady624/CoRE/issues/7
  *	 5/20/2016 >>> v0.0.037.20160520 - Alpha test version - Modified event duplication detection to only ignore identical events received within one second of each other, or events generated before the last event was generated. Also enabled {$variable} support in notification messages. "Time is {$now}" will return the time... :)
@@ -95,7 +96,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.039.20160520"
+	return "v0.0.03a.20160520"
 }
 
 
@@ -1405,6 +1406,8 @@ def getVariable(name) {
     name = sanitizeVariableName(name)
     if (name == "\$now") return now()
     if (name == "\$random") return Math.random()
+    if (name == "\$randomColor") return getColorByName("Random").rgb
+    if (name == "\$randomColorName") return getColorByName("Random").name
     if (name == "\$randomLevel") return (int)Math.round(100 * Math.random())
     if (name == "\$currentStateDuration") {
     	try {
@@ -1667,6 +1670,11 @@ def initializeCoREPiston() {
     state.tasks = state.tasks ? state.tasks : [:]
     state.store = state.store ? state.store : [:]
     state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
+    for (var in initialSystemStore()) {
+    	if (!state.containsKey(var.key)) {
+        	state.systemStore[var.key] = null
+        }
+    }
     
     subscribeToAll(state.app)
   
@@ -4027,8 +4035,39 @@ private processCommandTask(task) {
                         params.push(it.d)
                     }
                     if (params.size()) {
-                        debug "Executing with parameters: [${device}].${command.name}($params)", null, "info"
-                        device."${command.name}"(params as Object[])
+                    	if ((command.name == "setColor") && (params.size() == 5)) {
+                        	//using a little bit of a hack here
+                            //we should have 5 parameters:
+                            //color name
+                            //color rgb
+                            //hue
+                            //saturation
+                            //lightness
+                            def name = params[0]
+                            def hex = params[1]
+                            def hue = params[2]
+                            def saturation = params[3]
+                            def lightness = params[4]
+                            def p = [:]
+                            if (name) {
+                            	def color = getColorByName(name)
+                                p.hue = color.h
+                                p.saturation = color.s
+                                //ST wrongly calls this level - it's lightness
+                                p.level = color.l
+                            } else if (hex) {
+                            	p.hex = hex
+                            } else {
+                            	p.hue = hue
+                                p.saturation = saturation
+                                p.level - lightness
+                            }
+							debug "Executing with parameters: [${device}].${command.name}($p)", null, "info"
+                        	device."${command.name}"(p)
+                        } else {
+                        	debug "Executing with parameters: [${device}].${command.name}($params)", null, "info"
+                        	device."${command.name}"(params as Object[])
+                        }
                         return true
                     } else {
                         debug "Executing: [${device}].${command.name}()", null, "info"
@@ -5798,6 +5837,8 @@ private parseCommandParameter(parameter) {
                 	case "number":
                 	case "decimal":
                     	return [title: title, type: dataType, required: required, last: last]
+                	case "color":
+                    	return [title: title, type: "enum", options: colorOptions(), required: required, last: last]
                 }
                 break
             case 2:
@@ -5923,7 +5964,7 @@ private commands() {
     	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
     	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
     	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], ],
-    	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","Hue:hue","Saturation:saturation","Level:level"], ],
+    	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], ],
     	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], ],
     	[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], ],
     	[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], ],
@@ -6160,14 +6201,183 @@ private initialSystemStore() {
         "\$previousStateDuration": null,
         "\$previousStateSince": null,
         "\$random": null,
+        "\$randomColor": null,
+        "\$randomColorName": null,
         "\$randomLevel": null,
 	]
 }
 
 
+private colors() {
+	return [
+        [ name: "Soft White",				rgb: "#FFA757",		h: 8,		s: 100,		l: 67,		],
+        [ name: "Warm White",				rgb: "#FFB16E",		h: 8,		s: 100,		l: 72,		],
+        [ name: "Daylight White",			rgb: "#FFE4CE",		h: 8,		s: 100,		l: 90,		],
+        [ name: "Cool White",				rgb: "#FFF6ED",		h: 8,		s: 100,		l: 96,		],
+        [ name: "Alice Blue",				rgb: "#F0F8FF",		h: 58,		s: 100,		l: 97,		],
+        [ name: "Antique White",			rgb: "#FAEBD7",		h: 9,		s: 78,		l: 91,		],
+        [ name: "Aqua",						rgb: "#00FFFF",		h: 50,		s: 100,		l: 50,		],
+        [ name: "Aquamarine",				rgb: "#7FFFD4",		h: 44,		s: 100,		l: 75,		],
+        [ name: "Azure",					rgb: "#F0FFFF",		h: 50,		s: 100,		l: 97,		],
+        [ name: "Beige",					rgb: "#F5F5DC",		h: 17,		s: 56,		l: 91,		],
+        [ name: "Bisque",					rgb: "#FFE4C4",		h: 9,		s: 100,		l: 88,		],
+        [ name: "Black",					rgb: "#000000",		h: 0,		s: 0,		l: 0,		],
+        [ name: "Blanched Almond",			rgb: "#FFEBCD",		h: 10,		s: 100,		l: 90,		],
+        [ name: "Blue",						rgb: "#0000FF",		h: 67,		s: 100,		l: 50,		],
+        [ name: "Blue Violet",				rgb: "#8A2BE2",		h: 75,		s: 76,		l: 53,		],
+        [ name: "Brown",					rgb: "#A52A2A",		h: 0,		s: 59,		l: 41,		],
+        [ name: "Burly Wood",				rgb: "#DEB887",		h: 9,		s: 57,		l: 70,		],
+        [ name: "Cadet Blue",				rgb: "#5F9EA0",		h: 51,		s: 25,		l: 50,		],
+        [ name: "Chartreuse",				rgb: "#7FFF00",		h: 25,		s: 100,		l: 50,		],
+        [ name: "Chocolate",				rgb: "#D2691E",		h: 7,		s: 75,		l: 47,		],
+        [ name: "Coral",					rgb: "#FF7F50",		h: 4,		s: 100,		l: 66,		],
+        [ name: "Corn Flower Blue",			rgb: "#6495ED",		h: 61,		s: 79,		l: 66,		],
+        [ name: "Corn Silk",				rgb: "#FFF8DC",		h: 13,		s: 100,		l: 93,		],
+        [ name: "Crimson",					rgb: "#DC143C",		h: 97,		s: 83,		l: 58,		],
+        [ name: "Cyan",						rgb: "#00FFFF",		h: 50,		s: 100,		l: 50,		],
+        [ name: "Dark Blue",				rgb: "#00008B",		h: 67,		s: 100,		l: 27,		],
+        [ name: "Dark Cyan",				rgb: "#008B8B",		h: 50,		s: 100,		l: 27,		],
+        [ name: "Dark Golden Rod",			rgb: "#B8860B",		h: 12,		s: 89,		l: 38,		],
+        [ name: "Dark Gray",				rgb: "#A9A9A9",		h: 0,		s: 0,		l: 66,		],
+        [ name: "Dark Green",				rgb: "#006400",		h: 33,		s: 100,		l: 20,		],
+        [ name: "Dark Khaki",				rgb: "#BDB76B",		h: 16,		s: 38,		l: 58,		],
+        [ name: "Dark Magenta",				rgb: "#8B008B",		h: 83,		s: 100,		l: 27,		],
+        [ name: "Dark Olive Green",			rgb: "#556B2F",		h: 23,		s: 39,		l: 30,		],
+        [ name: "Dark Orange",				rgb: "#FF8C00",		h: 9,		s: 100,		l: 50,		],
+        [ name: "Dark Orchid",				rgb: "#9932CC",		h: 78,		s: 61,		l: 50,		],
+        [ name: "Dark Red",					rgb: "#8B0000",		h: 0,		s: 100,		l: 27,		],
+        [ name: "Dark Salmon",				rgb: "#E9967A",		h: 4,		s: 72,		l: 70,		],
+        [ name: "Dark Sea Green",			rgb: "#8FBC8F",		h: 33,		s: 25,		l: 65,		],
+        [ name: "Dark Slate Blue",			rgb: "#483D8B",		h: 69,		s: 39,		l: 39,		],
+        [ name: "Dark Slate Gray",			rgb: "#2F4F4F",		h: 50,		s: 25,		l: 25,		],
+        [ name: "Dark Turquoise",			rgb: "#00CED1",		h: 50,		s: 100,		l: 41,		],
+        [ name: "Dark Violet",				rgb: "#9400D3",		h: 78,		s: 100,		l: 41,		],
+        [ name: "Deep Pink",				rgb: "#FF1493",		h: 91,		s: 100,		l: 54,		],
+        [ name: "Deep Sky Blue",			rgb: "#00BFFF",		h: 54,		s: 100,		l: 50,		],
+        [ name: "Dim Gray",					rgb: "#696969",		h: 0,		s: 0,		l: 41,		],
+        [ name: "Dodger Blue",				rgb: "#1E90FF",		h: 58,		s: 100,		l: 56,		],
+        [ name: "Fire Brick",				rgb: "#B22222",		h: 0,		s: 68,		l: 42,		],
+        [ name: "Floral White",				rgb: "#FFFAF0",		h: 11,		s: 100,		l: 97,		],
+        [ name: "Forest Green",				rgb: "#228B22",		h: 33,		s: 61,		l: 34,		],
+        [ name: "Fuchsia",					rgb: "#FF00FF",		h: 83,		s: 100,		l: 50,		],
+        [ name: "Gainsboro",				rgb: "#DCDCDC",		h: 0,		s: 0,		l: 86,		],
+        [ name: "Ghost White",				rgb: "#F8F8FF",		h: 67,		s: 100,		l: 99,		],
+        [ name: "Gold",						rgb: "#FFD700",		h: 14,		s: 100,		l: 50,		],
+        [ name: "Golden Rod",				rgb: "#DAA520",		h: 12,		s: 74,		l: 49,		],
+        [ name: "Gray",						rgb: "#808080",		h: 0,		s: 0,		l: 50,		],
+        [ name: "Green",					rgb: "#008000",		h: 33,		s: 100,		l: 25,		],
+        [ name: "Green Yellow",				rgb: "#ADFF2F",		h: 23,		s: 100,		l: 59,		],
+        [ name: "Honeydew",					rgb: "#F0FFF0",		h: 33,		s: 100,		l: 97,		],
+        [ name: "Hot Pink",					rgb: "#FF69B4",		h: 92,		s: 100,		l: 71,		],
+        [ name: "Indian Red",				rgb: "#CD5C5C",		h: 0,		s: 53,		l: 58,		],
+        [ name: "Indigo",					rgb: "#4B0082",		h: 76,		s: 100,		l: 25,		],
+        [ name: "Ivory",					rgb: "#FFFFF0",		h: 17,		s: 100,		l: 97,		],
+        [ name: "Khaki",					rgb: "#F0E68C",		h: 15,		s: 77,		l: 75,		],
+        [ name: "Lavender",					rgb: "#E6E6FA",		h: 67,		s: 67,		l: 94,		],
+        [ name: "Lavender Blush",			rgb: "#FFF0F5",		h: 94,		s: 100,		l: 97,		],
+        [ name: "Lawn Green",				rgb: "#7CFC00",		h: 25,		s: 100,		l: 49,		],
+        [ name: "Lemon Chiffon",			rgb: "#FFFACD",		h: 15,		s: 100,		l: 90,		],
+        [ name: "Light Blue",				rgb: "#ADD8E6",		h: 54,		s: 53,		l: 79,		],
+        [ name: "Light Coral",				rgb: "#F08080",		h: 0,		s: 79,		l: 72,		],
+        [ name: "Light Cyan",				rgb: "#E0FFFF",		h: 50,		s: 100,		l: 94,		],
+        [ name: "Light Golden Rod Yellow",	rgb: "#FAFAD2",		h: 17,		s: 80,		l: 90,		],
+        [ name: "Light Gray",				rgb: "#D3D3D3",		h: 0,		s: 0,		l: 83,		],
+        [ name: "Light Green",				rgb: "#90EE90",		h: 33,		s: 73,		l: 75,		],
+        [ name: "Light Pink",				rgb: "#FFB6C1",		h: 98,		s: 100,		l: 86,		],
+        [ name: "Light Salmon",				rgb: "#FFA07A",		h: 5,		s: 100,		l: 74,		],
+        [ name: "Light Sea Green",			rgb: "#20B2AA",		h: 49,		s: 70,		l: 41,		],
+        [ name: "Light Sky Blue",			rgb: "#87CEFA",		h: 56,		s: 92,		l: 75,		],
+        [ name: "Light Slate Gray",			rgb: "#778899",		h: 58,		s: 14,		l: 53,		],
+        [ name: "Light Steel Blue",			rgb: "#B0C4DE",		h: 59,		s: 41,		l: 78,		],
+        [ name: "Light Yellow",				rgb: "#FFFFE0",		h: 17,		s: 100,		l: 94,		],
+        [ name: "Lime",						rgb: "#00FF00",		h: 33,		s: 100,		l: 50,		],
+        [ name: "Lime Green",				rgb: "#32CD32",		h: 33,		s: 61,		l: 50,		],
+        [ name: "Linen",					rgb: "#FAF0E6",		h: 8,		s: 67,		l: 94,		],
+        [ name: "Maroon",					rgb: "#800000",		h: 0,		s: 100,		l: 25,		],
+        [ name: "Medium Aquamarine",		rgb: "#66CDAA",		h: 44,		s: 51,		l: 60,		],
+        [ name: "Medium Blue",				rgb: "#0000CD",		h: 67,		s: 100,		l: 40,		],
+        [ name: "Medium Orchid",			rgb: "#BA55D3",		h: 80,		s: 59,		l: 58,		],
+        [ name: "Medium Purple",			rgb: "#9370DB",		h: 72,		s: 60,		l: 65,		],
+        [ name: "Medium Sea Green",			rgb: "#3CB371",		h: 41,		s: 50,		l: 47,		],
+        [ name: "Medium Slate Blue",		rgb: "#7B68EE",		h: 69,		s: 80,		l: 67,		],
+        [ name: "Medium Spring Green",		rgb: "#00FA9A",		h: 44,		s: 100,		l: 49,		],
+        [ name: "Medium Turquoise",			rgb: "#48D1CC",		h: 49,		s: 60,		l: 55,		],
+        [ name: "Medium Violet Red",		rgb: "#C71585",		h: 89,		s: 81,		l: 43,		],
+        [ name: "Midnight Blue",			rgb: "#191970",		h: 67,		s: 64,		l: 27,		],
+        [ name: "Mint Cream",				rgb: "#F5FFFA",		h: 42,		s: 100,		l: 98,		],
+        [ name: "Misty Rose",				rgb: "#FFE4E1",		h: 2,		s: 100,		l: 94,		],
+        [ name: "Moccasin",					rgb: "#FFE4B5",		h: 11,		s: 100,		l: 85,		],
+        [ name: "Navajo White",				rgb: "#FFDEAD",		h: 10,		s: 100,		l: 84,		],
+        [ name: "Navy",						rgb: "#000080",		h: 67,		s: 100,		l: 25,		],
+        [ name: "Old Lace",					rgb: "#FDF5E6",		h: 11,		s: 85,		l: 95,		],
+        [ name: "Olive",					rgb: "#808000",		h: 17,		s: 100,		l: 25,		],
+        [ name: "Olive Drab",				rgb: "#6B8E23",		h: 22,		s: 60,		l: 35,		],
+        [ name: "Orange",					rgb: "#FFA500",		h: 11,		s: 100,		l: 50,		],
+        [ name: "Orange Red",				rgb: "#FF4500",		h: 4,		s: 100,		l: 50,		],
+        [ name: "Orchid",					rgb: "#DA70D6",		h: 84,		s: 59,		l: 65,		],
+        [ name: "Pale Golden Rod",			rgb: "#EEE8AA",		h: 15,		s: 67,		l: 80,		],
+        [ name: "Pale Green",				rgb: "#98FB98",		h: 33,		s: 93,		l: 79,		],
+        [ name: "Pale Turquoise",			rgb: "#AFEEEE",		h: 50,		s: 65,		l: 81,		],
+        [ name: "Pale Violet Red",			rgb: "#DB7093",		h: 94,		s: 60,		l: 65,		],
+        [ name: "Papaya Whip",				rgb: "#FFEFD5",		h: 10,		s: 100,		l: 92,		],
+        [ name: "Peach Puff",				rgb: "#FFDAB9",		h: 8,		s: 100,		l: 86,		],
+        [ name: "Peru",						rgb: "#CD853F",		h: 8,		s: 59,		l: 53,		],
+        [ name: "Pink",						rgb: "#FFC0CB",		h: 97,		s: 100,		l: 88,		],
+        [ name: "Plum",						rgb: "#DDA0DD",		h: 83,		s: 47,		l: 75,		],
+        [ name: "Powder Blue",				rgb: "#B0E0E6",		h: 52,		s: 52,		l: 80,		],
+        [ name: "Purple",					rgb: "#800080",		h: 83,		s: 100,		l: 25,		],
+        [ name: "Red",						rgb: "#FF0000",		h: 0,		s: 100,		l: 50,		],
+        [ name: "Rosy Brown",				rgb: "#BC8F8F",		h: 0,		s: 25,		l: 65,		],
+        [ name: "Royal Blue",				rgb: "#4169E1",		h: 63,		s: 73,		l: 57,		],
+        [ name: "Saddle Brown",				rgb: "#8B4513",		h: 7,		s: 76,		l: 31,		],
+        [ name: "Salmon",					rgb: "#FA8072",		h: 2,		s: 93,		l: 71,		],
+        [ name: "Sandy Brown",				rgb: "#F4A460",		h: 8,		s: 87,		l: 67,		],
+        [ name: "Sea Green",				rgb: "#2E8B57",		h: 41,		s: 50,		l: 36,		],
+        [ name: "Sea Shell",				rgb: "#FFF5EE",		h: 7,		s: 100,		l: 97,		],
+        [ name: "Sienna",					rgb: "#A0522D",		h: 5,		s: 56,		l: 40,		],
+        [ name: "Silver",					rgb: "#C0C0C0",		h: 0,		s: 0,		l: 75,		],
+        [ name: "Sky Blue",					rgb: "#87CEEB",		h: 55,		s: 71,		l: 73,		],
+        [ name: "Slate Blue",				rgb: "#6A5ACD",		h: 69,		s: 53,		l: 58,		],
+        [ name: "Slate Gray",				rgb: "#708090",		h: 58,		s: 13,		l: 50,		],
+        [ name: "Snow",						rgb: "#FFFAFA",		h: 0,		s: 100,		l: 99,		],
+        [ name: "Spring Green",				rgb: "#00FF7F",		h: 42,		s: 100,		l: 50,		],
+        [ name: "Steel Blue",				rgb: "#4682B4",		h: 58,		s: 44,		l: 49,		],
+        [ name: "Tan",						rgb: "#D2B48C",		h: 9,		s: 44,		l: 69,		],
+        [ name: "Teal",						rgb: "#008080",		h: 50,		s: 100,		l: 25,		],
+        [ name: "Thistle",					rgb: "#D8BFD8",		h: 83,		s: 24,		l: 80,		],
+        [ name: "Tomato",					rgb: "#FF6347",		h: 3,		s: 100,		l: 64,		],
+        [ name: "Turquoise",				rgb: "#40E0D0",		h: 48,		s: 72,		l: 56,		],
+        [ name: "Violet",					rgb: "#EE82EE",		h: 83,		s: 76,		l: 72,		],
+        [ name: "Wheat",					rgb: "#F5DEB3",		h: 11,		s: 77,		l: 83,		],
+        [ name: "White",					rgb: "#FFFFFF",		h: 0,		s: 100,		l: 100,		],
+        [ name: "White Smoke",				rgb: "#F5F5F5",		h: 0,		s: 0,		l: 96,		],
+        [ name: "Yellow",					rgb: "#FFFF00",		h: 17,		s: 100,		l: 50,		],
+        [ name: "Yellow Green",				rgb: "#9ACD32",		h: 22,		s: 61,		l: 50,		],
+    ]    
+}
 
+private colorOptions() {
+	def result = []
+    for (color in colors()) {
+    	result.push(color.name)
+    }
+    result.push "Random"
+    return result
+}
 
-
+private getColorByName(name) {
+	if (name == "Random") {
+    	//randomize the color
+        def idx = Math.round(Math.random() * (colors().size() - 4)) as Integer
+        return colors()[idx]
+    }
+    for (color in colors()) {
+    	if (color.name == name) {
+        	return color
+        }
+    }
+    return [ name: "White", rgb: "#FFFFFF", h: 0, s: 100, l: 100, ]
+}
 
 
 
