@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/19/2016 >>> v0.0.035.20160519 - Alpha test version - Fixed a problem where custom time in a "between" condition would reset the offset for sunrise/sunset
  *	 5/19/2016 >>> v0.0.034.20160519 - Alpha test version - Notification support. Push/SMS/Notification. Coming soon: variable support in message.
  *	 5/19/2016 >>> v0.0.033.20160519 - Alpha test version - Location Mode and SHM status now trigger events
  *	 5/19/2016 >>> v0.0.032.20160519 - Alpha test version - Added delayed turn on, off and toggle
@@ -90,7 +91,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.034.20160519"
+	return "v0.0.035.20160519"
 }
 
 
@@ -2738,8 +2739,14 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison
                 	t = (i == 1 ? (condition.t1 ? adjustTime(condition.t1) : null) : (condition.t2 ? adjustTime(condition.t2) : null))
                     v = t ? t.getHours() * 60 + t.getMinutes() : null
                     if (!comparison.contains("around")) {
-                        o1 = 0
-                        o2 = 0
+                        switch (i) {
+                        	case 1:
+                            	o1 = 0
+                                break
+                            case 2:
+                            	o2 = 0
+                                break
+                        }
                     }
                    	break
 				case "midnight":
@@ -2790,6 +2797,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, comparison
         if (comparison.contains("between")) {
             def a1 = addOffsetToMinutes(m1, o1)
         	def a2 = addOffsetToMinutes(m2, o2)
+        log.trace "$a1 <<< $m1, $o1 ---- $a2 <<< $m2, $o2"
             def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
             if (comparison.contains("not")) {
             	eval = !eval
@@ -5277,7 +5285,9 @@ private setAlarmSystemStatus(status) {
     return false
 }
 
-
+private formatMessage(message) {
+	
+}
 
 
 
