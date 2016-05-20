@@ -377,7 +377,7 @@ def pageChart(params) {
 
 private pageMainCoREPiston() {
     //CoRE Piston main page
-    dev()
+    //dev()
     state.run = "config"
     configApp()
     cleanUpConditions(true)
@@ -6135,5 +6135,5 @@ private initialSystemStore() {
 /******************************************************************************/
 
 private dev() {
-	log.trace formatMessage("Adrian face {variable} multa")
+	log.trace formatMessage("Testing for {variable}")
 }
