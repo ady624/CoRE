@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/20/2016 >>> v0.0.038.20160520 - Alpha test version - Displaying individual actions (when true) in the main piston page and showing action restrictions as per https://github.com/ady624/CoRE/issues/7
  *	 5/20/2016 >>> v0.0.037.20160520 - Alpha test version - Modified event duplication detection to only ignore identical events received within one second of each other, or events generated before the last event was generated. Also enabled {$variable} support in notification messages. "Time is {$now}" will return the time... :)
  *	 5/20/2016 >>> v0.0.036.20160520 - Alpha test version - Optimized time condition evaluation for next event time - limitations: events only happen at designated times, with no regards to any existing time restrictions (i.e. will trigger an event on Fri even if Fri is restricted - the evaluation at that time, however, will take restrictions into account)
  *	 5/19/2016 >>> v0.0.035.20160519 - Alpha test version - Fixed a problem where custom time in a "between" condition would reset the offset for sunrise/sunset
@@ -93,7 +94,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.037.20160520"
+	return "v0.0.038.20160520"
 }
 
 
@@ -568,6 +569,16 @@ private getConditionGroupPageContent(params, condition) {
                 } else {
                     href "pageCondition", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/${conditionType}.png",*/ params: ["conditionId": cid], title: (c.trg ? "Trigger" : "Condition") + " #$cid", description: getConditionDescription(cid), state: "complete", required: false, submitOnChange: false
                 }
+                //when true - individual actions
+                def actions = listActions(c.id)
+                def sz = actions.size() - 1
+                def i = 0
+                def tab = "  "
+                for (action in actions) {
+                    href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
+                    i = i + 1
+                }
+                
                 cnt++
             }
         	if (settings["condNegate$id"]) {
@@ -576,7 +587,6 @@ private getConditionGroupPageContent(params, condition) {
         }
         section() {
             href "pageCondition", params:["command": "add", "parentConditionId": id], title: "Add a condition", description: "A condition watches the state of one or multiple similar devices", state: "complete", submitOnChange: true
-            //href "pageCondition", params:["command": "add", "parentConditionId": id], title: "Add a trigger", description: "A trigger is a specialised condition that watches for state changes of one or multiple similar devices", state: "complete", submitOnChange: true
             if (nextLevel <= 3) {
             	href "pageConditionGroupL${nextLevel}", params:["command": "add", "parentConditionId": id], title: "Add a group", description: "A group is a container for multiple conditions and/or triggers, allowing for more complex logical operations, such as evaluating [A AND (B OR C)]", state: "complete", submitOnChange: true
             }
@@ -1331,6 +1341,14 @@ private buildIfContent(id, level) {
         if (aft) {
 			href "pageConditionGroupL${level}", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/folder.png",*/ params: ["conditionId": id], title: "", description: aft, state: "complete", required: true, submitOnChange: false
         }
+    }
+    //when true - individual actions
+    def actions = listActions(id)
+    def sz = actions.size() - 1
+    def i = 0
+    for (action in actions) {
+        href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
+        i = i + 1
     }
     if (condition.id <= 0) {
 		def value = evaluateCondition(condition)
@@ -2091,7 +2109,17 @@ private listActionDevices(actionId) {
 private getActionDescription(action) {
 	if (!action) return null
     def devices = (action.l ? ["location"] : listActionDevices(action.id))
-    def result = "With " + buildDeviceNameList(devices, "and")+ "..."
+    def result = ""
+    if (action.rc) {
+    	result += "® If piston state changes...\n"
+    }
+    if (action.rm) {
+    	result += "® If mode is ${buildNameList(action.rm, "or")}...\n"
+    }
+    if (action.ra) {
+    	result += "® If alarm is ${buildNameList(action.ra, "or")}...\n"
+    }
+    result += (result ? "\n" : "") + "With " + buildDeviceNameList(devices, "and")+ "..."
     for (task in action.t.sort{it.i}) {
     	def t = cleanUpCommand(task.c)
         if (task.p && task.p.size()) {
@@ -2303,8 +2331,8 @@ private broadcastEvent(evt, primary, secondary) {
 	        }
 	    }
 	}
-	try {
-        if (evt) {    
+    try {
+        if (evt) {  
             //broadcast to primary IF block
             def result1 = null
             def result2 = null
@@ -2347,7 +2375,6 @@ private broadcastEvent(evt, primary, secondary) {
             def currentState = state.currentState
             def currentStateSince = state.currentStateSince
             def mode = state.app.mode
-
 
             switch (mode) {
                 case "Latching":
@@ -5965,6 +5992,7 @@ private virtualCommands() {
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	],
     	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	],
+    	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	],
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true,	],
     ]
