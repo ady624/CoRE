@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/20/2016 >>> v0.0.039.20160520 - Alpha test version - Fixed an error where an incomplete (during building) time condition would fail due to next event calculation introduced in v0.0.036.20160520
  *	 5/20/2016 >>> v0.0.038.20160520 - Alpha test version - Displaying individual actions (when true) in the main piston page and showing action restrictions as per https://github.com/ady624/CoRE/issues/7
  *	 5/20/2016 >>> v0.0.037.20160520 - Alpha test version - Modified event duplication detection to only ignore identical events received within one second of each other, or events generated before the last event was generated. Also enabled {$variable} support in notification messages. "Time is {$now}" will return the time... :)
  *	 5/20/2016 >>> v0.0.036.20160520 - Alpha test version - Optimized time condition evaluation for next event time - limitations: events only happen at designated times, with no regards to any existing time restrictions (i.e. will trigger an event on Fri even if Fri is restricted - the evaluation at that time, however, will take restrictions into account)
@@ -94,7 +95,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.038.20160520"
+	return "v0.0.039.20160520"
 }
 
 
@@ -2801,6 +2802,13 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
         def lastMidnight =  rightNow - rightNow.mod(86400000)
         def nextMidnight =  lastMidnight + 86400000
         
+        //we need to ensure we have a full condition
+        if (getNextEventTime) {
+        	if ((m1 == null) || ((comp.parameters == 2) && (m2 == null))) {
+            	return null
+            }
+        }
+        
         switch (comparison) {
         	case { comparison.contains("before") }:
                 if ((m1 == null) || (m >= addOffsetToMinutes(m1, o1))) {
@@ -4350,6 +4358,9 @@ private formatLocalTime(time, format = "EEE, MMM d yyyy @ h:mm a z") {
 }
 
 private convertDateToUnixTime(date) {
+	if (!date) {
+    	return null
+    }
 	if (!(date instanceof Date)) {
     	date = new Date(date)
     }
