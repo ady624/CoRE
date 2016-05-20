@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/20/2016 >>> v0.0.037.20160520 - Alpha test version - Modified event duplication detection to only ignore identical events received within one second of each other, or events generated before the last event was generated. Also enabled {$variable} support in notification messages. "Time is {$now}" will return the time... :)
  *	 5/20/2016 >>> v0.0.036.20160520 - Alpha test version - Optimized time condition evaluation for next event time - limitations: events only happen at designated times, with no regards to any existing time restrictions (i.e. will trigger an event on Fri even if Fri is restricted - the evaluation at that time, however, will take restrictions into account)
  *	 5/19/2016 >>> v0.0.035.20160519 - Alpha test version - Fixed a problem where custom time in a "between" condition would reset the offset for sunrise/sunset
  *	 5/19/2016 >>> v0.0.034.20160519 - Alpha test version - Notification support. Push/SMS/Notification. Coming soon: variable support in message.
@@ -92,7 +93,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.036.20160520"
+	return "v0.0.037.20160520"
 }
 
 
@@ -854,19 +855,6 @@ def pageCondition(params) {
                 }
 			}
             
-            if (showDateTimeFilter) {
-            	section(title: "Date & Time Filters", hideable: !state.config.expertMode, hidden: !(state.config.expertMode || settings["condMOH$id"] || settings["condHOD$id"] || settings["condDOW$id"] || settings["condDOM$id"] || settings["condMOY$id"] || settings["condY$id"])) {
-                	paragraph "But only on these..."
-					input "condMOH$id", "enum", title: "Minute of the hour", description: 'Any minute of the hour', options: timeMinuteOfHourOptions(), required: false, multiple: true, submitOnChange: true
-					input "condHOD$id", "enum", title: "Hour of the day", description: 'Any hour of the day', options: timeHourOfDayOptions(), required: false, multiple: true, submitOnChange: true
-					input "condDOW$id", "enum", title: "Day of the week", description: 'Any day of the week', options: timeDayOfWeekOptions(), required: false, multiple: true, submitOnChange: true
-					input "condDOM$id", "enum", title: "Day of the month", description: 'Any day of the month', options: timeDayOfMonthOptions2(), required: false, multiple: true, submitOnChange: true
-					input "condWOM$id", "enum", title: "Week of the month", description: 'Any week of the month', options: timeWeekOfMonthOptions(), required: false, multiple: true, submitOnChange: true
-					input "condMOY$id", "enum", title: "Month of the year", description: 'Any month of the year', options: timeMonthOfYearOptions(), required: false, multiple: true, submitOnChange: true
-					input "condY$id", "enum", title: "Year", description: 'Any year', options: timeYearOptions(), required: false, multiple: true, submitOnChange: true
-                }
-            }
-
 			section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
 				def value = evaluateCondition(condition)
                 paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
@@ -886,10 +874,19 @@ def pageCondition(params) {
                 }
 			}
 
-			section() {
-				paragraph "NOTE: To delete this condition, simply remove all devices from the list above and tap Done"
+            if (showDateTimeFilter) {
+            	section(title: "Date & Time Filters", hideable: !state.config.expertMode, hidden: !(state.config.expertMode || settings["condMOH$id"] || settings["condHOD$id"] || settings["condDOW$id"] || settings["condDOM$id"] || settings["condMOY$id"] || settings["condY$id"])) {
+                	paragraph "But only on these..."
+					input "condMOH$id", "enum", title: "Minute of the hour", description: 'Any minute of the hour', options: timeMinuteOfHourOptions(), required: false, multiple: true, submitOnChange: true
+					input "condHOD$id", "enum", title: "Hour of the day", description: 'Any hour of the day', options: timeHourOfDayOptions(), required: false, multiple: true, submitOnChange: true
+					input "condDOW$id", "enum", title: "Day of the week", description: 'Any day of the week', options: timeDayOfWeekOptions(), required: false, multiple: true, submitOnChange: true
+					input "condDOM$id", "enum", title: "Day of the month", description: 'Any day of the month', options: timeDayOfMonthOptions2(), required: false, multiple: true, submitOnChange: true
+					input "condWOM$id", "enum", title: "Week of the month", description: 'Any week of the month', options: timeWeekOfMonthOptions(), required: false, multiple: true, submitOnChange: true
+					input "condMOY$id", "enum", title: "Month of the year", description: 'Any month of the year', options: timeMonthOfYearOptions(), required: false, multiple: true, submitOnChange: true
+					input "condY$id", "enum", title: "Year", description: 'Any year', options: timeYearOptions(), required: false, multiple: true, submitOnChange: true
+                }
             }
-            
+          
             if (id > 0) {
                 def actions = listActions(id)
                 if (actions.size() || state.config.expertMode) {
@@ -919,6 +916,9 @@ def pageCondition(params) {
                 }
             }
 
+			section() {
+				paragraph "NOTE: To delete this condition, simply remove all devices from the list above and tap Done"
+            }
             
             section(title: "Required data - do not change", hideable: true, hidden: true) {            
                 input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "$pid..${pid+1}", defaultValue: pid
@@ -2296,7 +2296,7 @@ private broadcastEvent(evt, primary, secondary) {
     	atomicState.cache = cache
         state.cache = cache
 		if (cachedValue) {
-	    	if ((cachedValue.v == evt.value) && ((cachedValue.v instanceof String) || (eventTime < cachedValue.t) || (cachedValue.t + 60000 > eventTime))) {
+	    	if ((cachedValue.v == evt.value) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
 	        	//duplicate event
 	    		debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
 	            evt = null
@@ -4115,7 +4115,7 @@ private task_vcmd_sendNotification(device, task) {
     if (params.size() != 1) {
     	return false
     }
-    def message = params[0].d
+    def message = formatMessage(params[0].d)
     sendNotificationEvent(message)
 }
 
@@ -4124,7 +4124,7 @@ private task_vcmd_sendPushNotification(device, task) {
     if (params.size() != 2) {
     	return false
     }
-    def message = params[0].d
+    def message = formatMessage(params[0].d)
     def saveNotification = !!params[1].d
     if (saveNotification) {
     	sendPush(message)
@@ -4138,7 +4138,7 @@ private task_vcmd_sendSMSNotification(device, task) {
     if (params.size() != 3) {
     	return false
     }
-    def message = params[0].d
+    def message = formatMessage(params[0].d)
     def phone = params[1].d
     def saveNotification = !!params[2].d
     if (saveNotification) {
@@ -5333,14 +5333,20 @@ private formatMessage(message) {
 	if (!message) {
     	return message
     }
-    def dirty = true
-    while (dirty) {
-    	dirty = false
-		def var = message.find{ it ==~ /\{(.*)?\}/ }
-        if (var) {
-        	log.trace "FOUND VARIABLE $var"
-        	dirty = true
-            message.replace(var, "---")
+    def variables = message.findAll(/\{([^\{\}]*)?\}*/)
+    def varMap = [:]
+    for (variable in variables) {
+        if (!(variable in varMap)) {
+            def value = getVariable(variable.replace("{", "").replace("}", ""))
+            if ((value instanceof Long) && (value > 999999999999)) {
+                value = formatLocalTime(value)
+            }
+           	varMap[variable] = value
+        }
+    }
+    for(var in varMap) {
+    	if (var.value) {
+			message = message.replace(var.key, var.value)
         }
     }
     return message
@@ -6135,5 +6141,4 @@ private initialSystemStore() {
 /******************************************************************************/
 
 private dev() {
-	log.trace formatMessage("Testing for {variable}")
 }
