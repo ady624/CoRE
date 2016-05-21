@@ -1,2 +1,4 @@
 # CoRE
-CoRE - Communit's own Rule Engine
+CoRE - Community's own Rule Engine
+
+[Description coming soon]
