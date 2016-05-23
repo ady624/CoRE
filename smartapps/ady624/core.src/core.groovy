@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/23/2016 >>> v0.0.03d.20160523 - Alpha test version - Set Variable done, testing in progress
  *	 5/23/2016 >>> v0.0.03c.20160523 - Alpha test version - Fixed a problem where dry evaluation of a condition may fail when changing the capability or the attribute or the comparison in the UI
  *	 5/22/2016 >>> v0.0.03b.20160522 - Alpha test version - Changed hue to angle, 0-360. Fixed a problem with mode and SHM alarm triggers. Added two predefined commands: quickSetCool and quickSetHeat
  *	 5/20/2016 >>> v0.0.03a.20160520 - Alpha test version - Color support. Added all 140 standard CSS colors, plus 4 white light colors. Partially tested with Osram (Green is green and Crimson is crimson)
@@ -98,7 +99,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.03c.20160523"
+	return "v0.0.03d.20160523"
 }
 
 
@@ -216,7 +217,7 @@ private pageMainCoRE() {
             if (debugging) {
 	            input "log#info", "bool", title: "Log info messages", defaultValue: true
 	            input "log#trace", "bool", title: "Log trace messages", defaultValue: true
-	            input "log#debug", "bool", title: "Log debug messages", defaultValue: true
+	            input "log#debug", "bool", title: "Log debug messages", defaultValue: false
 	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
 	            input "log#error", "bool", title: "Log error messages", defaultValue: true
             }
@@ -1182,7 +1183,16 @@ def pageAction(params) {
                                             def param = parseCommandParameter(parameter)
                                             if (param) {
                                             	if ((command.parameters.size() == 1) && (param.type == "var")) {
-                                                    href "pageSetVariable", params: [actionId: id, taskId: tid], title: "Set variable ${settings["actParam$id#$tid-0"]}", required: true, submitOnChange: true
+                                                	def task = getActionTask(action, tid)
+                                                    def desc = getTaskDescription(task)
+                                                    desc = "$desc".tokenize("=")
+                                                    def title = desc.size() == 2 ? desc[0].trim() : "Set variable..."
+                                                    def description = desc.size() == 2 ? desc[1].trim() : null
+                                                    href "pageSetVariable", params: [actionId: id, taskId: tid], title: title, description: description, required: true, state: description ? "complete" : null, submitOnChange: true
+                                                    if (description) {
+                                                    	def value = task_vcmd_setVariable(null, task, true)
+                                                    	paragraph "Current evaluation: " + value
+                                                    }
 													break
                                                 }
                                                 if (param.type == "attribute") {
@@ -1300,7 +1310,7 @@ private pageSetVariable(params) {
     if (!tid) return
 	dynamicPage(name: "pageSetVariable", title: "", uninstall: false, install: false) {
         section("Variable") {
-            input "actParam$aid#$tid-0", "text", title: "Variable name", required: true, submitOnChange: true
+            input "actParam$aid#$tid-0", "text", title: "Variable name", required: true, submitOnChange: true, capitalization: "none"
             input "actParam$aid#$tid-1", "enum", title: "Variable data type", options: ["boolean", "decimal", "number", "string", "time"], required: true, submitOnChange: true
             input "actParam$aid#$tid-2", "bool", title: "I know algebra ☺", options: ["boolean", "decimal", "number", "string", "time"], required: true, submitOnChange: true
             //input "actParam$aid#$tid-3", "text", title: "Formula", required: true, submitOnChange: true
@@ -1323,9 +1333,8 @@ private pageSetVariable(params) {
                 section(formatOrdinalNumberName(i).capitalize() + " operand") {
                     def val = settings["actParam$aid#$tid-$a1"] != null
                     def var = settings["actParam$aid#$tid-$a2"]
-                    log.trace "$val <<< ${settings["actParam$aid#$tid-$a1"]}"
                     if (val || (val == 0) || !var) {
-                        input "actParam$aid#$tid-$a1", secondaryDataType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", required: true, submitOnChange: true
+                        input "actParam$aid#$tid-$a1", secondaryDataType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", required: true, submitOnChange: true, capitalization: "none"
                     }
                     if (var || !val) {
                         input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: true, submitOnChange: true
@@ -1338,7 +1347,21 @@ private pageSetVariable(params) {
             	operation = settings["actParam$aid#$tid-$op"]
                 if (operation) operation = "$operation"
                 section(title: operation ? "" : "Add operation") {
-                    input "actParam$aid#$tid-$op", "enum", title: "Operation", options: ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"], required: false, submitOnChange: true
+                	def opts = []
+                    switch (dataType) {
+                    	case "boolean":
+                        	opts += ["AND", "OR", "NOT"]
+                            break
+                    	case "string":
+                        	opts += ["+ (concatenate)"]
+                            break
+                    	case "number":
+                    	case "decimal":
+                    	case "time":
+                        	opts += ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"]
+                            break
+                    }
+                    input "actParam$aid#$tid-$op", "enum", title: "Operation", options: opts, required: false, submitOnChange: true
                 }
                 i += 1
                 if (!operation || i > 10) break
@@ -2311,7 +2334,44 @@ private getTaskDescription(task) {
     
     if (cmd.name == "setVariable") {
     	if (task.p.size() < 7) return "[ERROR]"
-        def result = "Set {${task.p[0].d}} = "
+        def name = task.p[0].d
+        def dataType = task.p[1].d
+        def algebra = !!task.p[2].d
+        if (!name || !dataType) return "[ERROR]"
+        def result = "Set $dataType variable {$name} = "
+        if (algebra) {
+        	return result + "<complex algebra not ready yet>"
+        } else {
+            def i = 4
+            def grouping = false
+            def groupingUnit = ""
+            while (true) {
+            	def value = task.p[i].d
+               	def variable = value ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
+                def unit = (dataType == "time" ? task.p[i + 2].d : null)
+                def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null                
+                def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+                if (needsGrouping) {
+                    //these operations require grouping i.e. (a * b * c) seconds
+                    if (!grouping) {
+                        grouping = true
+                        groupingUnit = unit
+                        result += "("
+                    }
+                }
+                //add the value/variable 
+                result += variable + (!grouping && unit ? " $unit" : "")
+                if (grouping && !needsGrouping) {
+                    //these operations do NOT require grouping
+                    //ungroup
+                    grouping = false
+                    result += ")${groupingUnit ? " $groupingUnit" : ""}"
+                }
+                if (!operation) break
+                result += " $operation "
+				i += 4                
+            }        	
+        }        
         return result
     	//special case for setVariable as the number of parameters is variable
     
@@ -3488,6 +3548,7 @@ private eval_trg_exits_range(condition, device, attribute, oldValue, oldValueSin
     		eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
+/*
 private eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	if (!oldValueSince) return false
     def time = timeToMinutes(condition.fort)
@@ -3500,7 +3561,7 @@ private eval_trg_did_not_change(condition, device, attribute, oldValue, oldValue
 	if (!oldValueSince) return false
 	return !eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
-
+*/
 
 
 
@@ -4395,7 +4456,7 @@ private task_vcmd_sendNotification(device, task) {
     if (params.size() != 1) {
     	return false
     }
-    def message = formatMessage(params[0].d)
+    def message = params[0].d
     sendNotificationEvent(message)
 }
 
@@ -4404,7 +4465,7 @@ private task_vcmd_sendPushNotification(device, task) {
     if (params.size() != 2) {
     	return false
     }
-    def message = formatMessage(params[0].d)
+    def message = params[0].d
     def saveNotification = !!params[1].d
     if (saveNotification) {
     	sendPush(message)
@@ -4418,7 +4479,7 @@ private task_vcmd_sendSMSNotification(device, task) {
     if (params.size() != 3) {
     	return false
     }
-    def message = formatMessage(params[0].d)
+    def message = params[0].d
     def phones = "${params[1].d}".replace(" ", "").replace("-", "").replace("(", "").replace(")", "").tokenize(",;*|").unique()
     def saveNotification = !!params[2].d
     for(def phone in phones) {
@@ -4432,7 +4493,219 @@ private task_vcmd_sendSMSNotification(device, task) {
     }
 }
 
+private task_vcmd_setVariable(device, task, simulate = false) {
+    def params = simulate ? ((task && task.p && task.p.size()) ? task.p : []) : ((task && task.data && task.data.p && task.data.p.size()) ? task.data.p : [])
+	//we need at least 7 params
+	if (params.size() < 7) {
+    	return simulate ? null : false
+    }
+	def name = params[0].d
+    def dataType = params[1].d
+    if (!name || !dataType) return simulate ? null : false
+    def result = ""
+    switch (dataType) {
+    	case "time":
+        	result = now()
+            break
+		case "number":
+        case "decimal":
+        	result = 0
+            break
+    }
+    def algebra = !!params[2].d
+    if (algebra) {
+    	//no complex algebra yet :(
+        return simulate ? null : false
+    } else {
+    	try {
+            def i = 4
+            def grouping = false
+            def groupingUnit = ""
+            def groupingIndex = null
+            def groupingResult = null
+            def groupingOperation = null
+            def previousOperation = null
+            def operation = null
+            def subDataType = dataType
+            def idx = 0
+            while (true) {
+                def value = params[i].d
+                def variable = params[i + 1].d
+                if (!value) {
+                    //we get the value of the variable
+                    value = cast(getVariable(variable), subDataType)
+                }
+                if (i == 4) {
+                    //initial values
+                    result = cast(value, dataType)
+                }
+                def unit = (dataType == "time" ? params[i + 2].d : null)
+                previousOperation = operation
+                operation = params.size() > i + 3 ? "${params[i + 3].d} ".tokenize(" ")[0] : null                
+                def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+                def skip = idx == 0
+                if (needsGrouping) {
+                    //these operations require grouping i.e. (a * b * c) seconds
+                    if (!grouping) {
+                        grouping = true
+                        groupingIndex = idx
+                        groupingUnit = unit
+                        groupingOperation = previousOperation
+                        groupingResult = cast(value, dataType)
+                        skip = true
+                    }
+                }
+                //add the value/variable
+                subDataType = subDataType == "time" ? "decimal" : subDataType
+                if (!skip) {
+                    def operand1 = grouping ? groupingResult : result
+                    def operand2 = value
+                    if (groupingUnit ? groupingUnit : unit) {
+                        switch (unit) {
+                            case "seconds":
+                            operand2 = operand2 * 1000
+                            break
+                            case "minutes":
+                            operand2 = operand2 * 60000
+                            break
+                            case "hours":
+                            operand2 = operand2 * 3600000
+                            break
+                            case "days":
+                            operand2 = operand2 * 86400000
+                            break
+                            case "weeks":
+                            operand2 = operand2 * 604800000
+                            break
+                            case "months":
+                            operand2 = operand2 * 2592000000
+                            break
+                            case "years":
+                            operand2 = operand2 * 31536000000
+                            break
+                        }
+                    }
+                    //reset the group unit - we only apply it once
+                    groupingUnit = null
+                    def res = null
+                    switch (previousOperation) {
+                        case "AND":
+                        res = cast(operand1 && operand2, subDataType)
+                        break
+                        case "OR":
+                        res = cast(operand1 || operand2, subDataType)
+                        break
+                        case "+":
+                        res = cast(operand1 + operand2, subDataType)
+                        break
+                        case "-":
+                        res = cast(operand1 - operand2, subDataType)
+                        break
+                        case "*":
+                        res = cast(operand1 * operand2, subDataType)
+                        break
+                        case "÷":
+                        if (!operand2) return null
+                        res = cast(operand1 / operand2, subDataType)
+                        break
+                    }
+                    if (grouping) {
+                        groupingResult = res
+                    } else {
+                        result = res
+                    }
+                }
+                skip = false
+                if (grouping && !needsGrouping) {
+                    //these operations do NOT require grouping
+                    //ungroup
+                    if (!groupingOperation) {
+                        result = groupingResult
+                    } else {
+                        def operand1 = result
+                        def operand2 = groupingResult
 
+                        switch (groupingOperation) {
+                            case "AND":
+                            result = cast(operand1 && operand2, subDataType)
+                            break
+                            case "OR":
+                            result = cast(operand1 || operand2, subDataType)
+                            break
+                            case "+":
+                            result = cast(operand1 + operand2, subDataType)
+                            break
+                            case "-":
+                            result = cast(operand1 - operand2, subDataType)
+                            break
+                            case "*":
+                            result = cast(operand1 * operand2, subDataType)
+                            break
+                            case "÷":
+                            if (!operand2) return null
+                            result = cast(operand1 / operand2, subDataType)
+                            break
+                        }                
+                    }
+                    grouping = false
+                }
+                if (!operation) break
+                i += 4                
+                idx += 1
+            }
+        } catch (e) {
+        	return simulate ? null : false
+        }
+    }
+    if (!simulate) {
+    	setVariable(name, result)
+    } else {
+	    return result
+    }
+    return true
+}
+
+
+private cast(value, dataType) {
+	switch (dataType) {
+    	case "string":
+        case "text":
+        	return value ? "$value" : ""
+        case "number":
+        	if (value instanceof String) {
+            	if (value.isInteger())
+                	return value.toInteger()
+            	if (value.isFloat())
+                	return (int) Math.round(value.toFloat())
+            }
+            try {
+            	return (int) value
+            } catch(all) {
+            	return (int) 0
+            }
+        case "decimal":
+        	if (value instanceof String) {
+            	if (value.isFloat())
+                	return (float) value.toFloat()
+            	if (value.isInteger())
+                	return (float) value.toInteger()
+            }
+            try {
+            	return (float) value
+            } catch(all) {
+            	return (float) 0
+            }
+        case "boolean":
+        	if (value instanceof String) {
+            	if (!value || (value == "false") || (value == "0"))
+                	return false
+                return true
+            }
+            return !!value
+		case "time":
+        	return adjustTime(value)
+    }
+}
 
 
 
@@ -5504,7 +5777,16 @@ def listActions(conditionId) {
     return result
 }
 
-
+def getActionTask(action, taskId) {
+    if (!action) return null
+    if (!(taskId instanceof Integer)) return null
+    for (task in action.t) {
+    	if (task.i == taskId) {
+        	return task
+        }
+    }
+    return null
+}
 
 /******************************************************************************/
 /*** OTHER FUNCTIONS														***/
@@ -6175,17 +6457,18 @@ private capabilities() {
 }
 
 private commands() {
+	def tempUnit = "°" + location.temperatureScale
 	return [
         [ name: "locationMode.setMode",						category: "Location",					group: "Control location",			display: "Set location mode",			parameters: [], ],
         [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location",			display: "Set Smart Home Monitor status",parameters: [], ],
     	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
     	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
     	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
-    	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], ],
+    	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",	],
     	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], ],
-    	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], ],
-    	[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], ],
-    	[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], ],
+    	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	],
+    	[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], description: "Set saturation to {0}%",	],
+    	[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], description: "Set color temperature to {0}°K",	],
     	[ name: "open",										category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
     	[ name: "close",									category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
     	[ name: "windowShade.open",							category: "Convenience",				group: "Control [devices]",			display: "Open fully",					parameters: [], ],
@@ -6203,15 +6486,15 @@ private commands() {
     	[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
     	[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
     	[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
-    	[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
-    	[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
-    	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
-    	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
-    	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], ],
+    	[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
+    	[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
+    	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	],
+    	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	],
+    	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	],
 		[ name: "fanOn",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",				parameters: [], ],
     	[ name: "fanCirculate",								category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",		parameters: [], ],
     	[ name: "fanAuto",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",				parameters: [], ],
-    	[ name: "setThermostatFanMode",						category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",				parameters: ["Fan mode:thermostatFanMode"], ],
+    	[ name: "setThermostatFanMode",						category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",				parameters: ["Fan mode:thermostatFanMode"], description: "Set fan mode to {0}",	],
     	[ name: "play",										category: "Entertainment",				group: "Control [devices]",			display: "Play",						parameters: [], ],
     	[ name: "pause",									category: "Entertainment",				group: "Control [devices]",			display: "Pause",						parameters: [], ],
     	[ name: "stop",										category: "Entertainment",				group: "Control [devices]",			display: "Stop",						parameters: [], ],
@@ -6219,7 +6502,7 @@ private commands() {
     	[ name: "previousTrack",							category: "Entertainment",				group: "Control [devices]",			display: "Previous track",				parameters: [], ],
     	[ name: "mute",										category: "Entertainment",				group: "Control [devices]",			display: "Mute",						parameters: [], ],
     	[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",						parameters: [], ],
-		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
+		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], description: "Set volume to {0}%",	],
     	[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], description: "Speak text \"{0}\"", ],
     	[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: [], ],
     	[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			display: "Set track",					parameters: [], ],
@@ -6231,12 +6514,12 @@ private commands() {
     	[ name: "getAllActivities",							category: "Entertainment",				group: "Control [devices]",			display: "Get all activities",			parameters: [], ],
     	[ name: "push",										category: "Other",						group: "Control [devices]",			display: "Push",						parameters: [], ],
     	[ name: "beep",										category: "Other",						group: "Control [devices]",			display: "Beep",						parameters: [], ],
-    	[ name: "timedSession.setTimeRemaining",			category: "Other",						group: "Control [devices]",			display: "Set remaining time",			parameters: ["Remaining time [s]:number"], ],
+    	[ name: "timedSession.setTimeRemaining",			category: "Other",						group: "Control [devices]",			display: "Set remaining time",			parameters: ["Remaining time [s]:number"], description: "Set remaining time to {0}s",	],
     	[ name: "timedSession.start",						category: "Other",						group: "Control [devices]",			display: "Start timed session",			parameters: [], ],
     	[ name: "timedSession.stop",						category: "Other",						group: "Control [devices]",			display: "Stop timed session",			parameters: [], ],
     	[ name: "timedSession.pause",						category: "Other",						group: "Control [devices]",			display: "Pause timed session",			parameters: [], ],
     	[ name: "timedSession.cancel",						category: "Other",						group: "Control [devices]",			display: "Cancel timed session",		parameters: [], ],
-    	[ name: "setConsumableStatus",						category: "Other",						group: "Control [devices]",			display: "Set consumable status",		parameters: ["Status:consumable"], ],
+    	[ name: "setConsumableStatus",						category: "Other",						group: "Control [devices]",			display: "Set consumable status",		parameters: ["Status:consumable"], description: "Set consumable status to {0}",	],
 		[ name: "configure",								category: null,							group: null,						display: "Configure",					parameters: [], ],
     	[ name: "poll",										category: null,							group: null,						display: "Poll",						parameters: [], ],
     	[ name: "refresh",									category: null,							group: null,						display: "Refresh",						parameters: [], ],
@@ -6262,8 +6545,8 @@ private virtualCommands() {
     	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Load from state variable...:stateVariable","Attributes:attributes"],																								],
     	[ name: "loadStateLocally",		requires: [],			 			display: "Load state",						parameters: ["Attributes:attributes"],																															],
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state (global)",				parameters: ["Attributes:attributes"],																															],
-    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	],
-    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	],
+    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to \"{0}\"",	],
+    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to \"{0}\"",	],
     	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",	],
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",	],
