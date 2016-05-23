@@ -1403,15 +1403,16 @@ private buildIfContent(id, level) {
 			href "pageConditionGroupL${level}", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/folder.png",*/ params: ["conditionId": id], title: "", description: aft, state: "complete", required: true, submitOnChange: false
         }
     }
-    //when true - individual actions
-    def actions = listActions(id)
-    def sz = actions.size() - 1
-    def i = 0
-    for (action in actions) {
-        href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
-        i = i + 1
-    }
-    if (condition.id <= 0) {
+    if (condition.id > 0) {
+	    //when true - individual actions
+        def actions = listActions(id)
+        def sz = actions.size() - 1
+        def i = 0
+        for (action in actions) {
+            href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
+            i = i + 1
+        }
+    } else {
 		def value = evaluateCondition(condition)
 		paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )                
     }
