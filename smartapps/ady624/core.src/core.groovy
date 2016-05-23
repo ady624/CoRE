@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/23/2016 >>> v0.0.03c.20160523 - Alpha test version - Fixed a problem where dry evaluation of a condition may fail when changing the capability or the attribute or the comparison in the UI
  *	 5/22/2016 >>> v0.0.03b.20160522 - Alpha test version - Changed hue to angle, 0-360. Fixed a problem with mode and SHM alarm triggers. Added two predefined commands: quickSetCool and quickSetHeat
  *	 5/20/2016 >>> v0.0.03a.20160520 - Alpha test version - Color support. Added all 140 standard CSS colors, plus 4 white light colors. Partially tested with Osram (Green is green and Crimson is crimson)
  *	 5/20/2016 >>> v0.0.039.20160520 - Alpha test version - Fixed an error where an incomplete (during building) time condition would fail due to next event calculation introduced in v0.0.036.20160520
@@ -97,7 +98,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.03b.20160522"
+	return "v0.0.03c.20160523"
 }
 
 
@@ -183,6 +184,7 @@ private customCommandSuffix() {
 /*** COMMON PAGES															***/
 /******************************************************************************/
 def pageMain() {
+	dev()
 	if (!parent) {
 		pageMainCoRE()
     } else {
@@ -2296,8 +2298,6 @@ private getTaskDescription(task) {
     def virtual = (task.c && task.c.startsWith(virtualCommandPrefix()))
     def custom = (task.c && task.c.startsWith(customCommandPrefix()))
 	def command = cleanUpCommand(task.c)
-    log.trace "Task $task with command $command"
-    
     def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))
     if (!cmd) return "[ERROR]"
     
@@ -2492,8 +2492,8 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventDelay", lastEvent.delay, true)    
     try {
 	    parent.updateChart("delay", delay)
-    } catch(all) {
-    	debug "ERROR: Could not update delay chart", null, "error"
+    } catch(javax.script.ScriptException e) {
+    	debug "ERROR: Could not update delay chart: $e", null, "error"
     }
     if (evt.deviceId != "time") {
     	def cache = atomicState.cache
@@ -2735,60 +2735,65 @@ private evaluateConditionSet(evt, primary, force = false) {
 }
 
 private evaluateCondition(condition, evt = null) {
-	//evaluates a condition
-    def perf = now()  
-    def result = false
-    
-    if (condition.children == null) {
-    	//we evaluate a real condition here
-        //several types of conditions, device, mode, SMH, time, etc.
-        if (condition.attr == "time") {
-        	result = evaluateTimeCondition(condition, evt)
+	try {
+        //evaluates a condition
+        def perf = now()  
+        def result = false
+
+        if (condition.children == null) {
+            //we evaluate a real condition here
+            //several types of conditions, device, mode, SMH, time, etc.
+            if (condition.attr == "time") {
+                result = evaluateTimeCondition(condition, evt)
+            } else {
+                result = evaluateDeviceCondition(condition, evt)
+            }       
         } else {
-        	result = evaluateDeviceCondition(condition, evt)
-        }       
-    } else {
-    	//we evaluate a group
-        result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
-        for (child in condition.children) {
-        	//evaluate the child
-           	def subResult = evaluateCondition(child, evt)
-            //apply it to the composite result
-        	switch (condition.grp) {
-            	case "AND":
-                	result = result && subResult
+            //we evaluate a group
+            result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
+            for (child in condition.children) {
+                //evaluate the child
+                def subResult = evaluateCondition(child, evt)
+                //apply it to the composite result
+                switch (condition.grp) {
+                    case "AND":
+                    result = result && subResult
                     break
-            	case "OR":
-                	result = result || subResult
+                    case "OR":
+                    result = result || subResult
                     break
-            	case "XOR":
-                	result = result ^ subResult
+                    case "XOR":
+                    result = result ^ subResult
                     break
+                }
             }
         }
+
+        //apply the NOT, if needed
+        result = condition.not ? !result : result
+
+        //store variables (only if evt is available, i.e. not simulating)
+        if (evt) {
+            if (condition.vd) setVariable(condition.vd, now())
+            if (condition.vs) setVariable(condition.vs, result)
+            if (condition.trg) {
+                if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
+                if (condition.vv && result) setVariable(condition.vv, evt.value)
+                if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
+                if (condition.vw && !result) setVariable(condition.vw, evt.value)
+            }
+
+            if (result) {
+                scheduleActions(condition.id)
+            }
+        }        
+
+        perf = now() - perf
+        return result
+    } catch(javax.script.ScriptException e) {
+    	debug "ERROR: Error evaluating condition: $e", null, "error"
     }
-
-    //apply the NOT, if needed
-    result = condition.not ? !result : result
-
-    //store variables (only if evt is available, i.e. not simulating)
-    if (evt) {
-        if (condition.vd) setVariable(condition.vd, now())
-        if (condition.vs) setVariable(condition.vs, result)
-        if (condition.trg) {
-            if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
-            if (condition.vv && result) setVariable(condition.vv, evt.value)
-            if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
-            if (condition.vw && !result) setVariable(condition.vw, evt.value)
-        }
-        
-        if (result) {
-			scheduleActions(condition.id)
-		}
-    }        
-
-    perf = now() - perf
-	return result
+    return false
 }
 
 private evaluateDeviceCondition(condition, evt) {
@@ -4133,8 +4138,8 @@ private processTasks() {
                             debug "Processing command task $task"
                             try {
                             	processCommandTask(task)
-							} catch (all) {
-                            	debug "ERROR: Error while processing command task: $all", null, "error"
+							} catch (javax.script.ScriptException e) {
+                            	debug "ERROR: Error while processing command task: $e", null, "error"
                             }
                         }
                         //repeat the while since we just modified the task
@@ -4147,8 +4152,8 @@ private processTasks() {
         //remove the safety net, wasn't worth the investment
         debug "Removing any existing ST safety nets", null, "trace"
         unschedule(recoveryHandler)
-    } catch(all) {
-    	debug "ERROR: Error while executing processTasks: $all", null, "error"
+    } catch(javax.script.ScriptException e) {
+    	debug "ERROR: Error while executing processTasks: $e", null, "error"
     }
 	//end of processTasks
 	perf = now() - perf
@@ -6594,4 +6599,5 @@ private getColorByName(name) {
 /******************************************************************************/
 
 private dev() {
+
 }
