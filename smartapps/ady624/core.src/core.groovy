@@ -548,358 +548,62 @@ def pageConditionGroup(params, level) {
 }
 
 private getConditionGroupPageContent(params, condition) {	
-	if (condition) {
-        def id = (int) condition.id
-        def pid = (int) condition.parentId ? (int) condition.parentId : (int)condition.id
-        def nextLevel = (int) (condition.level ? condition.level : 0) + 1
-        def cnt = 0
-        section() {
-        	if (settings["condNegate$id"]) {
-                paragraph "NOT ("
-            }
-            for (c in condition.children) {
-            	if (cnt > 0) {
-                	if (cnt == 1) {
-			           	input "condGrouping$id", "enum", title: "", description: "Choose the logical operation to be applied between all conditions in this group", options: ["AND", "OR", "XOR"], defaultValue: "AND", required: true, submitOnChange: true
-                    } else {
-                		paragraph settings["condGrouping$id"], state: "complete"
-                    }
+	try {
+        if (condition) {
+            def id = (int) condition.id
+            def pid = (int) condition.parentId ? (int) condition.parentId : (int)condition.id
+            def nextLevel = (int) (condition.level ? condition.level : 0) + 1
+            def cnt = 0
+            section() {
+                if (settings["condNegate$id"]) {
+                    paragraph "NOT ("
                 }
-                def cid = c?.id
-		        def conditionType = (c.trg ? "trigger" : "condition")
-                if (c.children != null) {
-                    href "pageConditionGroupL${nextLevel}", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/folder.png",*/ params: ["conditionId": cid], title: "Group #$cid", description: getConditionDescription(cid), state: "complete", required: false, submitOnChange: false
-                } else {
-                    href "pageCondition", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/${conditionType}.png",*/ params: ["conditionId": cid], title: (c.trg ? "Trigger" : "Condition") + " #$cid", description: getConditionDescription(cid), state: "complete", required: false, submitOnChange: false
-                }
-                //when true - individual actions
-                def actions = listActions(c.id)
-                def sz = actions.size() - 1
-                def i = 0
-                def tab = "  "
-                for (action in actions) {
-                    href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
-                    i = i + 1
-                }
-                
-                cnt++
-            }
-        	if (settings["condNegate$id"]) {
-                paragraph ")", state: "complete"
-            }
-        }
-        section() {
-            href "pageCondition", params:["command": "add", "parentConditionId": id], title: "Add a condition", description: "A condition watches the state of one or multiple similar devices", state: "complete", submitOnChange: true
-            if (nextLevel <= 3) {
-            	href "pageConditionGroupL${nextLevel}", params:["command": "add", "parentConditionId": id], title: "Add a group", description: "A group is a container for multiple conditions and/or triggers, allowing for more complex logical operations, such as evaluating [A AND (B OR C)]", state: "complete", submitOnChange: true
-            }
-        }
-        
-        if (condition.children.size()) {
-            section(title: "Group Overview") {
-				def value = evaluateCondition(condition)
-                paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null ) 
-                paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )                
-            }       
-		}
-        
-        if (id > 0) {
-            def actions = listActions(id)
-            if (actions.size() || state.config.expertMode) {
-                section(title: "Individual actions") {
-                    def desc = actions.size() ? "" : "Tap to select actions"
-                    href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
-                    if (actions.size()) {
-                        for (action in actions) {
-                            href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
-                        }
-                    }
-                }
-            }
-        }
-        
-        section(title: "Advanced options") {
-            input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, state: null, submitOnChange: true
-            if (state.config.expertMode) {
-                input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
-                if (trigger) {
-                    input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                    input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                    input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                    input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                }
-            }
-        }
-
-		if (id > 0) {
-            section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
-			}
-        }
-    }
-}
-
-def pageCondition(params) {
-	state.run = "config"
-	//get the current edited condition
-    def condition = null
-    if (params?.command == "add") {
-        condition = createCondition(params?.parentConditionId, false)
-    } else {   	
-		condition = getCondition(params?.conditionId ? params?.conditionId : state.config.conditionId)
-    }
-    if (condition) {
-    	updateCondition(condition)
-    	def id = (int) condition.id
-        state.config.conditionId = id
-        def pid = (int) condition.parentId
-        def showDateTimeFilter = false
-        def showDateTimeRepeat = false
-        def recurring = false
-        def trigger = false
-        
-        def branchId = getConditionMasterId(condition.id)
-        def supportsTriggers = (branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"])
-    	dynamicPage(name: "pageCondition", title: (condition.trg ? "Trigger" : "Condition") + " #$id", uninstall: false, install: false) {
-			section() {
-            	if (!settings["condDevices$id"] || (settings["condDevices$id"].size() == 0)) {
-                	//only display capability selection if no devices already selected
-	            	input "condCap$id", "enum", title: "Capability", options: listCapabilities(true, false), submitOnChange: true, required: false
-                }
-                if (settings["condCap$id"]) {
-                	def capability = getCapabilityByDisplay(settings["condCap$id"])
-                    if (capability) {
-                    	if (capability.virtualDevice) {
-                        	def attribute = capability.attribute
-                            def attr = getAttributeByName(attribute)
-                            if (attribute == "time") {
-                            	//Date & Time support
-                                def comparison = cleanUpComparison(settings["condComp$id"])
-                                input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true
-                                if (comparison) {
-									def comp = getComparisonOption(attribute, comparison)
-                                    if (attr && comp) {
-                                        //we have a valid comparison object
-                                        trigger = (comp.trigger == comparison)
-                                        //if no parameters, show the filters
-                                        def varList = listVariables(true)
-                                        showDateTimeFilter = comp.parameters == 0
-                                        for (def i = 1; i <= comp.parameters; i++) {
-                                            input "condValue$id#$i", "enum", title: (comp.parameters == 1 ? "Value" : (i == 1 ? "Time" : "And")), options: timeComparisonOptionValues(trigger), required: true, multiple: false, submitOnChange: true
-                                            def value = settings["condValue$id#$i"]
-                                            if (value) {
-												showDateTimeFilter = true
-                                                if (value.contains("custom")) {
-                                                    //using a time offset
-                                                    input "condTime$id#$i", "time", title: "Custom time", required: true, multiple: false, submitOnChange: true
-                                                }
-                                                if (value.contains("variable")) {
-                                                    //using a time offset
-                                                    input "condVar$id#$i", "enum", options: varList, title: "Variable", required: true, multiple: false, submitOnChange: true
-                                                }
-                                                if (comparison.contains("around") || !(value.contains('every') || value.contains('custom'))) {
-                                                    //using a time offset
-                                                    input "condOffset$id#$i", "number", title: (comparison.contains("around") ? "Give or take minutes" : "Offset (+/- minutes)"), range: (comparison.contains("around") ? "1..360" : "-360..360"), required: true, multiple: false, defaultValue: (comparison.contains("around") ?  5 : 0), submitOnChange: true
-                                                }
-
-												if (value.contains("minute")) {
-                                                	recurring = true
-                                                }
-
-                                                if (value.contains("number")) {                                              
-                                                    //using a time offset
-                                                    input "condEvery$id", "number", title: value.replace("every n", "N"), range: "1..*", required: true, multiple: false, defaultValue: 5, submitOnChange: true
-                                                    recurring = true
-                                                }
-                                                
-												if (value.contains("hour")) {
-                                                    //using a time offset
-                                                    input "condMinute$id", "enum", title: "At this minute", options: timeMinuteOfHourOptions(), required: true, multiple: false, submitOnChange: true
-                                                    recurring = true
-                                                }
-                                                
-                                            }
-                                        }
-                                        if (trigger && !recurring) {
-											showDateTimeRepeat = true
-                                        }
-                                    }
-                                }
-                            
-                            } else {
-                            	//Location Mode, Smart Home Monitor support
-                                def comparison = cleanUpComparison(settings["condComp$id"])
-                                input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
-                                if (comparison) {                                	
-                                    //Value
-                                    def comp = getComparisonOption(attribute, comparison)
-                                    if (attr && comp) {
-                                    	trigger = (comp.trigger == comparison)
-                                        if (comp.parameters >= 1) {
-                                            input "condValue$id#1", attr.type, title: "Value", options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
-                                        }
-                                    }
-                                }
-							}
-                        } else {                        
-                        	//physical device support
-                            def devices = settings["condDevices$id"]
-                            input "condDevices$id", "capability.${capability.name}", title: "${capability.display} list", required: false, state: (devices ? "complete" : null), multiple: capability.multiple, submitOnChange: true
-                            if (devices && devices.size()) {
-                                if (!condition.trg && (devices.size() > 1)) {
-                                    input "condMode$id", "enum", title: "Evaluation mode", options: ["Any", "All"], required: true, multiple: false, defaultValue: "All", submitOnChange: true
-                                }
-                                def evalMode = (settings["condMode$id"] == "All" && !condition.trg) ? "All" : "Any"
-
-                                //Attribute
-                                def attribute = cleanUpAttribute(settings["condAttr$id"])
-                                if (attribute == null) {
-                                    attribute = capability.attribute
-                                }
-                                //display the Attribute only in expert mode or in basic mode if it differs from the default capability attribute
-                                if ((attribute != capability.attribute) || state.config.expertMode) {
-                                    input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
-                                }
-                                if (attribute) {                              
-                                    //Condition
-                                    def attr = getAttributeByName(attribute)
-                                    def comparison = cleanUpComparison(settings["condComp$id"])
-                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
-                                    if (comparison) {                                	
-                                        //Value
-                                        def comp = getComparisonOption(attribute, comparison)
-                                        if (attr && comp) {
-                                        	trigger = (comp.trigger == comparison)                                            
-                                            def extraComparisons = !comparison.contains("one of")
-                                            def varList = (extraComparisons ? listVariables(true) : [])
-                                            if (comp.parameters >= 1) {
-                                                def value1 = settings["condValue$id#1"]
-                                                def device1 = settings["condDev$id#1"]
-                                                def variable1 = settings["condVar$id#1"]
-                                                if (!extraComparisons || ((device1 == null) && (variable1 == null))) {
-                                                    input "condValue$id#1", attr.type, title: (comp.parameters == 1 ? "Value" : "From value"), options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
-                                                }
-                                                if (extraComparisons) {
-                                                    if ((value1 == null) && (variable1 == null)) {
-                                                        input "condDev$id#1", "capability.${capability.name}", title: (device1 == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device" : "From")), required: true, multiple: comp.multiple, submitOnChange: true
-                                                    }
-                                                    if ((value1 == null) && (device1 == null)) {
-                                                        input "condVar$id#1", "enum", options: varList, title: (variable1 == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable" : "From")), required: true, multiple: false, submitOnChange: true, capitalization: "none"
-                                                    }
-                                                    if (((variable1 != null) || (device1 != null)) && ((attr.type == "number") || (attr.type == "decimal"))) {
-                                                        input "condOffset$id#1", attr.type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
-                                                    }
-                                                }
-                                            }
-                                            if (comp.parameters == 2) {
-                                                def value2 = settings["condValue$id#2"]
-                                                def device2 = settings["condDev$id#2"]
-                                                def variable2 = settings["condVar$id#2"]
-                                                if (!extraComparisons || ((device2 == null) && (variable2 == null))) {
-                                                    input "condValue$id#2", attr.type, title: "Through value", options: attr.options, range: attr.range, required: true, multiple: false, submitOnChange: true
-                                                }
-                                                if (extraComparisons) {
-                                                    if ((value2 == null) && (variable2 == null)) {
-                                                        input "condDev$id#2", "capability.${capability.name}", title: (device2 == null ? "... or choose a device to compare ..." : "Through device"), required: true, multiple: false, submitOnChange: true
-                                                    }
-                                                    if ((value2 == null) && (device2 == null)) {
-                                                        input "condVar$id#2", "enum", options: varList, title: (variable2 == null ? "... or choose a variable to compare ..." : "Through variable"), required: true, multiple: false, submitOnChange: true, capitalization: "none"
-                                                    }
-                                                    if (((variable2 != null) || (device2 != null)) && ((attr.type == "number") || (attr.type == "decimal"))) {
-                                                        input "condOffset$id#1", attr.type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
-                                                    }
-                                                }
-                                            }
-
-                                            if (comp.timed) {
-                                            	if (comparison.contains("change")) {
-                                                	input "condTime$id", "enum", title: "In the last (minutes)", options: timeOptions(), required: true, multiple: false, submitOnChange: true
-                                                } else {
-                                                	input "condFor$id", "enum", title: "Time restriction", options: ["for at least", "for less than"], required: true, multiple: false, submitOnChange: true
-                                                	input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
-                                                }
-                                            }
-                                        }
-                                    }
-                                    //input "condDevice$id", "", title: title, required: true, multiple: false, submitOnChange: true
-                                }
-                            }
-                        }
-                    }
-                }
-			}
-            
-            if (showDateTimeRepeat) {
-				section(title: "Repeat this trigger...") {
-                    input "condRepeat$id", "enum", title: "Repeat", options: timeRepeatOptions(), required: true, multiple: false, defaultValue: "every day", submitOnChange: true
-                    def repeat = settings["condRepeat$id"]
-                    if (repeat) {
-                        def incremental = repeat.contains("number")
-                        if (incremental) {
-                            //using a time offset
-                            input "condRepeatEvery$id", "number", title: repeat.replace("every n", "N"), range: "1..*", required: true, multiple: false, defaultValue: 2, submitOnChange: true
-                            recurring = true
-                        }
-                        def monthOfYear = null
-                        if (repeat.contains("week")) {
-							input "condRepeatDayOfWeek$id", "enum", title: "Day of the week", options: timeDayOfWeekOptions(), required: true, multiple: false, submitOnChange: true
-                        }
-                        if (repeat.contains("month") || repeat.contains("year")) {
-                            //oh-oh, monthly
-                            input "condRepeatDay$id", "enum", title: "On", options: timeDayOfMonthOptions(), required: true, multiple: false, submitOnChange: true
-                            def dayOfMonth = settings["condRepeatDay$id"]
-                            def certainDay = false
-                            def dayOfWeek = null
-                            if (dayOfMonth) {
-                                if (dayOfMonth.contains("week")) {
-                                    certainDay = true
-                                    input "condRepeatDayOfWeek$id", "enum", title: "Day of the week", options: timeDayOfWeekOptions(), required: true, multiple: false, submitOnChange: true
-                                    dayOfWeek = settings["condDOWOM$id"]
-                                }
-                            }
-                            if (repeat.contains("year")) {// && (dayOfMonth) && (!certainDay || dayOfWeek)) {
-                                //oh-oh, yearly
-                                input "condRepeatMonth$id", "enum", title: "Of", options: timeMonthOfYearOptions(), required: true, multiple: false, submitOnChange: true
-                                monthOfYear = settings["condRepeatMonth$id"]
-                            }
-                        }
-                    }
-                }
-			}
-            
-			section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
-				def value = evaluateCondition(condition)
-                paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
-                paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
-                if (condition.attr == "time") {
-                    def v = ""
-                    def nextTime = null
-                    for (def i = 0; i < (condition.trg ? 3 : 1); i++) {
-                        nextTime = condition.trg ? getNextTimeTriggerTime(condition, nextTime) : getNextTimeConditionTime(condition, nextTime)
-                        if (nextTime) {
-                            v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
+                for (c in condition.children) {
+                    if (cnt > 0) {
+                        if (cnt == 1) {
+                            input "condGrouping$id", "enum", title: "", description: "Choose the logical operation to be applied between all conditions in this group", options: ["AND", "OR", "XOR"], defaultValue: "AND", required: true, submitOnChange: true
                         } else {
-                            break
+                            paragraph settings["condGrouping$id"], state: "complete"
                         }
                     }
-                    paragraph v ? v : "(not happening any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
-                }
-			}
+                    def cid = c?.id
+                    def conditionType = (c.trg ? "trigger" : "condition")
+                    if (c.children != null) {
+                        href "pageConditionGroupL${nextLevel}", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/folder.png",*/ params: ["conditionId": cid], title: "Group #$cid", description: getConditionDescription(cid), state: "complete", required: false, submitOnChange: false
+                    } else {
+                        href "pageCondition", /*image: "https://raw.githubusercontent.com/ady624/SmartThingers/master/resources/images/${conditionType}.png",*/ params: ["conditionId": cid], title: (c.trg ? "Trigger" : "Condition") + " #$cid", description: getConditionDescription(cid), state: "complete", required: false, submitOnChange: false
+                    }
+                    //when true - individual actions
+                    def actions = listActions(c.id)
+                    def sz = actions.size() - 1
+                    def i = 0
+                    def tab = "  "
+                    for (action in actions) {
+                        href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
+                        i = i + 1
+                    }
 
-            if (showDateTimeFilter) {
-            	section(title: "Date & Time Filters", hideable: !state.config.expertMode, hidden: !(state.config.expertMode || settings["condMOH$id"] || settings["condHOD$id"] || settings["condDOW$id"] || settings["condDOM$id"] || settings["condMOY$id"] || settings["condY$id"])) {
-                	paragraph "But only on these..."
-					input "condMOH$id", "enum", title: "Minute of the hour", description: 'Any minute of the hour', options: timeMinuteOfHourOptions(), required: false, multiple: true, submitOnChange: true
-					input "condHOD$id", "enum", title: "Hour of the day", description: 'Any hour of the day', options: timeHourOfDayOptions(), required: false, multiple: true, submitOnChange: true
-					input "condDOW$id", "enum", title: "Day of the week", description: 'Any day of the week', options: timeDayOfWeekOptions(), required: false, multiple: true, submitOnChange: true
-					input "condDOM$id", "enum", title: "Day of the month", description: 'Any day of the month', options: timeDayOfMonthOptions2(), required: false, multiple: true, submitOnChange: true
-					input "condWOM$id", "enum", title: "Week of the month", description: 'Any week of the month', options: timeWeekOfMonthOptions(), required: false, multiple: true, submitOnChange: true
-					input "condMOY$id", "enum", title: "Month of the year", description: 'Any month of the year', options: timeMonthOfYearOptions(), required: false, multiple: true, submitOnChange: true
-					input "condY$id", "enum", title: "Year", description: 'Any year', options: timeYearOptions(), required: false, multiple: true, submitOnChange: true
+                    cnt++
+                }
+                if (settings["condNegate$id"]) {
+                    paragraph ")", state: "complete"
                 }
             }
-          
+            section() {
+                href "pageCondition", params:["command": "add", "parentConditionId": id], title: "Add a condition", description: "A condition watches the state of one or multiple similar devices", state: "complete", submitOnChange: true
+                if (nextLevel <= 3) {
+                    href "pageConditionGroupL${nextLevel}", params:["command": "add", "parentConditionId": id], title: "Add a group", description: "A group is a container for multiple conditions and/or triggers, allowing for more complex logical operations, such as evaluating [A AND (B OR C)]", state: "complete", submitOnChange: true
+                }
+            }
+
+            if (condition.children.size()) {
+                section(title: "Group Overview") {
+                    def value = evaluateCondition(condition)
+                    paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null ) 
+                    paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )                
+                }       
+            }
+
             if (id > 0) {
                 def actions = listActions(id)
                 if (actions.size() || state.config.expertMode) {
@@ -916,8 +620,8 @@ def pageCondition(params) {
             }
 
             section(title: "Advanced options") {
-                input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, state: null, submitOnChange: true
-	            if (state.config.expertMode) {
+                input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, state: null, submitOnChange: true
+                if (state.config.expertMode) {
                     input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
                     input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
                     if (trigger) {
@@ -929,14 +633,318 @@ def pageCondition(params) {
                 }
             }
 
-			section() {
-				paragraph "NOTE: To delete this condition, simply remove all devices from the list above and tap Done"
+            if (id > 0) {
+                section(title: "Required data - do not change", hideable: true, hidden: true) {            
+                    input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
+                }
             }
-            
-            section(title: "Required data - do not change", hideable: true, hidden: true) {            
-                input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "$pid..${pid+1}", defaultValue: pid
-			}
-	    }
+        }
+    } catch(e) {
+    	debug "ERROR: Error while executing getConditionGroupPageContent: $e", null, "error"
+    }
+}
+
+def pageCondition(params) {
+	try {
+        state.run = "config"
+        //get the current edited condition
+        def condition = null    
+        if (params?.command == "add") {
+            condition = createCondition(params?.parentConditionId, false)
+        } else {   	
+            condition = getCondition(params?.conditionId ? params?.conditionId : state.config.conditionId)
+        }
+        if (condition) {
+            updateCondition(condition)
+            def id = (int) condition.id
+            state.config.conditionId = id
+            def pid = (int) condition.parentId
+            def showDateTimeFilter = false
+            def showDateTimeRepeat = false
+            def recurring = false
+            def trigger = false
+
+            def branchId = getConditionMasterId(condition.id)
+            def supportsTriggers = (branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"])
+            dynamicPage(name: "pageCondition", title: (condition.trg ? "Trigger" : "Condition") + " #$id", uninstall: false, install: false) {
+                section() {
+                    if (!settings["condDevices$id"] || (settings["condDevices$id"].size() == 0)) {
+                        //only display capability selection if no devices already selected
+                        input "condCap$id", "enum", title: "Capability", options: listCapabilities(true, false), submitOnChange: true, required: false
+                    }
+                    if (settings["condCap$id"]) {
+                        def capability = getCapabilityByDisplay(settings["condCap$id"])
+                        if (capability) {
+                            if (capability.virtualDevice) {
+                                def attribute = capability.attribute
+                                def attr = getAttributeByName(attribute)
+                                if (attribute == "time") {
+                                    //Date & Time support
+                                    def comparison = cleanUpComparison(settings["condComp$id"])
+                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true
+                                    if (comparison) {
+                                        def comp = getComparisonOption(attribute, comparison)
+                                        if (attr && comp) {
+                                            //we have a valid comparison object
+                                            trigger = (comp.trigger == comparison)
+                                            //if no parameters, show the filters
+                                            def varList = listVariables(true)
+                                            showDateTimeFilter = comp.parameters == 0
+                                            for (def i = 1; i <= comp.parameters; i++) {
+                                                input "condValue$id#$i", "enum", title: (comp.parameters == 1 ? "Value" : (i == 1 ? "Time" : "And")), options: timeComparisonOptionValues(trigger), required: true, multiple: false, submitOnChange: true
+                                                def value = settings["condValue$id#$i"]
+                                                if (value) {
+                                                    showDateTimeFilter = true
+                                                    if (value.contains("custom")) {
+                                                        //using a time offset
+                                                        input "condTime$id#$i", "time", title: "Custom time", required: true, multiple: false, submitOnChange: true
+                                                    }
+                                                    if (value.contains("variable")) {
+                                                        //using a time offset
+                                                        input "condVar$id#$i", "enum", options: varList, title: "Variable", required: true, multiple: false, submitOnChange: true
+                                                    }
+                                                    if (comparison.contains("around") || !(value.contains('every') || value.contains('custom'))) {
+                                                        //using a time offset
+                                                        input "condOffset$id#$i", "number", title: (comparison.contains("around") ? "Give or take minutes" : "Offset (+/- minutes)"), range: (comparison.contains("around") ? "1..360" : "-360..360"), required: true, multiple: false, defaultValue: (comparison.contains("around") ?  5 : 0), submitOnChange: true
+                                                    }
+
+                                                    if (value.contains("minute")) {
+                                                        recurring = true
+                                                    }
+
+                                                    if (value.contains("number")) {                                              
+                                                        //using a time offset
+                                                        input "condEvery$id", "number", title: value.replace("every n", "N"), range: "1..*", required: true, multiple: false, defaultValue: 5, submitOnChange: true
+                                                        recurring = true
+                                                    }
+
+                                                    if (value.contains("hour")) {
+                                                        //using a time offset
+                                                        input "condMinute$id", "enum", title: "At this minute", options: timeMinuteOfHourOptions(), required: true, multiple: false, submitOnChange: true
+                                                        recurring = true
+                                                    }
+
+                                                }
+                                            }
+                                            if (trigger && !recurring) {
+                                                showDateTimeRepeat = true
+                                            }
+                                        }
+                                    }
+
+                                } else {
+                                    //Location Mode, Smart Home Monitor support
+                                    def comparison = cleanUpComparison(settings["condComp$id"])
+                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
+                                    if (comparison) {                                	
+                                        //Value
+                                        def comp = getComparisonOption(attribute, comparison)
+                                        if (attr && comp) {
+                                            trigger = (comp.trigger == comparison)
+                                            if (comp.parameters >= 1) {
+                                                input "condValue$id#1", attr.type, title: "Value", options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {                        
+                                //physical device support
+                                def devices = settings["condDevices$id"]
+                                input "condDevices$id", "capability.${capability.name}", title: "${capability.display} list", required: false, state: (devices ? "complete" : null), multiple: capability.multiple, submitOnChange: true
+                                if (devices && devices.size()) {
+                                    if (!condition.trg && (devices.size() > 1)) {
+                                        input "condMode$id", "enum", title: "Evaluation mode", options: ["Any", "All"], required: true, multiple: false, defaultValue: "All", submitOnChange: true
+                                    }
+                                    def evalMode = (settings["condMode$id"] == "All" && !condition.trg) ? "All" : "Any"
+
+                                    //Attribute
+                                    def attribute = cleanUpAttribute(settings["condAttr$id"])
+                                    if (attribute == null) {
+                                        attribute = capability.attribute
+                                    }
+                                    //display the Attribute only in expert mode or in basic mode if it differs from the default capability attribute
+                                    if ((attribute != capability.attribute) || state.config.expertMode) {
+                                        input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
+                                    }
+                                    if (attribute) {                              
+                                        //Condition
+                                        def attr = getAttributeByName(attribute)
+                                        def comparison = cleanUpComparison(settings["condComp$id"])
+                                        input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
+                                        if (comparison) {                                	
+                                            //Value
+                                            def comp = getComparisonOption(attribute, comparison)
+                                            if (attr && comp) {
+                                                trigger = (comp.trigger == comparison)                                            
+                                                def extraComparisons = !comparison.contains("one of")
+                                                def varList = (extraComparisons ? listVariables(true) : [])
+                                                if (comp.parameters >= 1) {
+                                                    def value1 = settings["condValue$id#1"]
+                                                    def device1 = settings["condDev$id#1"]
+                                                    def variable1 = settings["condVar$id#1"]
+                                                    if (!extraComparisons || ((device1 == null) && (variable1 == null))) {
+                                                        input "condValue$id#1", attr.type, title: (comp.parameters == 1 ? "Value" : "From value"), options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
+                                                    }
+                                                    if (extraComparisons) {
+                                                        if ((value1 == null) && (variable1 == null)) {
+                                                            input "condDev$id#1", "capability.${capability.name}", title: (device1 == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device" : "From")), required: true, multiple: comp.multiple, submitOnChange: true
+                                                        }
+                                                        if ((value1 == null) && (device1 == null)) {
+                                                            input "condVar$id#1", "enum", options: varList, title: (variable1 == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable" : "From")), required: true, multiple: false, submitOnChange: true, capitalization: "none"
+                                                        }
+                                                        if (((variable1 != null) || (device1 != null)) && ((attr.type == "number") || (attr.type == "decimal"))) {
+                                                            input "condOffset$id#1", attr.type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
+                                                        }
+                                                    }
+                                                }
+                                                if (comp.parameters == 2) {
+                                                    def value2 = settings["condValue$id#2"]
+                                                    def device2 = settings["condDev$id#2"]
+                                                    def variable2 = settings["condVar$id#2"]
+                                                    if (!extraComparisons || ((device2 == null) && (variable2 == null))) {
+                                                        input "condValue$id#2", attr.type, title: "Through value", options: attr.options, range: attr.range, required: true, multiple: false, submitOnChange: true
+                                                    }
+                                                    if (extraComparisons) {
+                                                        if ((value2 == null) && (variable2 == null)) {
+                                                            input "condDev$id#2", "capability.${capability.name}", title: (device2 == null ? "... or choose a device to compare ..." : "Through device"), required: true, multiple: false, submitOnChange: true
+                                                        }
+                                                        if ((value2 == null) && (device2 == null)) {
+                                                            input "condVar$id#2", "enum", options: varList, title: (variable2 == null ? "... or choose a variable to compare ..." : "Through variable"), required: true, multiple: false, submitOnChange: true, capitalization: "none"
+                                                        }
+                                                        if (((variable2 != null) || (device2 != null)) && ((attr.type == "number") || (attr.type == "decimal"))) {
+                                                            input "condOffset$id#1", attr.type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
+                                                        }
+                                                    }
+                                                }
+
+                                                if (comp.timed) {
+                                                    if (comparison.contains("change")) {
+                                                        input "condTime$id", "enum", title: "In the last (minutes)", options: timeOptions(true), required: true, multiple: false, submitOnChange: true
+                                                    } else {
+                                                        input "condFor$id", "enum", title: "Time restriction", options: ["for at least", "for less than"], required: true, multiple: false, submitOnChange: true
+                                                        input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        //input "condDevice$id", "", title: title, required: true, multiple: false, submitOnChange: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (showDateTimeRepeat) {
+                    section(title: "Repeat this trigger...") {
+                        input "condRepeat$id", "enum", title: "Repeat", options: timeRepeatOptions(), required: true, multiple: false, defaultValue: "every day", submitOnChange: true
+                        def repeat = settings["condRepeat$id"]
+                        if (repeat) {
+                            def incremental = repeat.contains("number")
+                            if (incremental) {
+                                //using a time offset
+                                input "condRepeatEvery$id", "number", title: repeat.replace("every n", "N"), range: "1..*", required: true, multiple: false, defaultValue: 2, submitOnChange: true
+                                recurring = true
+                            }
+                            def monthOfYear = null
+                            if (repeat.contains("week")) {
+                                input "condRepeatDayOfWeek$id", "enum", title: "Day of the week", options: timeDayOfWeekOptions(), required: true, multiple: false, submitOnChange: true
+                            }
+                            if (repeat.contains("month") || repeat.contains("year")) {
+                                //oh-oh, monthly
+                                input "condRepeatDay$id", "enum", title: "On", options: timeDayOfMonthOptions(), required: true, multiple: false, submitOnChange: true
+                                def dayOfMonth = settings["condRepeatDay$id"]
+                                def certainDay = false
+                                def dayOfWeek = null
+                                if (dayOfMonth) {
+                                    if (dayOfMonth.contains("week")) {
+                                        certainDay = true
+                                        input "condRepeatDayOfWeek$id", "enum", title: "Day of the week", options: timeDayOfWeekOptions(), required: true, multiple: false, submitOnChange: true
+                                        dayOfWeek = settings["condDOWOM$id"]
+                                    }
+                                }
+                                if (repeat.contains("year")) {// && (dayOfMonth) && (!certainDay || dayOfWeek)) {
+                                    //oh-oh, yearly
+                                    input "condRepeatMonth$id", "enum", title: "Of", options: timeMonthOfYearOptions(), required: true, multiple: false, submitOnChange: true
+                                    monthOfYear = settings["condRepeatMonth$id"]
+                                }
+                            }
+                        }
+                    }
+                }
+
+                section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
+                    def value = evaluateCondition(condition)
+                    paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
+                    paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
+                    if (condition.attr == "time") {
+                        def v = ""
+                        def nextTime = null
+                        for (def i = 0; i < (condition.trg ? 3 : 1); i++) {
+                            nextTime = condition.trg ? getNextTimeTriggerTime(condition, nextTime) : getNextTimeConditionTime(condition, nextTime)
+                            if (nextTime) {
+                                v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
+                            } else {
+                                break
+                            }
+                        }
+                        paragraph v ? v : "(not happening any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
+                    }
+                }
+
+                if (showDateTimeFilter) {
+                    section(title: "Date & Time Filters", hideable: !state.config.expertMode, hidden: !(state.config.expertMode || settings["condMOH$id"] || settings["condHOD$id"] || settings["condDOW$id"] || settings["condDOM$id"] || settings["condMOY$id"] || settings["condY$id"])) {
+                        paragraph "But only on these..."
+                        input "condMOH$id", "enum", title: "Minute of the hour", description: 'Any minute of the hour', options: timeMinuteOfHourOptions(), required: false, multiple: true, submitOnChange: true
+                        input "condHOD$id", "enum", title: "Hour of the day", description: 'Any hour of the day', options: timeHourOfDayOptions(), required: false, multiple: true, submitOnChange: true
+                        input "condDOW$id", "enum", title: "Day of the week", description: 'Any day of the week', options: timeDayOfWeekOptions(), required: false, multiple: true, submitOnChange: true
+                        input "condDOM$id", "enum", title: "Day of the month", description: 'Any day of the month', options: timeDayOfMonthOptions2(), required: false, multiple: true, submitOnChange: true
+                        input "condWOM$id", "enum", title: "Week of the month", description: 'Any week of the month', options: timeWeekOfMonthOptions(), required: false, multiple: true, submitOnChange: true
+                        input "condMOY$id", "enum", title: "Month of the year", description: 'Any month of the year', options: timeMonthOfYearOptions(), required: false, multiple: true, submitOnChange: true
+                        input "condY$id", "enum", title: "Year", description: 'Any year', options: timeYearOptions(), required: false, multiple: true, submitOnChange: true
+                    }
+                }
+
+                if (id > 0) {
+                    def actions = listActions(id)
+                    if (actions.size() || state.config.expertMode) {
+                        section(title: "Individual actions") {
+                            def desc = actions.size() ? "" : "Tap to select actions"
+                            href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                            if (actions.size()) {
+                                for (action in actions) {
+                                    href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                                }
+                            }
+                        }
+                    }
+                }
+
+                section(title: "Advanced options") {
+                    input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, state: null, submitOnChange: true
+                    if (state.config.expertMode) {
+                        input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                        input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
+                        if (trigger) {
+                            input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                            input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                            input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                            input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                        }
+                    }
+                }
+
+                section() {
+                    paragraph "NOTE: To delete this condition, simply remove all devices from the list above and tap Done"
+                }
+
+                section(title: "Required data - do not change", hideable: true, hidden: true) {            
+                    input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "$pid..${pid+1}", defaultValue: pid
+                }
+            }
+        }
+    } catch(e) {
+    	debug "ERROR: Error while executing pageCondition: $e", null, "error"
     }
 }
 
@@ -2492,7 +2500,7 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventDelay", lastEvent.delay, true)    
     try {
 	    parent.updateChart("delay", delay)
-    } catch(javax.script.ScriptException e) {
+    } catch(e) {
     	debug "ERROR: Could not update delay chart: $e", null, "error"
     }
     if (evt.deviceId != "time") {
@@ -2638,7 +2646,7 @@ private broadcastEvent(evt, primary, secondary) {
             	scheduleActions(-2, stateChanged)
             }
         }
-	} catch(javax.script.ScriptException e) {
+	} catch(e) {
     	debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
     }
     perf = now() - perf
@@ -2790,7 +2798,7 @@ private evaluateCondition(condition, evt = null) {
 
         perf = now() - perf
         return result
-    } catch(javax.script.ScriptException e) {
+    } catch(e) {
     	debug "ERROR: Error evaluating condition: $e", null, "error"
     }
     return false
@@ -2833,11 +2841,15 @@ private evaluateDeviceCondition(condition, evt) {
                 def deviceResult = false
                 def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == condition.attr)
                 def oldValue = null
+                def oldValueSince = null
                 if (evt) {
                 	def cache = atomicState.cache
 					cache = cache ? cache : [:]
                 	def cachedValue = cache[device.id + "-" + condition.attr]
-                	if (cachedValue) oldValue = cachedValue.o
+                	if (cachedValue) {
+                    	oldValue = cachedValue.o
+                        oldValueSince = cachedValue.t
+                    }
                 }
             	currentValue = evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr))
                 def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
@@ -2871,7 +2883,7 @@ private evaluateDeviceCondition(condition, evt) {
                     deviceResult = false
                 } else {          
                 	def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
-					deviceResult = "$function"(condition, device, condition.attr, oldValue, currentValue, value1, value2, ownsEvent ? evt : null, evt)
+					deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt)
                     debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
                 }
                 
@@ -3150,61 +3162,61 @@ private testDateTimeFilters(condition, now) {
 }
 
 /* low-level evaluation functions */
-private eval_cond_is(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return eval_cond_is_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+private eval_cond_is(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_cond_is_not(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return eval_cond_is_not_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+private eval_cond_is_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_cond_is_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return (currentValue in value1)
 }
 
-private eval_cond_is_not_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+private eval_cond_is_not_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_cond_is_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue == value1
 }
 
-private eval_cond_is_not_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue != value1
 }
 
-private eval_cond_is_less_than(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue < value1
 }
 
-private eval_cond_is_less_than_or_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue <= value1
 }
 
-private eval_cond_is_greater_than(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue > value1
 }
 
-private eval_cond_is_greater_than_or_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return currentValue >= value1
 }
 
-private eval_cond_is_even(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	try {
    		return Math.round(currentValue).mod(2) == 0
     } catch(all) {}
     return false
 }
 
-private eval_cond_is_odd(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	try {
    		return Math.round(currentValue).mod(2) == 1
     } catch(all) {}
     return false
 }
 
-private eval_cond_is_inside_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_inside_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	if (value1 < value2) {
 		return (currentValue >= value1) && (currentValue <= value2)
     } else {
@@ -3212,7 +3224,7 @@ private eval_cond_is_inside_range(condition, device, attribute, oldValue, curren
     }
 }
 
-private eval_cond_is_outside_of_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_is_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	if (value1 < value2) {
 		return (currentValue < value1) || (currentValue > value2)
 	} else {
@@ -3243,25 +3255,25 @@ private listPreviousStates(device, attribute, currentValue, minutes, excludeLast
     return result
 }
 
-private eval_cond_changed(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	def minutes = timeToMinutes(condition.fort)
 	def events = device.eventsSince(new Date(now() - minutes * 60000)).findAll{it.name == attribute}
     return (events.size() > 0)
 }
 
-private eval_cond_did_not_change(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_changed(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+private eval_cond_did_not_change(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_cond_was(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return eval_cond_was_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+private eval_cond_was(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_cond_was_not(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	eval_cond_was_not_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt)
+private eval_cond_was_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_cond_was_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3276,7 +3288,7 @@ private eval_cond_was_equal_to(condition, device, attribute, oldValue, currentVa
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3291,7 +3303,7 @@ private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, curre
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_less_than(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3306,7 +3318,7 @@ private eval_cond_was_less_than(condition, device, attribute, oldValue, currentV
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3321,7 +3333,7 @@ private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldVal
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_greater_than(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3336,7 +3348,7 @@ private eval_cond_was_greater_than(condition, device, attribute, oldValue, curre
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3351,7 +3363,7 @@ private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, old
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_even(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3366,7 +3378,7 @@ private eval_cond_was_even(condition, device, attribute, oldValue, currentValue,
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_odd(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3381,7 +3393,7 @@ private eval_cond_was_odd(condition, device, attribute, oldValue, currentValue, 
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_inside_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_inside_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3396,7 +3408,7 @@ private eval_cond_was_inside_range(condition, device, attribute, oldValue, curre
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
@@ -3412,68 +3424,81 @@ private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, c
 }
 
 /* triggers */
-private eval_trg_changes(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
+private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return oldValue != currentValue
 }
 
-private eval_trg_changes_to(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_equal_to(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_equal_to(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_one_of(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_one_of(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_changes_away_from(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_not_equal_to(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_not_equal_to(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_changes_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_not_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_not_one_of(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_not_one_of(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_not_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_drops_below(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_less_than(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_less_than(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_less_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_less_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_drops_to_or_below(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_drops_to_or_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_raises_above(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_greater_than(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_greater_than(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_raises_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_greater_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_greater_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_raises_to_or_above(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_raises_to_or_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_changes_to_even(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_even(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_even(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_changes_to_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_even(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_even(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_changes_to_odd(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_odd(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_odd(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_changes_to_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_odd(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_odd(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_enters_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_inside_range(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_inside_range(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_enters_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_inside_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_inside_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
 }
 
-private eval_trg_exits_range(condition, device, attribute, oldValue, currentValue, value1, value2, evt, sourceEvt) {
-	return !eval_cond_is_outside_of_range(condition, device, attribute, null, oldValue, value1, value2, evt, sourceEvt) &&
-    		eval_cond_is_outside_of_range(condition, device, attribute, null, currentValue, value1, value2, evt, sourceEvt)
+private eval_trg_exits_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return !eval_cond_is_outside_of_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
+    		eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
+}
+
+private eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	if (!oldValueSince) return false
+    def time = timeToMinutes(condition.fort)
+    def thresholdTime = time * 60000
+	def stableTime = now() - oldValueSince
+    return (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
+}
+
+private eval_trg_did_not_change(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	if (!oldValueSince) return false
+	return !eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt)
 }
 
 
@@ -4138,7 +4163,7 @@ private processTasks() {
                             debug "Processing command task $task"
                             try {
                             	processCommandTask(task)
-							} catch (javax.script.ScriptException e) {
+							} catch (e) {
                             	debug "ERROR: Error while processing command task: $e", null, "error"
                             }
                         }
@@ -4152,7 +4177,7 @@ private processTasks() {
         //remove the safety net, wasn't worth the investment
         debug "Removing any existing ST safety nets", null, "trace"
         unschedule(recoveryHandler)
-    } catch(javax.script.ScriptException e) {
+    } catch (e) {
     	debug "ERROR: Error while executing processTasks: $e", null, "error"
     }
 	//end of processTasks
@@ -4799,9 +4824,9 @@ private timeComparisonOptionValues(trigger) {
    	return ["custom time", "midnight", "sunrise", "noon", "sunset", "time of variable", "date and time of variable"] + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
 }
 
-private timeOptions() {
+private timeOptions(trigger = false) {
 	def result = ["1 minute"]
-    for (def i =2; i <= 60; i++) {
+    for (def i =2; i <= (trigger ? 360 : 60); i++) {
     	result.push("$i minutes")
     }
 	return result
@@ -6599,5 +6624,4 @@ private getColorByName(name) {
 /******************************************************************************/
 
 private dev() {
-
 }
