@@ -2308,6 +2308,10 @@ private getTaskDescription(task) {
     
     
     } else if (cmd.name == "setColor") {
+    	def result = "Set color to "
+        if (task.p[0].d) return result + "\"${task.p[0].d}\""
+        if (task.p[1].d) return result + "RGB(${task.p[1].d})"
+        return result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
 	} else {
     	return formatMessage(cmd.description ? cmd.description : cmd.display, task.p)
     }
