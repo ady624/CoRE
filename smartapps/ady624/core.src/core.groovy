@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/22/2016 >>> v0.0.03b.20160522 - Alpha test version - Changed hue to angle, 0-360. Fixed a problem with mode and SHM alarm triggers. Added two predefined commands: quickSetCool and quickSetHeat
  *	 5/20/2016 >>> v0.0.03a.20160520 - Alpha test version - Color support. Added all 140 standard CSS colors, plus 4 white light colors. Partially tested with Osram (Green is green and Crimson is crimson)
  *	 5/20/2016 >>> v0.0.039.20160520 - Alpha test version - Fixed an error where an incomplete (during building) time condition would fail due to next event calculation introduced in v0.0.036.20160520
  *	 5/20/2016 >>> v0.0.038.20160520 - Alpha test version - Displaying individual actions (when true) in the main piston page and showing action restrictions as per https://github.com/ady624/CoRE/issues/7
@@ -96,7 +97,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.03a.20160520"
+	return "v0.0.03b.20160522"
 }
 
 
@@ -138,7 +139,8 @@ preferences {
     page(name: "pageActionGroup")
     page(name: "pageAction")
     page(name: "pageActionDevices")
-    page(name: "pageVariables")    
+    page(name: "pageVariables")  
+    page(name: "pageSetVariable")
 }
 
 
@@ -226,10 +228,7 @@ def pageGlobalVariables() {
     	section() {
         	def cnt = 0
             for (def variable in state.store.sort{ it.key }) {
-            	def value = getVariable(variable.key)
-                if ((value instanceof Long) && (value > 999999999999)) {
-                	value = formatLocalTime(value)
-                }
+            	def value = getVariable(variable.key, true)
                 paragraph "$value", title: "${variable.key}"
                 cnt++
             }
@@ -957,10 +956,7 @@ def pageVariables() {
     	section("Local Variables") {
         	def cnt = 0
             for (def variable in state.store.sort{ it.key }) {
-            	def value = getVariable(variable.key)
-                if ((value instanceof Long) && (value > 999999999999)) {
-                	value = formatLocalTime(value)
-                }
+            	def value = getVariable(variable.key, true)
                 paragraph "$value", title: "${variable.key}"
                 cnt++
             }
@@ -970,10 +966,7 @@ def pageVariables() {
         }
     	section("System Variables") {
             for (def variable in state.systemStore.sort{ it.key }) {
-            	def value = getVariable(variable.key)
-                if ((value instanceof Long) && (value > 999999999999)) {
-                	value = formatLocalTime(value)
-                }
+            	def value = getVariable(variable.key, true)
                 paragraph "$value", title: "${variable.key}"
             }
         }
@@ -1178,6 +1171,10 @@ def pageAction(params) {
                                         for (def parameter in command.parameters) {
                                             def param = parseCommandParameter(parameter)
                                             if (param) {
+                                            	if ((command.parameters.size() == 1) && (param.type == "var")) {
+                                                    href "pageSetVariable", params: [actionId: id, taskId: tid], title: "Set variable ${settings["actParam$id#$tid-0"]}", required: true, submitOnChange: true
+													break
+                                                }
                                                 if (param.type == "attribute") {
                                                     input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "attributes") {
@@ -1278,6 +1275,68 @@ def pageActionDevices(params) {
         }
     }
 }
+
+
+
+
+
+private pageSetVariable(params) {
+	state.run = "config"
+    def aid = params?.actionId ? (int) params?.actionId : (int) state.actionId
+    def tid = params?.taskId ? (int) params?.taskId : (int) state.taskId
+    state.actionId = aid
+    state.taskId = tid
+    if (!aid) return
+    if (!tid) return
+	dynamicPage(name: "pageSetVariable", title: "", uninstall: false, install: false) {
+        section("Variable") {
+            input "actParam$aid#$tid-0", "text", title: "Variable name", required: true, submitOnChange: true
+            input "actParam$aid#$tid-1", "enum", title: "Variable data type", options: ["boolean", "decimal", "number", "string", "time"], required: true, submitOnChange: true
+            input "actParam$aid#$tid-2", "bool", title: "I know algebra ☺", options: ["boolean", "decimal", "number", "string", "time"], required: true, submitOnChange: true
+            //input "actParam$aid#$tid-3", "text", title: "Formula", required: true, submitOnChange: true
+        }
+        def algebra = settings["actParam$aid#$tid-2"]
+        def dataType = settings["actParam$aid#$tid-1"]
+        if (algebra) {
+        	section() {
+                paragraph "Well, too bad. The algebra section is not yet complete..."
+            }
+        } else {
+        	def i = 1
+            def operation = ""
+            while (dataType) {
+                def a1 = i * 4
+                def a2 = a1 + 1
+                def a3 = a2 + 1
+                def op = a3 + 1
+                def secondaryDataType = (i == 1 ? dataType : (dataType == "time" ? "decimal" : dataType))
+                section(formatOrdinalNumberName(i).capitalize() + " operand") {
+                    def val = settings["actParam$aid#$tid-$a1"] != null
+                    def var = settings["actParam$aid#$tid-$a2"]
+                    log.trace "$val <<< ${settings["actParam$aid#$tid-$a1"]}"
+                    if (val || (val == 0) || !var) {
+                        input "actParam$aid#$tid-$a1", secondaryDataType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", required: true, submitOnChange: true
+                    }
+                    if (var || !val) {
+                        input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: true, submitOnChange: true
+                    }
+                    if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
+                        input "actParam$aid#$tid-$a3", "enum", options: ["seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
+                    }
+                }
+
+            	operation = settings["actParam$aid#$tid-$op"]
+                if (operation) operation = "$operation"
+                section(title: operation ? "" : "Add operation") {
+                    input "actParam$aid#$tid-$op", "enum", title: "Operation", options: ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"], required: false, submitOnChange: true
+                }
+                i += 1
+                if (!operation || i > 10) break
+            }
+        }
+    }
+}
+
 
 private buildIfContent() {
 	buildIfContent(state.config.app.conditions.id, 0)
@@ -1402,8 +1461,38 @@ def cpu() {
     }
 }
 
+def getVariable(name, forDisplay) {
+	def value = getVariable(name)
+    if (forDisplay) {
+        if ((value instanceof Long) && (value >= 999999999999)) return formatLocalTime(value)
+    }
+    return value
+}
+
 def getVariable(name) {
     name = sanitizeVariableName(name)
+    if (name == "\$now") return now()
+    if (name == "\$hour24") return adjustTime().hours
+    if (name == "\$hour") {
+    	def h = adjustTime().hours
+    	return (h == 0 ? 12 : (h > 12 ? h - 12 : h))
+    }
+    if (name == "\$meridian") {
+    	def h = adjustTime().hours
+    	return ( h < 12 ? "AM" : "PM")
+    }
+    if (name == "\$meridianWithDots") {
+    	def h = adjustTime().hours
+    	return ( h <12 ? "A.M." : "P.M.")
+    }
+    if (name == "\$minute") return adjustTime().minutes
+    if (name == "\$second") return adjustTime().seconds
+    if (name == "\$day") return adjustTime().date
+    if (name == "\$dayOfWeek") return getDayOfWeekNumber()
+    if (name == "\$dayOfWeekName") return getDayOfWeekName()
+    if (name == "\$month") return adjustTime().month + 1
+    if (name == "\$monthName") return getMonthName()
+    if (name == "\$year") return adjustTime().year + 1900
     if (name == "\$now") return now()
     if (name == "\$random") return Math.random()
     if (name == "\$randomColor") return getColorByName("Random").rgb
@@ -1450,18 +1539,44 @@ def setVariable(name, value, system = false) {
     //TODO: date&time triggers based on variables being changed need to be reevaluated
 }
 
-def listVariables(config = false) {
+private testDataType(value, dataType) {
+	if (!dataType || !value) return true
+	switch (dataType) {
+    	case "bool":
+        case "string":
+        	return true
+        case "time":
+        	return (value instanceof Long) && (value > 999999999999)
+        case "number":
+        	return !((value instanceof Long) && (value > 999999999999)) && "$value".isInteger() && !("$value".isFloat())
+        case "decimal":
+        	return !((value instanceof Long) && (value > 999999999999)) && ("$value".isInteger() || "$value".isFloat())
+    }
+    return false
+}
+
+def listVariables(config = false, dataType = null, listLocal = true, listGlobal = true, listSystem = true, listState = true) {
 	def result = []
     def parentResult = null
     def systemResult = []
-    for (variable in state.store) {
-    	result.push(variable.key)
+    if (listLocal) {
+        for (variable in state.store) {
+        	if (!dataType || testDataType(variable.value, dataType)) {
+	            result.push(variable.key)
+            }
+        }
     }
-    for (variable in state.systemStore) {
-    	result.push(variable.key)
+    if (listSystem) {
+        for (variable in state.systemStore) {
+        	if (!dataType || testDataType(variable.value, dataType)) {
+	            systemResult.push(variable.key)
+            }
+        }
     }
-    if (parent) {
-    	parentResult = parent.listVariables()
+    if (listGlobal) {
+        if (parent) {
+            parentResult = parent.listVariables(config, dataType, listLocal, listGlobal, false, listState)
+        }
     }
     if (parent && config) {
     	//look for variables set during conditions
@@ -1471,13 +1586,17 @@ def listVariables(config = false) {
             if (var) {
             	if (var.startsWith("@")) {
                 	//global
-                    if (!(var in parentResult)) {
-                    	parentResult.push(var)
+                    if (listGlobal && !(var in parentResult)) {
+                        if (!dataType || testDataType(it.value, dataType)) {
+                            parentResult.push(var)
+                        }
                     }
                 } else {
                 	//local
-                    if (!(var in result)) {
-                    	result.push(var)
+                    if (listLocal && !(var in result)) {
+                        if (!dataType || testDataType(it.value, dataType)) {
+                            result.push(var)
+                        }
                     }
                 }
             }
@@ -2056,7 +2175,33 @@ private updateAction(action) {
                     command = getCommandByDisplay(cmd)
                 }
                 if (command) {
-                    if (command.parameters) {
+                	if (command.name == "setVariable") {
+                    	//setVariable is different, we've got a variable number of parameters...
+                        //variable name
+                        task.p.push([i: 0, t: "variable", d: settings["actParam$id#$tid-0"], v: 1])
+                        //data type
+                        def dataType = settings["actParam$id#$tid-1"]
+                        task.p.push([i: 1, t: "text", d: dataType])
+                        //algebra
+                        task.p.push([i: 2, t: "bool", d: !!settings["actParam$id#$tid-2"]])
+                        //formula
+                        task.p.push([i: 3, t: "text", d: settings["actParam$id#$tid-3"]])
+                        def i = 4
+                        while (true) {
+                        	//value
+	                        task.p.push([i: i, t: dataType, d: settings["actParam$id#$tid-$i"]])
+                            //variable name
+	                        task.p.push([i: i + 1, t: "text", d: settings["actParam$id#$tid-${i + 1}"]])
+                            //variable name
+	                        task.p.push([i: i + 2, t: "text", d: settings["actParam$id#$tid-${i + 2}"]])
+                            //next operation
+                            def operation = settings["actParam$id#$tid-${i + 3}"]
+                            if (!operation) break
+	                        task.p.push([i: i + 3, t: "text", d: operation])
+                            if (dataType == "time") dataType = "decimal"
+                            i = i + 4
+                        }
+                    } else if (command.parameters) {
                         def i = 0
                         for (def parameter in command.parameters) {
                             def param = parseCommandParameter(parameter)
@@ -2140,12 +2285,33 @@ private getActionDescription(action) {
             }
         	t += "]"
         }
-        result += "\n ► $t"
+        result += "\n ► " + getTaskDescription(task)
     }
     return result
 }
 
-
+private getTaskDescription(task) {
+	if (!task) return "[ERROR]"
+    def virtual = (task.c && task.c.startsWith(virtualCommandPrefix()))
+    def custom = (task.c && task.c.startsWith(customCommandPrefix()))
+	def command = cleanUpCommand(task.c)
+    log.trace "Task $task with command $command"
+    
+    def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))
+    if (!cmd) return "[ERROR]"
+    
+    if (cmd.name == "setVariable") {
+    	if (task.p.size() < 7) return "[ERROR]"
+        def result = "Set {${task.p[0].d}} = "
+        return result
+    	//special case for setVariable as the number of parameters is variable
+    
+    
+    } else if (cmd.name == "setColor") {
+	} else {
+    	return formatMessage(cmd.description ? cmd.description : cmd.display, task.p)
+    }
+}
 
 
 
@@ -2629,16 +2795,19 @@ private evaluateDeviceCondition(condition, evt) {
     
     //get list of devices
     def devices = settings["condDevices${condition.id}"]
+    def eventDeviceId = evt ? evt.deviceId : null
     def virtualCurrentValue = null
     switch (condition.cap) {
     	case "Mode":
     	case "Location Mode":
         	devices = [location]
             virtualCurrentValue = location.mode
+            eventDeviceId = location.id
             break
         case "Smart Home Monitor":
         	devices = [location]
             virtualCurrentValue = getAlarmSystemStatus()
+            eventDeviceId = location.id
         	break    	
     }
     if (!devices) {
@@ -2652,7 +2821,7 @@ private evaluateDeviceCondition(condition, evt) {
             if (comp) {
             	//if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
                 def deviceResult = false
-                def ownsEvent = evt && (evt.deviceId == device.id) && (evt.name == condition.attr)
+                def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == condition.attr)
                 def oldValue = null
                 if (evt) {
                 	def cache = atomicState.cache
@@ -2735,20 +2904,22 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
         return false
     }
 
-    if (evt && (comp.trigger == comparison)) {
-        //trigger
-        if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
-            condition.lt = evt.date.time
-            //we have a time event returning as a result of a trigger, assume true
-            return true
-        } else {
+    if (comp.trigger == comparison) {
+    	if (evt) {
+            //trigger
+            if (evt && (evt.deviceId == "time") && (evt.conditionId == condition.id)) {
+                condition.lt = evt.date.time
+                //we have a time event returning as a result of a trigger, assume true
+                return true
+            } else {
 
 
-            if (comparison.contains("stay")) {
-                //we have a stay condition
+                if (comparison.contains("stay")) {
+                    //we have a stay condition
+                }
             }
-            return false
         }
+        return false
     }
 
 	def time = adjustTime(unixTime)
@@ -4032,7 +4203,7 @@ private processCommandTask(task) {
                 if (requiredParams == availableParams) {
                     def params = []
                     t.p.sort{ it.i }.findAll() {
-                        params.push(it.d)
+                        params.push(it.d instanceof String ? formatMessage(it.d) : it.d)
                     }
                     if (params.size()) {
                     	if ((command.name == "setColor") && (params.size() == 5)) {
@@ -4045,7 +4216,7 @@ private processCommandTask(task) {
                             //lightness
                             def name = params[0]
                             def hex = params[1]
-                            def hue = params[2]
+                            def hue = params[2] instanceof Integer ? params[2] / 3.6 : 0
                             def saturation = params[3]
                             def lightness = params[4]
                             def p = [:]
@@ -4213,13 +4384,17 @@ private task_vcmd_sendSMSNotification(device, task) {
     	return false
     }
     def message = formatMessage(params[0].d)
-    def phone = params[1].d
+    def phones = "${params[1].d}".replace(" ", "").replace("-", "").replace("(", "").replace(")", "").tokenize(",;*|").unique()
     def saveNotification = !!params[2].d
-    if (saveNotification) {
-    	sendSms(phone, message)
-    } else {
-		sendSmsMessage(phone, message)
-	}
+    for(def phone in phones) {
+        if (saveNotification) {
+            sendSms(phone, message)
+        } else {
+            sendSmsMessage(phone, message)
+        }
+        //we only need one notification
+        saveNotification = false
+    }
 }
 
 
@@ -4365,7 +4540,7 @@ private getPreviousQuarterHour(unixTime = now()) {
 }
 
 //adjusts the time to local timezone
-private adjustTime(time) {
+private adjustTime(time = null) {
 	if (time instanceof String) {
     	//get UTC time
     	time = timeToday(time, location.timeZone).getTime()
@@ -4373,6 +4548,9 @@ private adjustTime(time) {
     if (time instanceof Date) {
     	//get unix time
     	time = time.getTime()
+    }
+    if (!time) {
+    	time = now()
     }
     if (time) {
     	return new Date(time + location.timeZone.getOffset(time))
@@ -5406,7 +5584,7 @@ private setAlarmSystemStatus(status) {
     return false
 }
 
-private formatMessage(message) {
+private formatMessage(message, params = null) {
 	if (!message) {
     	return message
     }
@@ -5414,16 +5592,20 @@ private formatMessage(message) {
     def varMap = [:]
     for (variable in variables) {
         if (!(variable in varMap)) {
-            def value = getVariable(variable.replace("{", "").replace("}", ""))
-            if ((value instanceof Long) && (value > 999999999999)) {
-                value = formatLocalTime(value)
+        	def var = variable.replace("{", "").replace("}", "")
+            def idx = var.isInteger() ? var.toInteger() : null
+            def value = ""
+            if (params && (idx >= 0) && (idx < params.size())) {
+            	value = "${params[idx].d ? params[idx].d : params[idx]}"            	
+            } else {
+	            value = getVariable(var, true)
             }
            	varMap[variable] = value
         }
     }
     for(var in varMap) {
     	if (var.value) {
-			message = message.replace(var.key, var.value)
+			message = message.replace(var.key, "${var.value}")
         }
     }
     return message
@@ -5836,6 +6018,7 @@ private parseCommandParameter(parameter) {
                 	case "contact":
                 	case "number":
                 	case "decimal":
+                    case "var":
                     	return [title: title, type: dataType, required: required, last: last]
                 	case "color":
                     	return [title: title, type: "enum", options: colorOptions(), required: required, last: last]
@@ -5985,6 +6168,8 @@ private commands() {
     	[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
     	[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
     	[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
+    	[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
+    	[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
     	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
     	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], ],
     	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], ],
@@ -6000,12 +6185,12 @@ private commands() {
     	[ name: "mute",										category: "Entertainment",				group: "Control [devices]",			display: "Mute",						parameters: [], ],
     	[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",						parameters: [], ],
 		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], ],
-    	[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], ],
+    	[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], description: "Speak text \"{0}\"", ],
     	[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: [], ],
     	[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			display: "Set track",					parameters: [], ],
     	[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				parameters: [], ],
     	[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				parameters: [], ],
-    	[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], ],
+    	[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], description: "Speak \"{0}\"", ],
     	[ name: "startActivity",							category: "Entertainment",				group: "Control [devices]",			display: "Start activity",				parameters: [], ],
     	[ name: "getCurrentActivity",						category: "Entertainment",				group: "Control [devices]",			display: "Get current activity",		parameters: [], ],
     	[ name: "getAllActivities",							category: "Entertainment",				group: "Control [devices]",			display: "Get all activities",			parameters: [], ],
@@ -6025,28 +6210,29 @@ private commands() {
 
 private virtualCommands() {
 	return [
-    	[ name: "wait",					requires: [],			 			display: "Wait",							parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	],
-    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	],
-    	[ name: "waitState",			requires: [],			 			display: "Wait for piston state change",	parameters: ["Change to:enum[any state,false state,true state]"],															immediate: true,	location: true,	],
+    	[ name: "wait",					requires: [],			 			display: "Wait",							parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait {0} {1}",	],
+    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
+    	[ name: "waitState",			requires: [],			 			display: "Wait for piston state change",	parameters: ["Change to:enum[any,false,true]"],															immediate: true,	location: true,						description: "Wait for {0} state"],
     	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																																															],
-    	[ name: "delayedOn",			requires: ["on"], 					display: "Turn on (delayed)",				parameters: ["Delay (ms):number[1..60000]"]																														],
-    	[ name: "delayedOff",			requires: ["off"], 					display: "Turn off (delayed)",				parameters: ["Delay (ms):number[1..60000]"]																														],
-    	[ name: "delayedToggle",		requires: ["on", "off"], 			display: "Toggle (delayed)",				parameters: ["Delay (ms):number[1..60000]"]																														],
-    	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"]					],
-    	[ name: "captureAttribute",		requires: [],			 			display: "Capture attribute to variable", 	parameters: ["Attribute:attribute","Into variable...:string"],							singleDevice: true,	varEntry: 1,										],
-    	[ name: "captureState",			requires: [],			 			display: "Capture state to variable",		parameters: ["?Attributes:attributes","Into variable...:string"],						singleDevice: true,	varEntry: 1,										],
-    	[ name: "captureStateLocally",	requires: [],			 			display: "Capture local state",				parameters: ["?Attributes:attributes"],																															],
-    	[ name: "captureStateGlobally",	requires: [],			 			display: "Capture global state",			parameters: ["?Attributes:attributes"],																															],
-    	[ name: "restoreAttribute",		requires: [],			 			display: "Restore attribute from variable",	parameters: ["Attribute:attribute","From variable...:variable"],																								],
-    	[ name: "restoreState",			requires: [],			 			display: "Restore state from variable",		parameters: ["?Attributes:attributes","From variable...:variable"],																								],
-    	[ name: "restoreStateLocally",	requires: [],			 			display: "Restore local state",				parameters: ["?Attributes:attributes"],																															],
-    	[ name: "restoreStateGlobally",	requires: [],			 			display: "Restore global state",			parameters: ["?Attributes:attributes"],																															],
+    	[ name: "delayedOn",			requires: ["on"], 					display: "Turn on (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on after {0}ms",	],
+    	[ name: "delayedOff",			requires: ["off"], 					display: "Turn off (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off after {0}ms",	],
+    	[ name: "delayedToggle",		requires: ["on", "off"], 			display: "Toggle (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle after {0}ms",	],
+    	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,	],
+    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","Save to variable:string"],					varEntry: 2,										],
+    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Save to state variable...:string"],												varEntry: 1,										],
+    	[ name: "saveStateLocally",		requires: [],			 			display: "Save state",																																				],
+    	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state (global)",																																			],
+    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Load from variable...:variable","Attribute:attribute"],																								],
+    	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Load from state variable...:stateVariable","Attributes:attributes"],																								],
+    	[ name: "loadStateLocally",		requires: [],			 			display: "Load state",						parameters: ["Attributes:attributes"],																															],
+    	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state (global)",				parameters: ["Attributes:attributes"],																															],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	],
-    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	],
+    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",	],
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
-    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	],
-    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true,	],
+    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",	],
+    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",	],
     ]
 }
 
@@ -6061,7 +6247,7 @@ private attributes() {
     	[ name: "carbonDioxide",			type: "decimal",			range: "0..*",			unit: null,		options: null,																								],
     	[ name: "carbonMonoxide",			type: "enum",				range: null,			unit: null,		options: ["clear", "detected", "tested"],																	],
     	[ name: "color",					type: "color",				range: null,			unit: "#RRGGBB",options: null,																								],
-    	[ name: "hue",						type: "number",				range: "0..100",		unit: "%",		options: null,																								],
+    	[ name: "hue",						type: "number",				range: "0..360",		unit: "°",		options: null,																								],
     	[ name: "saturation",				type: "number",				range: "0..100",		unit: "%",		options: null,																								],
     	[ name: "hex",						type: "hexcolor",			range: null,			unit: null,		options: null,																								],
     	[ name: "saturation",				type: "number",				range: "0..100",		unit: "%",		options: null,																								],
@@ -6179,31 +6365,44 @@ private initialSystemStore() {
 	return [
         "\$currentEventAttribute": null,
         "\$currentEventDate": null,
-        "\$currentEventDelay": null,
+        "\$currentEventDelay": 0,
         "\$currentEventDevice": null,
         "\$currentEventReceived": null,
         "\$currentEventValue": null,
         "\$currentState": null,
         "\$currentState": null,
-        "\$currentStateDuration": null,
+        "\$currentStateDuration": 0,
         "\$currentStateSince": null,
         "\$currentStateSince": null,
         "\$nextScheduledTime": null,
-        "\$now": null,
+        "\$now": 999999999999,
+        "\$hour": 0,
+        "\$hour24": 0,
+        "\$minute": 0,
+        "\$second": 0,
+        "\$meridian": "",
+        "\$meridianWithDots": "",
+        "\$day": 0,
+        "\$dayOfWeek": 0,
+        "\$dayOfWeekName": "",
+        "\$month": 0,
+        "\$monthName": "",
+        "\$year": 0,
+        "\$meridianWithDots": "",
         "\$previousEventAttribute": null,
         "\$previousEventDate": null,
-        "\$previousEventDelay": null,
+        "\$previousEventDelay": 0,
         "\$previousEventDevice": null,
-        "\$previousEventExecutionTime": null,
+        "\$previousEventExecutionTime": 0,
         "\$previousEventReceived": null,
         "\$previousEventValue": null,
         "\$previousState": null,
-        "\$previousStateDuration": null,
+        "\$previousStateDuration": 0,
         "\$previousStateSince": null,
-        "\$random": null,
-        "\$randomColor": null,
-        "\$randomColorName": null,
-        "\$randomLevel": null,
+        "\$random": 0,
+        "\$randomColor": "#FFFFFF",
+        "\$randomColorName": "White",
+        "\$randomLevel": 0,
 	]
 }
 
