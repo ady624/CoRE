@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/24/2016 >>> v0.0.041.20160524 - Alpha test version - Extended "is one of" and "is not one of" to attributes that have only two values. It was previously available only to those having three or more values.
  *	 5/24/2016 >>> v0.0.040.20160524 - Alpha test version - Multi sub-device support (read buttons in conditions, or multi-switch in actions). TODO: buttons & triggers - the button state does not change, so detecting a change is tricky, or rather, simpler, but different.
  *	 5/23/2016 >>> v0.0.03f.20160523 - Alpha test version - Added matching and non-matching device list variables and renamed "With (devices)" to "Using (devices)"
  *	 5/23/2016 >>> v0.0.03e.20160523 - Alpha test version - Set Variable fixes for time variables, fixed variables not being parsed in sendNotification
@@ -102,7 +103,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.040.20160524"
+	return "v0.0.041.20160524"
 }
 
 
@@ -6866,8 +6867,8 @@ private comparisons() {
 	def optionsEnum = [
         [ condition: "is", trigger: "changes to", parameters: 1, timed: false],
         [ condition: "is not", trigger: "changes away from", parameters: 1, timed: false],
-        [ condition: "is one of", trigger: "changes to one of", parameters: 1, timed: false, multiple: true, minOptions: 3],
-        [ condition: "is not one of", trigger: "changes away from one of", parameters: 1, timed: false, multiple: true, minOptions: 3],
+        [ condition: "is one of", trigger: "changes to one of", parameters: 1, timed: false, multiple: true, minOptions: 2],
+        [ condition: "is not one of", trigger: "changes away from one of", parameters: 1, timed: false, multiple: true, minOptions: 2],
         [ condition: "was", trigger: "stays", parameters: 1, timed: true],
         [ condition: "was not", trigger: "stays away from", parameters: 1, timed: true],
         [ trigger: "changes", parameters: 0, timed: false],
