@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/23/2016 >>> v0.0.03f.20160523 - Alpha test version - Added matching and non-matching device list variables and renamed "With (devices)" to "Using (devices)"
  *	 5/23/2016 >>> v0.0.03e.20160523 - Alpha test version - Set Variable fixes for time variables, fixed variables not being parsed in sendNotification
  *	 5/23/2016 >>> v0.0.03d.20160523 - Alpha test version - Set Variable done, testing in progress
  *	 5/23/2016 >>> v0.0.03c.20160523 - Alpha test version - Fixed a problem where dry evaluation of a condition may fail when changing the capability or the attribute or the comparison in the UI
@@ -100,7 +101,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.03e.20160523"
+	return "v0.0.03f.20160523"
 }
 
 
@@ -623,15 +624,21 @@ private getConditionGroupPageContent(params, condition) {
 
             section(title: "Advanced options") {
                 input "condNegate$id", "bool", title: "Negate Group", description: "Apply a logical NOT to the whole group", defaultValue: false, state: null, submitOnChange: true
-                if (state.config.expertMode) {
+            }
+            if (state.config.expertMode) {
+            	section("Set variables") {
                     input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                    input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
-                    if (trigger) {
-                        input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                        input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                        input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                        input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                    }
+                    input "condVarS$id", "string", title: "Save last evaluation result", description: "Enter a variable name to store the truth result in", required: false, capitalization: "none"
+                    input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
+                    input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
+                }
+                section("Set variables on true") {
+                    input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                    input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                }
+                section("Set variables on false") {
+                    input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                    input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
                 }
             }
 
@@ -924,15 +931,21 @@ def pageCondition(params) {
 
                 section(title: "Advanced options") {
                     input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, state: null, submitOnChange: true
-                    if (state.config.expertMode) {
+                }
+                if (state.config.expertMode) {
+                    section("Set variables") {
                         input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                        input "condVarS$id", "string", title: "Save last evaluation state", description: "Enter a variable name to store the state in", required: false, capitalization: "none"
-                        if (trigger) {
-                            input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                            input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                            input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                            input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                        }
+                        input "condVarS$id", "string", title: "Save last evaluation result", description: "Enter a variable name to store the truth result in", required: false, capitalization: "none"
+                        input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
+                        input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
+                    }
+                    section("Set variables on true") {
+                        input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                        input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                    }
+                    section("Set variables on false") {
+                        input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                        input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
                     }
                 }
 
@@ -1114,10 +1127,10 @@ def pageAction(params) {
                                     names.push(device.label)
                                 }
                             }
-                            href "pageActionDevices", title: "With...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
+                            href "pageActionDevices", title: "Using...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
                         } else {
                         	names.push "location"
-                            input "actDev$id#location", "bool", title: "With location...", state: "complete", defaultValue: true, submitOnChange: true
+                            input "actDev$id#location", "bool", title: "Using location...", state: "complete", defaultValue: true, submitOnChange: true
                         }
                     }
                     def prefix = "actTask$id#"
@@ -2093,6 +2106,8 @@ private updateCondition(condition) {
     //variables
     condition.vd = settings["condVarD${condition.id}"]
     condition.vs = settings["condVarS${condition.id}"]
+    condition.vm = settings["condVarM${condition.id}"]
+    condition.vn = settings["condVarN${condition.id}"]
     condition.vt = settings["condVarT${condition.id}"]
     condition.vv = settings["condVarV${condition.id}"]
     condition.vf = settings["condVarF${condition.id}"]
@@ -2308,7 +2323,7 @@ private getActionDescription(action) {
     if (action.ra) {
     	result += "® If alarm is ${buildNameList(action.ra, "or")}...\n"
     }
-    result += (result ? "\n" : "") + "With " + buildDeviceNameList(devices, "and")+ "..."
+    result += (result ? "\n" : "") + "Using " + buildDeviceNameList(devices, "and")+ "..."
     for (task in action.t.sort{it.i}) {
     	def t = cleanUpCommand(task.c)
         if (task.p && task.p.size()) {
@@ -2845,12 +2860,10 @@ private evaluateCondition(condition, evt = null) {
         if (evt) {
             if (condition.vd) setVariable(condition.vd, now())
             if (condition.vs) setVariable(condition.vs, result)
-            if (condition.trg) {
-                if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
-                if (condition.vv && result) setVariable(condition.vv, evt.value)
-                if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
-                if (condition.vw && !result) setVariable(condition.vw, evt.value)
-            }
+            if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
+            if (condition.vv && result) setVariable(condition.vv, evt.value)
+            if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
+            if (condition.vw && !result) setVariable(condition.vw, evt.value)
 
             if (result) {
                 scheduleActions(condition.id)
@@ -2889,12 +2902,16 @@ private evaluateDeviceCondition(condition, evt) {
             eventDeviceId = location.id
         	break    	
     }
+    
+    //matching devices list
+    def vm = []
+    //non-matching devices list
+    def vn = []
     if (!devices) {
     	//something went wrong
         return false    	
     } else {
     	//the real deal goes here
-        
         for (device in devices) {
 			def comp = getComparisonOption(condition.attr, condition.comp)
             if (comp) {
@@ -2946,6 +2963,12 @@ private evaluateDeviceCondition(condition, evt) {
                 	def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
 					deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt)
                     debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
+                    
+                    if (deviceResult) {
+                    	if (condition.vm) vm.push "$device"
+                    } else {
+                    	if (condition.vn) vn.push "$device"
+                    }
                 }
                 
         		//compound the result, depending on mode
@@ -2961,12 +2984,16 @@ private evaluateDeviceCondition(condition, evt) {
 	                	break
 	            }
                 //optimize the loop to exit when we find a result that's going to be the final one (AND encountered a false, or OR encountered a true)
-                if (finalResult) break
+                if (finalResult && !condition.vm && !condition.vn) break
             }
         }
         
     }
 
+	if (evt) {
+    	if (condition.vm) setVariable(condition.vm, buildNameList(vm, "and"))
+    	if (condition.vn) setVariable(condition.vn, buildNameList(vn, "and"))
+    }
     return  result
 }
 
@@ -5936,13 +5963,11 @@ private formatMessage(message, params = null) {
 	if (!message) {
     	return message
     }
-    log.trace "Formatting message $message"
     def variables = message.findAll(/\{([^\{\}]*)?\}*/)
     def varMap = [:]
     for (variable in variables) {
         if (!(variable in varMap)) {
         	def var = variable.replace("{", "").replace("}", "")
-            log.trace "FOUND VAR $var"
             def idx = var.isInteger() ? var.toInteger() : null
             def value = ""
             if (params && (idx >= 0) && (idx < params.size())) {
@@ -5958,7 +5983,6 @@ private formatMessage(message, params = null) {
 			message = message.replace(var.key, "${var.value}")
         }
     }
-    log.trace "RETURNING $message"
     return message
 }
 
