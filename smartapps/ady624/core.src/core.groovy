@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/24/2016 >>> v0.0.040.20160524 - Alpha test version - Multi sub-device support (read buttons in conditions, or multi-switch in actions). TODO: buttons & triggers - the button state does not change, so detecting a change is tricky, or rather, simpler, but different.
  *	 5/23/2016 >>> v0.0.03f.20160523 - Alpha test version - Added matching and non-matching device list variables and renamed "With (devices)" to "Using (devices)"
  *	 5/23/2016 >>> v0.0.03e.20160523 - Alpha test version - Set Variable fixes for time variables, fixed variables not being parsed in sendNotification
  *	 5/23/2016 >>> v0.0.03d.20160523 - Alpha test version - Set Variable done, testing in progress
@@ -101,7 +102,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.03f.20160523"
+	return "v0.0.040.20160524"
 }
 
 
@@ -775,6 +776,12 @@ def pageCondition(params) {
                                     if ((attribute != capability.attribute) || state.config.expertMode) {
                                         input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
                                     }
+                                    if (capability.count) {
+                                    	def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
+                                        if (subDevices.size()) {
+                                        	input "condSubDev$id", "enum", title: "${capability.display}(s)", options: subDevices, defaultValue: subDevices.size() ? subDevices[0] : null, required: true, multiple: true, submitOnChange: true                                        
+                                        }
+                                    }
                                     if (attribute) {                              
                                         //Condition
                                         def attr = getAttributeByName(attribute)
@@ -1104,7 +1111,8 @@ def pageAction(params) {
                             def option = getCommandGroupName(command)
                             if (option && !(option in options)) {
                                 options.push option
-                                if (option == "Control location") {
+                                if (option.contains("location mode")) {
+                                	def controlLocation = settings["actDev$id#location"]
                                 	input "actDev$id#location", "bool", title: option, defaultValue: false, submitOnChange: true
                                 } else {
                                 	href "pageActionDevices", params:[actionId: id, command: command], title: option, submitOnChange: true
@@ -1123,8 +1131,9 @@ def pageAction(params) {
                         def names=[]
                         if (deviceAction) {
                             for(device in devices) {
-                                if (!(device.label in names)) {
-                                    names.push(device.label)
+                                def label = getDeviceLabel(device)
+                                if (!(label in names)) {
+                                	names.push(label)
                                 }
                             }
                             href "pageActionDevices", title: "Using...", params:[actionId: id, capabilities: usedCapabilities], description: "${buildNameList(names, "and")}", state: "complete", submitOnChange: true
@@ -2035,6 +2044,7 @@ private deleteCondition(conditionId) {
 private updateCondition(condition) {
 	condition.cap = settings["condCap${condition.id}"]
 	condition.dev = []
+    condition.sdev = settings["condSubDev${condition.id}"]
     condition.attr = cleanUpAttribute(settings["condAttr${condition.id}"])
     switch (condition.cap) {
     	case "Date & Time":
@@ -2554,6 +2564,7 @@ private broadcastEvent(evt, primary, secondary) {
     //save previous event
 	setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
     setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
+    setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
     setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
     setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
     setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
@@ -2570,6 +2581,7 @@ private broadcastEvent(evt, primary, secondary) {
     state.lastEvent = lastEvent    
     setVariable("\$currentEventReceived", perf, true)
     setVariable("\$currentEventDevice", lastEvent.event.device, true)
+    setVariable("\$currentEventDeviceIndex", 0, true)
     setVariable("\$currentEventAttribute", lastEvent.event.name, true)
     setVariable("\$currentEventValue", lastEvent.event.value, true)
     setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
@@ -2588,7 +2600,7 @@ private broadcastEvent(evt, primary, secondary) {
     	atomicState.cache = cache
         state.cache = cache
 		if (cachedValue) {
-	    	if ((cachedValue.v == evt.value) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
+	    	if ((cachedValue.v == evt.value) && (!evt.data) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
 	        	//duplicate event
 	    		debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
 	            evt = null
@@ -2961,8 +2973,34 @@ private evaluateDeviceCondition(condition, evt) {
                     deviceResult = false
                 } else {          
                 	def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
-					deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt)
-                    debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
+                    def forceFalse = false
+                    if (evt && evt.jsonData && attr.capability) {
+                    	//we need to see if we have subdevices
+                    	def capability = getCapabilityByName(attr.capability)
+	                    if (capability && capability.count && capability.data && attr) {
+                        	//at this point we won't evaluate this condition unless we have the right sub device below
+                        	forceFalse = true
+							setVariable("\$currentEventDeviceIndex", cast(evt.jsonData[capability.data], "number"), true)
+                        	def subDeviceId = "#${evt.jsonData[capability.data]}".trim()
+	                        def subDevices = condition.sdev ? condition.sdev : []
+                        	if (subDevices && subDevices.size()) {
+                        		//are we expecting that button?
+                                //subDeviceId in subDevices didn't seem to work?!
+                                for(subDevice in subDevices) {
+                                	if (subDevice == subDeviceId) {
+                                		forceFalse = false
+                                        break
+                                	}
+                                }
+                        	}
+                        }
+                    }
+                    if (forceFalse) {
+                    	deviceResult = false
+                    } else {
+						deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt)
+                    	debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
+                    }
                     
                     if (deviceResult) {
                     	if (condition.vm) vm.push "$device"
@@ -4315,8 +4353,18 @@ private processCommandTask(task) {
         	//we can't run immediate tasks here
             //execute the virtual task
             debug "Executing virtual command ${command.name}", null, "info"
-            def function = "task_vcmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
-            return "$function"(device, task)
+            def cn = command.name
+            def suffix = ""
+            if (cn.contains("#")) {
+            	//multi command
+                def parts = cn.tokenize("#")
+                if (parts.size() == 2) {
+                	cn = parts[0]
+                    suffix = parts[1]
+				}
+            }
+            def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
+            return "$function"(device, task, suffix)
         }
     } else {
         command = getCommandByDisplay(cmd)
@@ -4376,20 +4424,20 @@ private processCommandTask(task) {
 	return false
 }
 
-private task_vcmd_toggle(device, task) {
+private task_vcmd_toggle(device, task, suffix = "") {
     if (!device || !device.hasCommand("on") || !device.hasCommand("off")) {
     	//we need a device that has both on and off commands
     	return false
     }
     if (device.currentState("switch") == "on") {
-    	device.off()
+    	device."off$suffix"()
     } else {
-    	device.on()
+    	device."on$suffix"()
     }
     return true
 }
 
-private task_vcmd_delayedToggle(device, task) {
+private task_vcmd_delayedToggle(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
@@ -4397,36 +4445,36 @@ private task_vcmd_delayedToggle(device, task) {
     }
     def delay = params[0].d
     if (device.currentState("switch") == "on") {
-    	device.off([delay: delay])
+    	device."off$suffix"([delay: delay])
     } else {
-    	device.on([delay: delay])
+    	device."on$suffix"([delay: delay])
     }
     return true
 }
 
-private task_vcmd_delayedOn(device, task) {
+private task_vcmd_delayedOn(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
     	return false
     }
     def delay = params[0].d
-   	device.on([delay: delay])
+   	device."on$suffix"([delay: delay])
     return true
 }
 
-private task_vcmd_delayedOff(device, task) {
+private task_vcmd_delayedOff(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("off") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
     	return false
     }
     def delay = params[0].d
-   	device.off([delay: delay])
+   	device."off$suffix"([delay: delay])
     return true
 }
 
-private task_vcmd_flash(device, task) {
+private task_vcmd_flash(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 3)) {
     	//we need a device that has both on and off commands
@@ -4441,15 +4489,15 @@ private task_vcmd_flash(device, task) {
     def flashes = params[2].d
     def delay = 0
     for (def i = 0; i < flashes; i++) {
-    	device.on([delay: delay])
+    	device."on$suffix"([delay: delay])
         delay = delay + onInterval
-    	device.off([delay: delay])
+    	device."off$suffix"([delay: delay])
         delay = delay + offInterval
     }
     return true
 }
 
-private task_vcmd_setLocationMode(device, task) {
+private task_vcmd_setLocationMode(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4464,7 +4512,7 @@ private task_vcmd_setLocationMode(device, task) {
     return false
 }
 
-private task_vcmd_setAlarmSystemStatus(device, task) {
+private task_vcmd_setAlarmSystemStatus(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4479,7 +4527,7 @@ private task_vcmd_setAlarmSystemStatus(device, task) {
     return false
 }
 
-private task_vcmd_sendNotification(device, task) {
+private task_vcmd_sendNotification(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4488,7 +4536,7 @@ private task_vcmd_sendNotification(device, task) {
     sendNotificationEvent(message)
 }
 
-private task_vcmd_sendPushNotification(device, task) {
+private task_vcmd_sendPushNotification(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 2) {
     	return false
@@ -4502,7 +4550,7 @@ private task_vcmd_sendPushNotification(device, task) {
 	}
 }
 
-private task_vcmd_sendSMSNotification(device, task) {
+private task_vcmd_sendSMSNotification(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 3) {
     	return false
@@ -5566,6 +5614,7 @@ private getConditionDescription(id, level = 0) {
             def unit = (attr && attr.unit ? attr.unit : "")
             def comparison = cleanUpComparison(condition.comp)
             def comp = getComparisonOption(condition.attr, comparison)
+            def subDevices = capability.count && attr && (attr.name == capability.attribute) ? buildNameList(condition.sdev, "or") + " " : ""
             def values = " [ERROR]"
             def time = ""
             if (comp) {
@@ -5595,7 +5644,7 @@ private getConditionDescription(id, level = 0) {
             if (virtualDevice) {
             	attribute = ""
             }
-            return tab + (condition.not ? "!" : "") + (condition.trg ? triggerPrefix() : conditionPrefix()) + evaluation + deviceList + attribute + comparison + values + time
+            return tab + (condition.not ? "!" : "") + (condition.trg ? triggerPrefix() : conditionPrefix()) + evaluation + deviceList + attribute + subDevices + comparison + values + time
         }
         return "Sorry, incomplete rule"
 	} else {
@@ -5910,7 +5959,8 @@ private buildDeviceNameList(devices, suffix) {
 	def cnt = 1
     def result = ""
 	for (device in devices) {
-        result += "$device" + (cnt < devices.size() ? (cnt == devices.size() - 1 ? " $suffix " : ", ") : "")
+    	def label = getDeviceLabel(device)
+        result += "$label" + (cnt < devices.size() ? (cnt == devices.size() - 1 ? " $suffix " : ", ") : "")
         cnt++
     }
     return result;
@@ -5924,6 +5974,10 @@ private buildNameList(list, suffix) {
         cnt++
     }
     return result;
+}
+
+private getDeviceLabel(device) {
+	return device instanceof String ? device : (device ? ( device?.label ? device.label : (device.name ? device.name : "$device")) : "Unknown device")
 }
 
 private getAlarmSystemStatus() {
@@ -6087,7 +6141,13 @@ private listCommonDeviceAttributes(devices) {
     def customList = [:]
     //build the list of standard attributes
 	for (attribute in attributes()) {
-    	list[attribute.name] = 0
+    	if (attribute.name.contains("*")) {
+        	for (def i = 1; i <= 32; i++) {
+            	list[attribute.name.replace("*", "$i")] = 0
+            }
+        } else {
+    		list[attribute.name] = 0
+        }
     }
 	//get supported attributes
     for (device in devices) {
@@ -6122,6 +6182,58 @@ private listCommonDeviceAttributes(devices) {
 }
 
 
+private listCommonDeviceSubDevices(devices, countAttribute, prefix = "") {
+	def result = []
+    def subDeviceCount = null
+    def hasMainSubDevice = false
+    //get supported attributes
+    for (device in devices) {
+    	def cnt = 4
+        switch (device.name) {
+        	case "Aeon Minimote":
+            case "Aeon Key Fob":
+        	case "Simulated Minimote":
+            	cnt = 4
+                break        	
+        }
+        /*
+        if (countAttribute.contains("*")) {
+        	//we're looking for a repeated attribute, like switch1, switch2, switch3, switch4, etc.
+            def attrPrefix = countAttribute.tokenize("*")[0]
+            hasMainSubDevice = device.hasAttribute(attrPrefix)
+            def attrs = device.supportedAttributes
+            cnt = 0
+            for (def attr in attrs) {
+            	if (attr.startsWith(attrPrefix)) {
+                	def c = cast(attr.replace(attrPrefix, ""), "number")
+                    cnt = cnt < c ? c : cnt
+                }
+            }
+        } else {
+        */
+        if (device.hasAttribute(countAttribute)) {
+            def c = cast(device.currentValue(countAttribute), "number")
+            cnt = c ? c : cnt
+        }
+        if (cnt instanceof String) {
+        	cnt = cnt.isInteger() ? cnt.toInteger() : 0
+        }
+        if (cnt instanceof Integer) {
+            subDeviceCount = (subDeviceCount == null) || (cnt < subDeviceCount) ? (int) cnt : subDeviceCount
+        }
+    }
+    if (subDeviceCount >= 2) {
+    	if (hasMainSubDevice) {
+        	result.push "Main ${prefix.toLowerCase()}"
+        }
+    	for(def i = 1; i <= subDeviceCount; i++) {
+        	result.push "$prefix #$i".trim()
+        }
+    }
+    //return the sorted list
+    return result
+}
+
 private listCommonDeviceCommands(devices, capabilities) {
 	def list = [:]
     def customList = [:]
@@ -6140,6 +6252,12 @@ private listCommonDeviceCommands(devices, capabilities) {
                     //if attribute exists in standard list, increment its usage count
                     list[name] = list[name] + 1
                     found = true
+                } else {
+                	name = name.replaceAll("[\\d]", "") + "*"
+                    if (list.containsKey(name)) {
+	                    list[name] = list[name] + 1
+    	                found = true
+                    }
                 }
             }
         	if (!found && list.containsKey(cmd.name)) {
@@ -6195,8 +6313,9 @@ private getCapabilityByDisplay(display) {
 }
 
 private getAttributeByName(name) {
+	def name2 = name instanceof String ? name.replaceAll("[\\d]", "").trim() + "*" : null
     for (attribute in attributes()) {
-    	if (attribute.name == name) {
+    	if ((attribute.name == name) || (name2 && (attribute.name == name2))) {
         	return attribute
         }
     }
@@ -6447,7 +6566,7 @@ private capabilities() {
         [ name: "battery",							display: "Battery",							attribute: "battery",					commands: null,																		multiple: true,			devices: "battery powered devices",	],
     	[ name: "beacon",							display: "Beacon",							attribute: "presence",					commands: null,																		multiple: true,			devices: "beacons",	],
     	[ name: "switch",							display: "Bulb",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-        [ name: "button",							display: "Button",							attribute: "button",					commands: null,																		multiple: true,			devices: "buttons",			],
+        [ name: "button",							display: "Button",							attribute: "button",					commands: null,																		multiple: true,			devices: "buttons",			count: "numberOfButtons", data: "buttonNumber",],
         [ name: "imageCapture",						display: "Camera",							attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras",			],
     	[ name: "carbonDioxideMeasurement",			display: "Carbon Dioxide Measurement",		attribute: "carbonDioxide",				commands: null,																		multiple: true,			devices: "carbon dioxide sensors",	],
         [ name: "carbonMonoxideDetector",			display: "Carbon Monoxide Detector",		attribute: "carbonMonoxide",			commands: null,																		multiple: true,			devices: "carbon monoxide detectors",	],
@@ -6517,11 +6636,35 @@ private capabilities() {
 private commands() {
 	def tempUnit = "°" + location.temperatureScale
 	return [
-        [ name: "locationMode.setMode",						category: "Location",					group: "Control location",			display: "Set location mode",			parameters: [], ],
-        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location",			display: "Set Smart Home Monitor status",parameters: [], ],
+        [ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set location mode",			parameters: [], ],
+        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set Smart Home Monitor status",parameters: [], ],
     	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
+    	[ name: "on1",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #1", 					parameters: [], ],
+    	[ name: "on2",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #2", 					parameters: [], ],
+    	[ name: "on3",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #3", 					parameters: [], ],
+    	[ name: "on4",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #4", 					parameters: [], ],
+    	[ name: "on5",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #5", 					parameters: [], ],
+    	[ name: "on6",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #6", 					parameters: [], ],
+    	[ name: "on7",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #7", 					parameters: [], ],
+    	[ name: "on8",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #8", 					parameters: [], ],
     	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
+    	[ name: "off1",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #1",					parameters: [], ],
+    	[ name: "off2",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #2",					parameters: [], ],
+    	[ name: "off3",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #3",					parameters: [], ],
+    	[ name: "off4",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #4",					parameters: [], ],
+    	[ name: "off5",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #5",					parameters: [], ],
+    	[ name: "off6",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #6",					parameters: [], ],
+    	[ name: "off7",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #7",					parameters: [], ],
+    	[ name: "off8",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #8",					parameters: [], ],
     	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
+    	[ name: "toggle1",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle2",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle3",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle4",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle5",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle6",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle7",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
+    	[ name: "toggle8",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
     	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",	],
     	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], ],
     	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	],
@@ -6590,10 +6733,50 @@ private virtualCommands() {
     	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
     	[ name: "waitState",			requires: [],			 			display: "Wait for piston state change",	parameters: ["Change to:enum[any,false,true]"],															immediate: true,	location: true,						description: "Wait for {0} state"],
     	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																																															],
+    	[ name: "toggle#1",				requires: ["on1", "off1"], 			display: "Toggle #1",																																															],
+    	[ name: "toggle#2",				requires: ["on2", "off2"], 			display: "Toggle #2",																																															],
+    	[ name: "toggle#3",				requires: ["on3", "off3"], 			display: "Toggle #3",																																															],
+    	[ name: "toggle#4",				requires: ["on4", "off4"], 			display: "Toggle #4",																																															],
+    	[ name: "toggle#5",				requires: ["on5", "off5"], 			display: "Toggle #5",																																															],
+    	[ name: "toggle#6",				requires: ["on6", "off6"], 			display: "Toggle #6",																																															],
+    	[ name: "toggle#7",				requires: ["on7", "off7"], 			display: "Toggle #7",																																															],
+    	[ name: "toggle#8",				requires: ["on8", "off8"], 			display: "Toggle #8",																																															],
     	[ name: "delayedOn",			requires: ["on"], 					display: "Turn on (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on after {0}ms",	],
+    	[ name: "delayedOn#1",			requires: ["on1"], 					display: "Turn on #1 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #1 after {0}ms",	],
+    	[ name: "delayedOn#2",			requires: ["on2"], 					display: "Turn on #2 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #2 after {0}ms",	],
+    	[ name: "delayedOn#3",			requires: ["on3"], 					display: "Turn on #3 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #3 after {0}ms",	],
+    	[ name: "delayedOn#4",			requires: ["on4"], 					display: "Turn on #4 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #4 after {0}ms",	],
+    	[ name: "delayedOn#5",			requires: ["on5"], 					display: "Turn on #5 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #5 after {0}ms",	],
+    	[ name: "delayedOn#6",			requires: ["on6"], 					display: "Turn on #6 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #6 after {0}ms",	],
+    	[ name: "delayedOn#7",			requires: ["on7"], 					display: "Turn on #7 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #7 after {0}ms",	],
+    	[ name: "delayedOn#8",			requires: ["on8"], 					display: "Turn on #8 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #8 after {0}ms",	],
     	[ name: "delayedOff",			requires: ["off"], 					display: "Turn off (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off after {0}ms",	],
+    	[ name: "delayedOff#1",			requires: ["off1"],					display: "Turn off #1 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #1 after {0}ms",	],
+    	[ name: "delayedOff#2",			requires: ["off2"],					display: "Turn off #2 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #2 after {0}ms",	],
+    	[ name: "delayedOff#3",			requires: ["off3"],					display: "Turn off #3 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #3 after {0}ms",	],
+    	[ name: "delayedOff#4",			requires: ["off4"],					display: "Turn off #4 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #4 after {0}ms",	],
+    	[ name: "delayedOff#5",			requires: ["off5"],					display: "Turn off #5 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #5 after {0}ms",	],
+    	[ name: "delayedOff#6",			requires: ["off7"],					display: "Turn off #6 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #6 after {0}ms",	],
+    	[ name: "delayedOff#7",			requires: ["off7"],					display: "Turn off #7 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #7 after {0}ms",	],
+    	[ name: "delayedOff#8",			requires: ["off8"],					display: "Turn off #8 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn off #8 after {0}ms",	],
     	[ name: "delayedToggle",		requires: ["on", "off"], 			display: "Toggle (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle after {0}ms",	],
+    	[ name: "delayedToggle#1",		requires: ["on1", "off1"], 			display: "Toggle #1 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #1 after {0}ms",	],
+    	[ name: "delayedToggle#2",		requires: ["on2", "off2"], 			display: "Toggle #2 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #2 after {0}ms",	],
+    	[ name: "delayedToggle#3",		requires: ["on3", "off3"], 			display: "Toggle #3 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #3 after {0}ms",	],
+    	[ name: "delayedToggle#4",		requires: ["on4", "off4"], 			display: "Toggle #4 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #4 after {0}ms",	],
+    	[ name: "delayedToggle#5",		requires: ["on5", "off5"], 			display: "Toggle #5 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #5 after {0}ms",	],
+    	[ name: "delayedToggle#6",		requires: ["on6", "off6"], 			display: "Toggle #6 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #6 after {0}ms",	],
+    	[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
+    	[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
     	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#2",				requires: ["on2", "off2"], 			display: "Flash #2",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #2 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#3",				requires: ["on3", "off3"], 			display: "Flash #3",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #3 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#4",				requires: ["on4", "off4"], 			display: "Flash #4",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #4 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#5",				requires: ["on5", "off5"], 			display: "Flash #5",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #5 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#6",				requires: ["on6", "off6"], 			display: "Flash #6",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #6 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#7",				requires: ["on7", "off7"], 			display: "Flash #7",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #7 {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "flash#8",				requires: ["on8", "off8"], 			display: "Flash #8",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #8 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,	],
     	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","Save to variable:string"],					varEntry: 2,										],
     	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Save to state variable...:string"],												varEntry: 1,										],
@@ -6619,7 +6802,7 @@ private attributes() {
     	[ name: "alarm",					type: "enum",				range: null,			unit: null,		options: ["off", "strobe", "siren", "both"],																],
     	[ name: "battery",					type: "number",				range: "0..100",		unit: "%",		options: null,																								],
     	[ name: "beacon",					type: "enum",				range: null,			unit: null,		options: ["present", "not present"],																		],
-        [ name: "button",					type: "enum",				range: null,			unit: null,		options: ["held", "pushed"],																				],
+        [ name: "button",					type: "enum",				range: null,			unit: null,		options: ["held", "pushed"],																				capability: "button",	], //default capability so that we can figure out multi sub devices
     	[ name: "carbonDioxide",			type: "decimal",			range: "0..*",			unit: null,		options: null,																								],
     	[ name: "carbonMonoxide",			type: "enum",				range: null,			unit: null,		options: ["clear", "detected", "tested"],																	],
     	[ name: "color",					type: "color",				range: null,			unit: "#RRGGBB",options: null,																								],
@@ -6629,11 +6812,13 @@ private attributes() {
     	[ name: "saturation",				type: "number",				range: "0..100",		unit: "%",		options: null,																								],
     	[ name: "level",					type: "number",				range: "0..100",		unit: "%",		options: null,																								],
     	[ name: "switch",					type: "enum",				range: null,			unit: null,		options: ["on", "off"],																						],
+    	[ name: "switch*",					type: "enum",				range: null,			unit: null,		options: ["on", "off"],																						],
     	[ name: "colorTemperature",			type: "number",				range: "2000..7000",	unit: "°K",		options: null,																								],
     	[ name: "consumable",				type: "enum",				range: null,			unit: null,		options: ["missing", "good", "replace", "maintenance_required", "order"],									],
     	[ name: "contact",					type: "enum",				range: null,			unit: null,		options: ["open", "closed"],																				],
     	[ name: "door",						type: "enum",				range: null,			unit: null,		options: ["unknown", "closed", "open", "closing", "opening"],												],
     	[ name: "energy",					type: "decimal",			range: "0..*",			unit: "kWh",	options: null,																								],
+    	[ name: "energy*",					type: "decimal",			range: "0..*",			unit: "kWh",	options: null,																								],
     	[ name: "illuminance",				type: "number",				range: "0..*",			unit: "lux",	options: null,																								],
     	[ name: "image",					type: "image",				range: null,			unit: null,		options: null,																								],
     	[ name: "lock",						type: "enum",				range: null,			unit: null,		options: ["locked", "unlocked"],																			],
@@ -6644,6 +6829,7 @@ private attributes() {
     	[ name: "mute",						type: "enum",				range: null,			unit: null,		options: ["muted", "unmuted"],																				],
     	[ name: "pH",						type: "decimal",			range: "0..14",			unit: null,		options: null,																								],
     	[ name: "power",					type: "decimal",			range: "0..*",			unit: "W",		options: null,																								],
+    	[ name: "power*",					type: "decimal",			range: "0..*",			unit: "W",		options: null,																								],
     	[ name: "presence",					type: "enum",				range: null,			unit: null,		options: ["present", "not present"],																		],
     	[ name: "humidity",					type: "number",				range: "0..100",		unit: "%",		options: null,																								],
         [ name: "shock",					type: "enum",				range: null,			unit: null,		options: ["detected", "clear"],																				],
@@ -6724,6 +6910,7 @@ private comparisons() {
 	]
 	return [
     	[ type: "string",				options: optionsEnum,	],
+    	[ type: "text",					options: optionsEnum,	],
     	[ type: "enum",					options: optionsEnum,	],
     	[ type: "mode",					options: optionsEnum,	],
     	[ type: "alarmSystemStatus",	options: optionsEnum,	],
@@ -6743,6 +6930,7 @@ private initialSystemStore() {
         "\$currentEventDate": null,
         "\$currentEventDelay": 0,
         "\$currentEventDevice": null,
+		"\$currentEventDeviceIndex": 0,
         "\$currentEventReceived": null,
         "\$currentEventValue": null,
         "\$currentState": null,
@@ -6769,6 +6957,7 @@ private initialSystemStore() {
         "\$previousEventDate": null,
         "\$previousEventDelay": 0,
         "\$previousEventDevice": null,
+		"\$previousEventDeviceIndex": 0,
         "\$previousEventExecutionTime": 0,
         "\$previousEventReceived": null,
         "\$previousEventValue": null,
