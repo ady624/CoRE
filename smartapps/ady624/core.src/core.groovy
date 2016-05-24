@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/23/2016 >>> v0.0.03e.20160523 - Alpha test version - Set Variable fixes for time variables, fixed variables not being parsed in sendNotification
  *	 5/23/2016 >>> v0.0.03d.20160523 - Alpha test version - Set Variable done, testing in progress
  *	 5/23/2016 >>> v0.0.03c.20160523 - Alpha test version - Fixed a problem where dry evaluation of a condition may fail when changing the capability or the attribute or the comparison in the UI
  *	 5/22/2016 >>> v0.0.03b.20160522 - Alpha test version - Changed hue to angle, 0-360. Fixed a problem with mode and SHM alarm triggers. Added two predefined commands: quickSetCool and quickSetHeat
@@ -99,7 +100,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.03d.20160523"
+	return "v0.0.03e.20160523"
 }
 
 
@@ -4456,7 +4457,7 @@ private task_vcmd_sendNotification(device, task) {
     if (params.size() != 1) {
     	return false
     }
-    def message = params[0].d
+    def message = formatMessage(params[0].d)
     sendNotificationEvent(message)
 }
 
@@ -4465,7 +4466,7 @@ private task_vcmd_sendPushNotification(device, task) {
     if (params.size() != 2) {
     	return false
     }
-    def message = params[0].d
+    def message = formatMessage(params[0].d)
     def saveNotification = !!params[1].d
     if (saveNotification) {
     	sendPush(message)
@@ -4479,7 +4480,7 @@ private task_vcmd_sendSMSNotification(device, task) {
     if (params.size() != 3) {
     	return false
     }
-    def message = params[0].d
+    def message = formatMessage(params[0].d)
     def phones = "${params[1].d}".replace(" ", "").replace("-", "").replace("(", "").replace(")", "").tokenize(",;*|").unique()
     def saveNotification = !!params[2].d
     for(def phone in phones) {
@@ -4505,7 +4506,7 @@ private task_vcmd_setVariable(device, task, simulate = false) {
     def result = ""
     switch (dataType) {
     	case "time":
-        	result = now()
+        	result = adjustTime()
             break
 		case "number":
         case "decimal":
@@ -4533,7 +4534,13 @@ private task_vcmd_setVariable(device, task, simulate = false) {
                 def variable = params[i + 1].d
                 if (!value) {
                     //we get the value of the variable
-                    value = cast(getVariable(variable), subDataType)
+                    if (subDataType in ["time"]) {
+                    	value = adjustTime(getVariable(variable)).time
+                    } else {
+	                    value = cast(getVariable(variable, dataType in ["string", "text"]), subDataType)
+                    }
+                } else {
+                	value = cast(value, subDataType)
                 }
                 if (i == 4) {
                     //initial values
@@ -4551,12 +4558,12 @@ private task_vcmd_setVariable(device, task, simulate = false) {
                         groupingIndex = idx
                         groupingUnit = unit
                         groupingOperation = previousOperation
-                        groupingResult = cast(value, dataType)
+                        groupingResult = value
                         skip = true
                     }
                 }
                 //add the value/variable
-                subDataType = subDataType == "time" ? "decimal" : subDataType
+                subDataType = subDataType == "time" ? "long" : subDataType
                 if (!skip) {
                     def operand1 = grouping ? groupingResult : result
                     def operand2 = value
@@ -4657,6 +4664,11 @@ private task_vcmd_setVariable(device, task, simulate = false) {
         	return simulate ? null : false
         }
     }
+    if (dataType in ["string", "text"]) {
+    	result = formatMessage(result)
+    } else if (dataType in ["time"]) {
+		result = simulate ? formatLocalTime(convertTimeToUnixTime(result)) : convertTimeToUnixTime(result)
+	}
     if (!simulate) {
     	setVariable(name, result)
     } else {
@@ -4683,6 +4695,18 @@ private cast(value, dataType) {
             } catch(all) {
             	return (int) 0
             }
+        case "long":
+        	if (value instanceof String) {
+            	if (value.isInteger())
+                	return (long) value.toInteger()
+            	if (value.isFloat())
+                	return (long) Math.round(value.toFloat())
+            }
+            try {
+            	return (long) value
+            } catch(all) {
+            	return (long) 0
+            }
         case "decimal":
         	if (value instanceof String) {
             	if (value.isFloat())
@@ -4703,7 +4727,7 @@ private cast(value, dataType) {
             }
             return !!value
 		case "time":
-        	return adjustTime(value)
+			return value instanceof String ? adjustTime(value).time : cast(value, "long")
     }
 }
 
@@ -4890,6 +4914,13 @@ private convertDateToUnixTime(date) {
     	date = new Date(date)
     }
 	return date.time - location.timeZone.getOffset(date.time)
+}
+
+private convertTimeToUnixTime(time) {
+	if (!time) {
+    	return null
+    }
+	return time - location.timeZone.getOffset(time)
 }
 
 private formatTime(time) {
@@ -5905,11 +5936,13 @@ private formatMessage(message, params = null) {
 	if (!message) {
     	return message
     }
+    log.trace "Formatting message $message"
     def variables = message.findAll(/\{([^\{\}]*)?\}*/)
     def varMap = [:]
     for (variable in variables) {
         if (!(variable in varMap)) {
         	def var = variable.replace("{", "").replace("}", "")
+            log.trace "FOUND VAR $var"
             def idx = var.isInteger() ? var.toInteger() : null
             def value = ""
             if (params && (idx >= 0) && (idx < params.size())) {
@@ -5925,6 +5958,7 @@ private formatMessage(message, params = null) {
 			message = message.replace(var.key, "${var.value}")
         }
     }
+    log.trace "RETURNING $message"
     return message
 }
 
