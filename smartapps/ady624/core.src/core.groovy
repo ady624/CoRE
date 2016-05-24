@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/24/2016 >>> v0.0.042.20160524 - Alpha test version - Execute Routine action is now available. Routine execution trigger not yet ready.
  *	 5/24/2016 >>> v0.0.041.20160524 - Alpha test version - Extended "is one of" and "is not one of" to attributes that have only two values. It was previously available only to those having three or more values.
  *	 5/24/2016 >>> v0.0.040.20160524 - Alpha test version - Multi sub-device support (read buttons in conditions, or multi-switch in actions). TODO: buttons & triggers - the button state does not change, so detecting a change is tricky, or rather, simpler, but different.
  *	 5/23/2016 >>> v0.0.03f.20160523 - Alpha test version - Added matching and non-matching device list variables and renamed "With (devices)" to "Using (devices)"
@@ -103,7 +104,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.041.20160524"
+	return "v0.0.042.20160524"
 }
 
 
@@ -1227,6 +1228,9 @@ def pageAction(params) {
                                                     input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "variables") {
                                                     input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else if (param.type == "routine") {
+                                                	def routines = location.helloHome?.getPhrases()*.label
+                                                    input "actParam$id#$tid-$i", "enum", options: routines, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else {
                                                     input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
                                                 }
@@ -4570,6 +4574,18 @@ private task_vcmd_sendSMSNotification(device, task, suffix = "") {
     }
 }
 
+
+private task_vcmd_executeRoutine(device, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 1) {
+    	return false
+    }
+    def routine = formatMessage(params[0].d)
+	location.helloHome?.execute(routine)
+    return true
+}
+
+
 private task_vcmd_setVariable(device, task, simulate = false) {
     def params = simulate ? ((task && task.p && task.p.size()) ? task.p : []) : ((task && task.data && task.data.p && task.data.p.size()) ? task.data.p : [])
 	//we need at least 7 params
@@ -6481,7 +6497,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["attribute", "attributes", "variable", "variables"]) {
+    if (dataType in ["attribute", "attributes", "variable", "variables", "routine"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -6793,6 +6809,7 @@ private virtualCommands() {
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",	],
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",	],
+    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, description: "Execute routine \"{0}\"",	],
     ]
 }
 
