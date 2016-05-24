@@ -629,8 +629,8 @@ private getConditionGroupPageContent(params, condition) {
             	section("Set variables") {
                     input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
                     input "condVarS$id", "string", title: "Save last evaluation result", description: "Enter a variable name to store the truth result in", required: false, capitalization: "none"
-                    input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
-                    input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
+                    //input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
+                    //input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
                 }
                 section("Set variables on true") {
                     input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
