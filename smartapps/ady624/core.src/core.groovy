@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/25/2016 >>> v0.0.044.20160525 - Alpha test version - Fixed the command description for custom commands - temporary until custom commands are complete
  *	 5/25/2016 >>> v0.0.043.20160525 - Alpha test version - Fixed toggle virtual command, modified the Flash virtual command to turn the switch back on if it started on, added the Cancel Pending Tasks virtual command, added action advanced options Task Override Scope and Task Cancellation Policy. Global scope does not yet work, CoRE would have to "spread the word" to all child pistons. Improved the device condition evaluation to speed up things - took common code outside of the device loop.
  *	 5/24/2016 >>> v0.0.042.20160524 - Alpha test version - Execute Routine action is now available. Routine execution trigger not yet ready.
  *	 5/24/2016 >>> v0.0.041.20160524 - Alpha test version - Extended "is one of" and "is not one of" to attributes that have only two values. It was previously available only to those having three or more values.
@@ -105,7 +106,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.043.20160525"
+	return "v0.0.044.20160525"
 }
 
 
@@ -749,6 +750,8 @@ def pageCondition(params) {
                                     //Location Mode, Smart Home Monitor support
                                     def comparison = cleanUpComparison(settings["condComp$id"])
                                     if (attribute == "variable") {
+                                    	def dataType = settings["condDataType$id"]
+                                    	input "condVar$id", "enum", title: "Variable name", options: listVariables(true, dataType, false, true, false, false) , required: true, multiple: false, submitOnChange: true
                                     	input "condDataType$id", "enum", title: "Data Type", options: ["string", "number", "decimal", "time"], required: true, multiple: false, submitOnChange: true
                                     }
                                     def dataType = settings["condDataType$id"]
@@ -1625,7 +1628,6 @@ private testDataType(value, dataType) {
         case "time":
         	return (value instanceof Long) && (value > 999999999999)
         case "number":
-        	return !((value instanceof Long) && (value > 999999999999)) && "$value".isInteger() && !("$value".isFloat())
         case "decimal":
         	return !((value instanceof Long) && (value > 999999999999)) && ("$value".isInteger() || "$value".isFloat())
     }
@@ -2102,6 +2104,7 @@ private updateCondition(condition) {
         condition.dev.push(device.id)
     }
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
+    condition.var = settings["condVar${condition.id}"]
     condition.dt = settings["condDataType${condition.id}"]
     condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
@@ -2387,7 +2390,12 @@ private getTaskDescription(task) {
     def virtual = (task.c && task.c.startsWith(virtualCommandPrefix()))
     def custom = (task.c && task.c.startsWith(customCommandPrefix()))
 	def command = cleanUpCommand(task.c)
-    def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))
+    
+    if (custom) {
+		return task.c
+    }
+    
+    def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))    
     if (!cmd) return "[ERROR]"
     
     if (cmd.name == "setVariable") {
@@ -3664,6 +3672,10 @@ private eval_trg_enters_range(condition, device, attribute, oldValue, oldValueSi
 private eval_trg_exits_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
 	return !eval_cond_is_outside_of_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt) &&
     		eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt)
+}
+
+private eval_trg_executed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt) {
+	return (evt && evt.displayName && evt.displayName == value1)
 }
 
 /*
@@ -7089,6 +7101,7 @@ private initialSystemStore() {
 
 private colors() {
 	return [
+        [ name: "Random",					rgb: "#000000",		h: 0,		s: 0,		l: 0,		],
         [ name: "Soft White",				rgb: "#FFA757",		h: 8,		s: 100,		l: 67,		],
         [ name: "Warm White",				rgb: "#FFB16E",		h: 8,		s: 100,		l: 72,		],
         [ name: "Daylight White",			rgb: "#FFE4CE",		h: 8,		s: 100,		l: 90,		],
@@ -7236,18 +7249,13 @@ private colors() {
 }
 
 private colorOptions() {
-	def result = []
-    for (color in colors()) {
-    	result.push(color.name)
-    }
-    result.push "Random"
-    return result
+    return colors()*.name
 }
 
 private getColorByName(name) {
 	if (name == "Random") {
     	//randomize the color
-        def idx = Math.round(Math.random() * (colors().size() - 4)) as Integer
+        def idx = 5 + Math.round(Math.random() * (colors().size() - 6)) as Integer
         return colors()[idx]
     }
     for (color in colors()) {
