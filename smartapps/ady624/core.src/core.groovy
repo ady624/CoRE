@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/25/2016 >>> v0.0.043.20160525 - Alpha test version - Fixed toggle virtual command, modified the Flash virtual command to turn the switch back on if it started on, added the Cancel Pending Tasks virtual command, added action advanced options Task Override Scope and Task Cancellation Policy. Global scope does not yet work, CoRE would have to "spread the word" to all child pistons. Improved the device condition evaluation to speed up things - took common code outside of the device loop.
  *	 5/24/2016 >>> v0.0.042.20160524 - Alpha test version - Execute Routine action is now available. Routine execution trigger not yet ready.
  *	 5/24/2016 >>> v0.0.041.20160524 - Alpha test version - Extended "is one of" and "is not one of" to attributes that have only two values. It was previously available only to those having three or more values.
  *	 5/24/2016 >>> v0.0.040.20160524 - Alpha test version - Multi sub-device support (read buttons in conditions, or multi-switch in actions). TODO: buttons & triggers - the button state does not change, so detecting a change is tricky, or rather, simpler, but different.
@@ -104,7 +105,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.042.20160524"
+	return "v0.0.043.20160525"
 }
 
 
@@ -747,14 +748,20 @@ def pageCondition(params) {
                                 } else {
                                     //Location Mode, Smart Home Monitor support
                                     def comparison = cleanUpComparison(settings["condComp$id"])
-                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true                                
-                                    if (comparison) {                                	
+                                    if (attribute == "variable") {
+                                    	input "condDataType$id", "enum", title: "Data Type", options: ["string", "number", "decimal", "time"], required: true, multiple: false, submitOnChange: true
+                                    }
+                                    def dataType = settings["condDataType$id"]
+                                    def overrideAttributeType = (attribute == "variable" ? (dataType ? dataType : "string") : null)
+                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, overrideAttributeType), required: true, multiple: false, submitOnChange: true
+                                    if (comparison) { 
                                         //Value
                                         def comp = getComparisonOption(attribute, comparison)
                                         if (attr && comp) {
                                             trigger = (comp.trigger == comparison)
                                             if (comp.parameters >= 1) {
-                                                input "condValue$id#1", attr.type, title: "Value", options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
+                                            	def type = attr.type == "routine" ? "enum" : attr.type
+                                                input "condValue$id#1", type, title: "Value", options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
                                             }
                                         }
                                     }
@@ -1264,7 +1271,13 @@ def pageAction(params) {
                 	input "actRMode$id", "mode", title: "Execute in these modes only", description: "Any location mode", required: false, multiple: true
                 	input "actRAlarm$id", "enum", options: getAlarmSystemStatusOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
                 }
-            
+
+            	section(title: "Advanced options") {
+                	paragraph "When an action schedules tasks for a certain device or devices, these new tasks may cause a conflict with pending future scheduled tasks for the same device or devices. The task override scope defines how these conflicts are handled. Depending on your choice, the following pending tasks are cancelled:\n ● None - no pending task is cancelled\n ● Action - only tasks scheduled by the same action are cancelled (default)\n ● Local - only local tasks (scheduled by the same piston) are cancelled\n ● Global - all global tasks (scheduled by any piston in the CoRE) are cancelled"
+                	input "actTOS$id", "enum", title: "Task override scope", options:["None", "Action", "Local", "Global"], defaultValue: "Action", required: true
+                	input "actTCP$id", "enum", title: "Task cancellation policy", options:["None", "Cancel on piston state change"], defaultValue: "None", required: true
+                }
+
                 if (id) {
                     section(title: "Required data - do not change", hideable: true, hidden: true) {            
                         input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
@@ -1362,7 +1375,8 @@ private pageSetVariable(params) {
                     def val = settings["actParam$aid#$tid-$a1"] != null
                     def var = settings["actParam$aid#$tid-$a2"]
                     if (val || (val == 0) || !var) {
-                        input "actParam$aid#$tid-$a1", secondaryDataType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", required: true, submitOnChange: true, capitalization: "none"
+                    	def inputType = secondaryDataType == "boolean" ? "enum" : secondaryDataType
+                        input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: true, submitOnChange: true, capitalization: "none"
                     }
                     if (var || !val) {
                         input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: true, submitOnChange: true
@@ -1378,7 +1392,7 @@ private pageSetVariable(params) {
                 	def opts = []
                     switch (dataType) {
                     	case "boolean":
-                        	opts += ["AND", "OR", "NOT"]
+                        	opts += ["AND", "OR"]
                             break
                     	case "string":
                         	opts += ["+ (concatenate)"]
@@ -1605,6 +1619,7 @@ private testDataType(value, dataType) {
 	if (!dataType || !value) return true
 	switch (dataType) {
     	case "bool":
+    	case "boolean":
         case "string":
         	return true
         case "time":
@@ -1644,7 +1659,7 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
     	//look for variables set during conditions
         def list = settings.findAll{it.key.startsWith("condVar") && !it.key.contains("#")}
         for (it in list) {
-        	def var = it.value
+        	def var = sanitizeVariableName(it.value)
             if (var) {
             	if (var.startsWith("@")) {
                 	//global
@@ -1669,7 +1684,7 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
         	if (it.value) {
             	def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
                 if (virtualCommand && (virtualCommand.varEntry != null)) {
-                	def var = settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"]
+                	def var = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"])
                     if (var) {
                         if (var.startsWith("@")) {
                             //global
@@ -1965,7 +1980,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
                                     subscriptions[subscription] = true //[deviceId: device.id, attribute: attribute]
                                     if (handler) {
 	                                    //we only subscribe to the device if we're provided a handler (not simulating)
-                                        debug "Subscribing to events from $device for attribute $attribute, handler is $handler"
+                                        debug "Subscribing to events from $device for attribute $attribute, handler is $handler", null, "trace"
                                         subscribe(device, attribute, handler)
                                         state.deviceSubscriptions = state.deviceSubscriptions ? state.deviceSubscriptions + 1 : 1
                                         //initialize the cache for the device - this will allow the triggers to work properly on first firing
@@ -2065,6 +2080,14 @@ private updateCondition(condition) {
         	condition.attr = "alarmSystemStatus"
             condition.dev.push "location"
             break
+        case "Routine":
+        	condition.attr = "routineExecuted"
+            condition.dev.push "location"
+            break
+        case "Variable":
+        	condition.attr = "variable"
+            condition.dev.push "location"
+            break
     }
     if (!condition.attr) {
 	    def cap = getCapabilityByDisplay(condition.cap)
@@ -2079,6 +2102,7 @@ private updateCondition(condition) {
         condition.dev.push(device.id)
     }
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
+    condition.dt = settings["condDataType${condition.id}"]
     condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
     condition.val1 = settings["condValue${condition.id}#1"]
@@ -2211,6 +2235,9 @@ private updateAction(action) {
     action.rc = settings["actRStateChange$id"]
     action.ra = settings["actRAlarm$id"]
     action.rm = settings["actRMode$id"]
+    
+    action.tos = settings["actTOS$id"]
+    action.tcp = settings["actTCP$id"]
     
     //look for tasks
     action.t = []
@@ -2729,6 +2756,7 @@ private broadcastEvent(evt, primary, secondary) {
                 //new state
                 currentState = state.currentState
                 //resume all tasks that are waiting for a state change
+                cancelTasks(currentState)
                 resumeTasks(currentState)
             }
             //execute the DO EVERY TIME actions
@@ -2918,119 +2946,138 @@ private evaluateDeviceCondition(condition, evt) {
             virtualCurrentValue = getAlarmSystemStatus()
             eventDeviceId = location.id
         	break    	
+        case "Routine":
+        	devices = [location]
+            virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
+            eventDeviceId = location.id
+        	break    	
+        case "Variable":
+        	devices = [location]
+            virtualCurrentValue = "???"
+            eventDeviceId = location.id
+        	break    	
+    }
+    
+    if (!devices) {
+        //something went wrong
+        return false    	
+    }
+    
+	def attr = getAttributeByName(condition.attr)
+    //get capability if the attribute suggests one
+    def capability = attr && attr.capability ? getCapabilityByName(attr.capability) : null
+    
+    def hasSubDevices = false
+    def matchesSubDevice = false
+    if (evt && evt.jsonData && capability && capability.count && capability.data) {
+        //at this point we won't evaluate this condition unless we have the right sub device below
+        hasSubDevices = true
+        setVariable("\$currentEventDeviceIndex", cast(evt.jsonData[capability.data], "number"), true)
+        def subDeviceId = "#${evt.jsonData[capability.data]}".trim()
+        def subDevices = condition.sdev ? condition.sdev : []
+        if (subDevices && subDevices.size()) {
+            //are we expecting that button?
+            //subDeviceId in subDevices didn't seem to work?!
+            for(subDevice in subDevices) {
+                if (subDevice == subDeviceId) {
+                    matchesSubDevice = true
+                    break
+                }
+            }
+        }
+    }
+    
+    //is this a momentary event?
+    def momentary = capability ? !!capability.momentary : false
+    //if we're dealing with a momentary capability, we can only expect one of the devices to be true at any time
+    if (momentary) {
+    	mode = "Any"
     }
     
     //matching devices list
     def vm = []
     //non-matching devices list
     def vn = []
-    if (!devices) {
-    	//something went wrong
-        return false    	
-    } else {
-    	//the real deal goes here
-        for (device in devices) {
-			def comp = getComparisonOption(condition.attr, condition.comp)
-            if (comp) {
-            	//if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
-                def deviceResult = false
-                def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == condition.attr)
-                def oldValue = null
-                def oldValueSince = null
-                if (evt) {
-                	def cache = atomicState.cache
-					cache = cache ? cache : [:]
-                	def cachedValue = cache[device.id + "-" + condition.attr]
-                	if (cachedValue) {
-                    	oldValue = cachedValue.o
-                        oldValueSince = cachedValue.t
-                    }
+    //the real deal goes here
+    for (device in devices) {
+        def comp = getComparisonOption(condition.attr, condition.comp)
+        if (comp) {
+            //if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
+            def deviceResult = false
+            def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == condition.attr)
+            def oldValue = null
+            def oldValueSince = null
+            if (evt) {
+                def cache = atomicState.cache
+                cache = cache ? cache : [:]
+                def cachedValue = cache[device.id + "-" + condition.attr]
+                if (cachedValue) {
+                    oldValue = cachedValue.o
+                    oldValueSince = cachedValue.t
                 }
-            	currentValue = evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr))
-                def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
-                def offset1 = condition.var1 || condition.dev1 ? condition.o1 : 0
-                def value2 = condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr) : condition.val2)
-                def offset2 = condition.var1 || condition.dev1 ? condition.o2 : 0
-                //casting
-				def attr = getAttributeByName(condition.attr)
-                if (attr) {
-                	switch (attr.type) {
-                    	case "number":
-                        	if (oldValue instanceof String) oldValue = oldValue.isInteger() ? oldValue.toInteger() : 0
-                        	if (currentValue instanceof String) currentValue = currentValue.isInteger() ? currentValue.toInteger() : 0
-							if (value1 instanceof String) value1 = value1.isInteger() ? value1.toInteger() : 0
-							if (value2 instanceof String) value2 = value2.isInteger() ? value2.toInteger() : 0
-                            value1 = o1 ? value1 + o1 : value1
-                            value2 = o2 ? value2 + o2 : value2
-                            break
-                        case "decimal":
-                        	if (oldValue instanceof String) oldValue = oldValue.isFloat() ? oldValue.isFloat() : 0
-							if (currentValue instanceof String) currentValue = currentValue.isFloat() ? currentValue.toFloat() : 0
-							if (value1 instanceof String) value1 = value1.isFloat() ? value1.toFloat() : 0
-							if (value2 instanceof String) value2 = value2.isFloat() ? value1.toFloat() : 0
-                            value1 = o1 ? value1 + o1 : value1
-                            value2 = o2 ? value2 + o2 : value2
-                        	break
-                    }
-                }
-                if (condition.trg && !ownsEvent) {
-                    //all triggers should own the event, otherwise be false
-                    deviceResult = false
-                } else {          
-                	def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
-                    def forceFalse = false
-                    if (evt && evt.jsonData && attr.capability) {
-                    	//we need to see if we have subdevices
-                    	def capability = getCapabilityByName(attr.capability)
-	                    if (capability && capability.count && capability.data && attr) {
-                        	//at this point we won't evaluate this condition unless we have the right sub device below
-                        	forceFalse = true
-							setVariable("\$currentEventDeviceIndex", cast(evt.jsonData[capability.data], "number"), true)
-                        	def subDeviceId = "#${evt.jsonData[capability.data]}".trim()
-	                        def subDevices = condition.sdev ? condition.sdev : []
-                        	if (subDevices && subDevices.size()) {
-                        		//are we expecting that button?
-                                //subDeviceId in subDevices didn't seem to work?!
-                                for(subDevice in subDevices) {
-                                	if (subDevice == subDeviceId) {
-                                		forceFalse = false
-                                        break
-                                	}
-                                }
-                        	}
-                        }
-                    }
-                    if (forceFalse) {
-                    	deviceResult = false
-                    } else {
-						deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt)
-                    	debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
-                    }
-                    
-                    if (deviceResult) {
-                    	if (condition.vm) vm.push "$device"
-                    } else {
-                    	if (condition.vn) vn.push "$device"
-                    }
-                }
-                
-        		//compound the result, depending on mode
-                def finalResult = false
-        		switch (mode) {
-	            	case "All":
-	                	result = result && deviceResult
-                        finalResult = !result
-	                	break
-	                case "Any":
-	                	result = result || deviceResult
-                        finalResult = result
-	                	break
-	            }
-                //optimize the loop to exit when we find a result that's going to be the final one (AND encountered a false, or OR encountered a true)
-                if (finalResult && !condition.vm && !condition.vn) break
             }
+            currentValue = evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr))
+            def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
+            def offset1 = condition.var1 || condition.dev1 ? condition.o1 : 0
+            def value2 = condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr) : condition.val2)
+            def offset2 = condition.var1 || condition.dev1 ? condition.o2 : 0
+            //casting
+            if (attr) {
+                switch (attr.type) {
+                    case "number":
+                    if (oldValue instanceof String) oldValue = oldValue.isInteger() ? oldValue.toInteger() : 0
+                    if (currentValue instanceof String) currentValue = currentValue.isInteger() ? currentValue.toInteger() : 0
+                    if (value1 instanceof String) value1 = value1.isInteger() ? value1.toInteger() : 0
+                    if (value2 instanceof String) value2 = value2.isInteger() ? value2.toInteger() : 0
+                    value1 = o1 ? value1 + o1 : value1
+                    value2 = o2 ? value2 + o2 : value2
+                    break
+                    case "decimal":
+                    if (oldValue instanceof String) oldValue = oldValue.isFloat() ? oldValue.isFloat() : 0
+                    if (currentValue instanceof String) currentValue = currentValue.isFloat() ? currentValue.toFloat() : 0
+                    if (value1 instanceof String) value1 = value1.isFloat() ? value1.toFloat() : 0
+                    if (value2 instanceof String) value2 = value2.isFloat() ? value1.toFloat() : 0
+                    value1 = o1 ? value1 + o1 : value1
+                    value2 = o2 ? value2 + o2 : value2
+                    break
+                }
+            }
+            if (condition.trg && !ownsEvent) {
+                //all triggers should own the event, otherwise be false
+                deviceResult = false
+            } else {          
+                def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
+                //if we have a momentary capability and the event is not owned, there's no need to evaluate the function
+                //also, if there are subdevices and the one we're looking for does not match, no need to evaluate the function either
+                if ((momentary && !ownsEvent) || (hasSubDevices && !matchesSubDevice)) {
+                    deviceResult = false
+                } else {
+                    deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt)
+                    debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
+                }
+
+                if (deviceResult) {
+                    if (condition.vm) vm.push "$device"
+                } else {
+                    if (condition.vn) vn.push "$device"
+                }
+            }
+
+            //compound the result, depending on mode
+            def finalResult = false
+            switch (mode) {
+                case "All":
+                result = result && deviceResult
+                finalResult = !result
+                break
+                case "Any":
+                result = result || deviceResult
+                finalResult = result
+                break
+            }
+            //optimize the loop to exit when we find a result that's going to be the final one (AND encountered a false, or OR encountered a true)
+            if (finalResult && !condition.vm && !condition.vn) break
         }
-        
     }
 
 	if (evt) {
@@ -3683,9 +3730,16 @@ private scheduleActions(conditionId, stateChanged = false) {
 private scheduleAction(action) {
 	if (!action) return null
     def deviceIds = action.l ? ["location"] : (action.d ? action.d : [])
-    for (deviceId in deviceIds) {
-    	//remove all tasks for all involved devices
-        unscheduleTask("cmd", null, deviceId)
+    def tos = action.tos ? action.tos : "Action"
+    if (tos != "None") {
+    	def aid = (tos == "Action") ? action.id : null
+        for (deviceId in deviceIds) {
+            //remove all tasks for all involved devices
+            unscheduleTask("cmd", aid, deviceId)
+        }
+        if (tos == "Global") {
+        	debug "WARNING: Task override policy for Global is not yet implemented", null, "warn"
+        }
     }
     def time = now()
     def waitFor = null
@@ -3720,6 +3774,10 @@ private scheduleAction(action) {
                     	data = data ? data : [:]
                     	data.w = waitFor //what to wait for
 						data.o = time - waitSince //delay after state change
+                    }
+                    if (action.tcp && action.tcp != "None") {
+                    	data = data ? data : [:]
+                        data.c = true
                     }
 		            scheduleTask("cmd", action.id, deviceId, task.i, time, data)
                 }            	
@@ -4317,6 +4375,21 @@ private processTasks() {
     debug "Task processing took ${perf}ms", -1, "trace"
 }
 
+private cancelTasks(state) {
+	def tasks = tasks ? tasks : atomicState.tasks
+	tasks = tasks ? tasks : [:]
+	//debug "Resuming tasks on piston state change, resumable states are $resumableStates", null, "trace"
+    while (true) {
+    	def item = tasks.find{ (it.value.type == "cmd") && (it.value.data && it.value.data.c)}
+        if (item) {
+        	tasks.remove(item.key)
+        } else {
+        	break
+        }
+    }
+    atomicState.tasks = tasks
+}
+
 private resumeTasks(state) {
 	def tasks = tasks ? tasks : atomicState.tasks
 	tasks = tasks ? tasks : [:]
@@ -4357,7 +4430,6 @@ private processCommandTask(task) {
         if (command && !command.immediate) {
         	//we can't run immediate tasks here
             //execute the virtual task
-            debug "Executing virtual command ${command.name}", null, "info"
             def cn = command.name
             def suffix = ""
             if (cn.contains("#")) {
@@ -4368,6 +4440,7 @@ private processCommandTask(task) {
                     suffix = parts[1]
 				}
             }
+            debug "Executing virtual command ${cn}", null, "info"
             def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
             return "$function"(device, task, suffix)
         }
@@ -4434,7 +4507,7 @@ private task_vcmd_toggle(device, task, suffix = "") {
     	//we need a device that has both on and off commands
     	return false
     }
-    if (device.currentState("switch") == "on") {
+    if (device.currentValue("switch") == "on") {
     	device."off$suffix"()
     } else {
     	device."on$suffix"()
@@ -4449,7 +4522,7 @@ private task_vcmd_delayedToggle(device, task, suffix = "") {
     	return false
     }
     def delay = params[0].d
-    if (device.currentState("switch") == "on") {
+    if (device.currentValue("switch") == "on") {
     	device."off$suffix"([delay: delay])
     } else {
     	device."on$suffix"([delay: delay])
@@ -4493,11 +4566,15 @@ private task_vcmd_flash(device, task, suffix = "") {
     def offInterval = params[1].d
     def flashes = params[2].d
     def delay = 0
+    def originalState = device.currentValue("switch")
     for (def i = 0; i < flashes; i++) {
     	device."on$suffix"([delay: delay])
         delay = delay + onInterval
     	device."off$suffix"([delay: delay])
         delay = delay + offInterval
+    }
+    if (originalState == "on") {
+    	device."on$suffix"([delay: delay])
     }
     return true
 }
@@ -4585,6 +4662,17 @@ private task_vcmd_executeRoutine(device, task, suffix = "") {
     return true
 }
 
+private task_vcmd_cancelPendingTasks(device, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || (params.size() != 1)) {
+    	return false
+    }
+	unscheduleTask("cmd", null, device.id)
+    if (params[0].d == "Global") {
+    	debug "WARNING: Global cancellation not yet implemented", null, "warn"
+    }
+    return true
+}
 
 private task_vcmd_setVariable(device, task, simulate = false) {
     def params = simulate ? ((task && task.p && task.p.size()) ? task.p : []) : ((task && task.data && task.data.p && task.data.p.size()) ? task.data.p : [])
@@ -5570,7 +5658,7 @@ private _cleanUpCondition(condition, deleteGroups) {
 	if (condition.id > 0) {
     	if (condition.children == null) {
         	//if regular condition
-        	if ((condition.cap != "Mode") && (condition.cap != "Location Mode") && (condition.cap != "Smart Home Monitor") && (condition.cap != "Date & Time") && settings["condDevices${condition.id}"] == null) {
+        	if ((condition.cap != "Mode") && (condition.cap != "Location Mode") && (condition.cap != "Smart Home Monitor") && (condition.cap != "Date & Time") && (condition.cap != "Routine") && (condition.cap != "Variable") && settings["condDevices${condition.id}"] == null) {
 	        	deleteCondition(condition.id);
 	            return true
 	        //} else {
@@ -5917,7 +6005,7 @@ def getActionTask(action, taskId) {
 /******************************************************************************/
 
 private sanitizeVariableName(name) {
-	name = name ? name.trim().replace(" ", "_") : null
+	name = name ? "$name".trim().replace(" ", "_") : null
 }
 
 def dummy() {
@@ -6086,18 +6174,18 @@ private listAttributes() {
 }
 
 //returns a list of possible comparison options for a selected attribute
-private listComparisonOptions(attributeName, allowTriggers) {
+private listComparisonOptions(attributeName, allowTriggers, overrideAttributeType = null) {
     def conditions = []
     def triggers = []
     def attribute = getAttributeByName(attributeName)
-    def allowTimedComparisons = !(attributeName in ["mode", "alarmSystemStatus"])
+    def allowTimedComparisons = !(attributeName in ["mode", "alarmSystemStatus", "routineExecuted"])
     if (attribute) {
     	def optionCount = attribute.options ? attribute.options.size() : 0
-        def attributeType = attribute.type
+        def attributeType = overrideAttributeType ? overrideAttributeType : attribute.type
         for (comparison in comparisons()) {
             if (comparison.type == attributeType) {
                 for (option in comparison.options) {
-                    if (option.condition && (!option.minOptions || option.minOptions <= optionCount) && (allowTimedComparisons || !option.timed)) {
+                    if (option.condition && (!option.minOptions || option.minOptions <= optionCount) && (allowTimedComparisons || !option.timed)) {                    
                         conditions.push(conditionPrefix() + option.condition)
                     }
                     if (allowTriggers && option.trigger && (!option.minOptions || option.minOptions <= optionCount) && (allowTimedComparisons || !option.timed)) {
@@ -6106,7 +6194,7 @@ private listComparisonOptions(attributeName, allowTriggers) {
                 }
             }
         }
-    }
+    }    
     return conditions.sort() + triggers.sort()
 }
 
@@ -6583,7 +6671,7 @@ private capabilities() {
         [ name: "battery",							display: "Battery",							attribute: "battery",					commands: null,																		multiple: true,			devices: "battery powered devices",	],
     	[ name: "beacon",							display: "Beacon",							attribute: "presence",					commands: null,																		multiple: true,			devices: "beacons",	],
     	[ name: "switch",							display: "Bulb",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-        [ name: "button",							display: "Button",							attribute: "button",					commands: null,																		multiple: true,			devices: "buttons",			count: "numberOfButtons", data: "buttonNumber",],
+        [ name: "button",							display: "Button",							attribute: "button",					commands: null,																		multiple: true,			devices: "buttons",			count: "numberOfButtons", data: "buttonNumber", momentary: true],
         [ name: "imageCapture",						display: "Camera",							attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras",			],
     	[ name: "carbonDioxideMeasurement",			display: "Carbon Dioxide Measurement",		attribute: "carbonDioxide",				commands: null,																		multiple: true,			devices: "carbon dioxide sensors",	],
         [ name: "carbonMonoxideDetector",			display: "Carbon Monoxide Detector",		attribute: "carbonMonoxide",			commands: null,																		multiple: true,			devices: "carbon monoxide detectors",	],
@@ -6617,6 +6705,7 @@ private capabilities() {
     	[ name: "refresh",							display: "Refresh",							attribute: null,						commands: ["refresh"],																multiple: true,			devices: "refreshable devices",	],
     	[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					commands: null,																		multiple: true,			devices: "humidity sensors",	],
     	[ name: "relaySwitch",						display: "Relay Switch",					attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "relays",			],
+    	[ name: "routine",							display: "Routine",							attribute: "routineExecuted",			commands: ["executeRoutine"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Routine"	],
     	[ name: "shockSensor",						display: "Shock Sensor",					attribute: "shock",						commands: null,																		multiple: true,			devices: "shock sensors",	],
     	[ name: "signalStrength",					display: "Signal Strength",					attribute: "lqi",						commands: null,																		multiple: true,			devices: "wireless devices",	],
     	[ name: "alarm",							display: "Siren",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
@@ -6644,6 +6733,7 @@ private capabilities() {
     	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
     	[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						commands: null,																		multiple: true,			],
     	[ name: "valve",							display: "Valve",							attribute: "contact",					commands: ["open", "close"],														multiple: true,			devices: "valves",			],
+    	[ name: "variable",							display: "Variable",						attribute: "variable",					commands: ["setVariable"],															multiple: true,			virtualDevice: location,	virtualDeviceName: "Variable"	],
     	[ name: "voltageMeasurement",				display: "Voltage Measurement",				attribute: "voltage",					commands: null,																		multiple: true,			devices: "volt meters",	],
     	[ name: "waterSensor",						display: "Water Sensor",					attribute: "water",						commands: null,																		multiple: true,			devices: "leak sensors",	],
         [ name: "windowShade",						display: "Window Shade",					attribute: "windowShade",				commands: ["open", "close", "presetPosition"],										multiple: true,			devices: "window shades",	],
@@ -6809,7 +6899,8 @@ private virtualCommands() {
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",	],
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",	],
-    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, description: "Execute routine \"{0}\"",	],
+    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",	],
+        [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",	],
     ]
 }
 
@@ -6874,8 +6965,10 @@ private attributes() {
         [ name: "voltage",					type: "decimal",			range: "*..*",			unit: "V",		options: null,																								],
     	[ name: "water",					type: "enum",				range: null,			unit: null,		options: ["dry", "wet"],																					],
     	[ name: "windowShade",				type: "enum",				range: null,			unit: null,		options: ["unknown", "open", "closed", "opening", "closing", "partially open"],								],
-    	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: location.modes,																					],
-    	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: getAlarmSystemStatusOptions(),															],
+    	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? location.modes : [],																					],
+    	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],																		],
+    	[ name: "routineExecuted",			type: "routine",			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],															],
+    	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true, null, true, true, true, false) : [],												],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
     ]
 }
@@ -6891,6 +6984,9 @@ private comparisons() {
         [ trigger: "changes", parameters: 0, timed: false],
         [ condition: "changed", parameters: 0, timed: true],
         [ condition: "did not change", parameters: 0, timed: true],
+    ]
+	def optionsRoutine = [
+        [ trigger: "executed", parameters: 1, timed: false],
     ]
     def optionsNumber = [
         [ condition: "is equal to", trigger: "changes to", parameters: 1, timed: false],
@@ -6932,6 +7028,7 @@ private comparisons() {
     	[ type: "enum",					options: optionsEnum,	],
     	[ type: "mode",					options: optionsEnum,	],
     	[ type: "alarmSystemStatus",	options: optionsEnum,	],
+    	[ type: "routine",				options: optionsRoutine,],
     	[ type: "number",				options: optionsNumber,	],
     	[ type: "decimal",				options: optionsNumber	],
     	[ type: "time",					options: optionsTime,	],        
