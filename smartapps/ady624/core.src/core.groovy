@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.046.20160526 - Alpha test version - Pretty major changes at conditions UI and logic. Added the ability to compare against another device/attribute pair (can choose any attribute of that device). Added the toggleLevel command and fixed some bugs with setting SHM status.
  *	 5/25/2016 >>> v0.0.045.20160525 - Alpha test version - Caching attributes - attempt to speed up some things
  *	 5/25/2016 >>> v0.0.044.20160525 - Alpha test version - Fixed the command description for custom commands - temporary until custom commands are complete
  *	 5/25/2016 >>> v0.0.043.20160525 - Alpha test version - Fixed toggle virtual command, modified the Flash virtual command to turn the switch back on if it started on, added the Cancel Pending Tasks virtual command, added action advanced options Task Override Scope and Task Cancellation Policy. Global scope does not yet work, CoRE would have to "spread the word" to all child pistons. Improved the device condition evaluation to speed up things - took common code outside of the device loop.
@@ -107,7 +108,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.045.20160525"
+	return "v0.0.046.20160526"
 }
 
 
@@ -674,8 +675,10 @@ def pageCondition(params) {
             def id = (int) condition.id
             state.config.conditionId = id
             def pid = (int) condition.parentId
+            def overrideAttributeType = null
             def showDateTimeFilter = false
             def showDateTimeRepeat = false
+            def showParameters = false
             def recurring = false
             def trigger = false
 
@@ -688,14 +691,21 @@ def pageCondition(params) {
                         input "condCap$id", "enum", title: "Capability", options: listCapabilities(true, false), submitOnChange: true, required: false
                     }
                     if (settings["condCap$id"]) {
+                    	//define variables
+                    	def devices
+                        def attribute
+                        def attr
+                        def comparison
+                        def allowDeviceComparisons = true
+                        
                         def capability = getCapabilityByDisplay(settings["condCap$id"])
                         if (capability) {
                             if (capability.virtualDevice) {
-                                def attribute = capability.attribute
-                                def attr = getAttributeByName(attribute)
+                                attribute = capability.attribute
+                                attr = getAttributeByName(attribute)
                                 if (attribute == "time") {
                                     //Date & Time support
-                                    def comparison = cleanUpComparison(settings["condComp$id"])
+                                    comparison = cleanUpComparison(settings["condComp$id"])
                                     input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers), required: true, multiple: false, submitOnChange: true
                                     if (comparison) {
                                         def comp = getComparisonOption(attribute, comparison)
@@ -749,53 +759,27 @@ def pageCondition(params) {
 
                                 } else {
                                     //Location Mode, Smart Home Monitor support
-                                    def comparison = cleanUpComparison(settings["condComp$id"])
-                                    def overrideAttributeType = null
+                                    comparison = cleanUpComparison(settings["condComp$id"])
                                     if (attribute == "variable") {
-                                    	def dataType = settings["condDataType$id"]
+                                        def dataType = settings["condDataType$id"]
                                         overrideAttributeType = dataType ? dataType : "string"                                        
-                                    	input "condDataType$id", "enum", title: "Data Type", options: ["boolean", "string", "number", "decimal"], required: true, multiple: false, submitOnChange: true
-                                    	input "condVar$id", "enum", title: "Variable name", options: listVariables(true, overrideAttributeType) , required: true, multiple: false, submitOnChange: true
+                                        input "condDataType$id", "enum", title: "Data Type", options: ["boolean", "string", "number", "decimal"], required: true, multiple: false, submitOnChange: true
+                                        input "condVar$id", "enum", title: "Variable name", options: listVariables(true, overrideAttributeType) , required: true, multiple: false, submitOnChange: true
                                         def variable = settings["condVar$id"]
                                         if (!"$variable".startsWith("@")) supportsTriggers = false
+                                    } else {
+                                    	//do not allow device comparisons for location related capabilities, except variables
+                                    	allowDeviceComparisons = false
                                     }
                                     input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, overrideAttributeType), required: true, multiple: false, submitOnChange: true
                                     if (comparison) { 
                                         //Value
-                                        def comp = getComparisonOption(attribute, comparison, overrideAttributeType)
-                                        if (attr && comp) {
-                                            trigger = (comp.trigger == comparison)
-                                            if (comp.parameters >= 1) {
-                                                def type = overrideAttributeType ? overrideAttributeType : (attr.type == "routine" ? "enum" : attr.type)
-                                                //input "condValue$id#1", type, title: "Value", options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
-                                                def value1 = settings["condValue$id#1"]
-                                                def device1 = settings["condDev$id#1"]
-                                                def variable1 = settings["condVar$id#1"]
-                                                def extraComparisons = true
-                                                if (!extraComparisons || ((device1 == null) && (variable1 == null))) {
-                                                    input "condValue$id#1", type == "boolean" ? "enum" : type, title: (comp.parameters == 1 ? "Value" : "From value"), options: type == "boolean" ? ["true", "false"] : attr.options, range: attr.range, required: true, multiple: type == "boolean" ? false : comp.multiple, submitOnChange: true
-                                                }
-                                                if (extraComparisons) {
-                                                    if ((value1 == null) && (variable1 == null) && (attribute == "variable")) {
-                                                        input "condDev$id#1", "capability.${type == "boolean" ? "switch" : "sensor"}", title: (device1 == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device" : "From")), required: true, multiple: false, submitOnChange: true
-                                                        if (device1) {
-                                                        	input "condAttr$id#1", "enum", title: "Attribute", options: listCommonDeviceAttributes([device1]), required: true, multiple: false, submitOnChange: true
-                                                        }
-                                                    }
-                                                    if ((value1 == null) && (device1 == null)) {
-                                                        input "condVar$id#1", "enum", options: listVariables(true, overrideAttributeType), title: (variable1 == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable" : "From")), required: true, multiple: comp.multiple, submitOnChange: true, capitalization: "none"
-                                                    }
-                                                    if (((variable1 != null) || (device1 != null)) && ((type == "number") || (type == "decimal"))) {
-                                                        input "condOffset$id#1", type, range: "*..*", title: "Offset (+/-)", required: true, multiple: false, defaultValue: 0, submitOnChange: true
-                                                    }
-                                                }
-                                            }
-                                        }
+                                        showParameters = true
                                     }
                                 }
                             } else {                        
                                 //physical device support
-                                def devices = settings["condDevices$id"]
+                                devices = settings["condDevices$id"]
                                 input "condDevices$id", "capability.${capability.name}", title: "${capability.display} list", required: false, state: (devices ? "complete" : null), multiple: capability.multiple, submitOnChange: true
                                 if (devices && devices.size()) {
                                     if (!condition.trg && (devices.size() > 1)) {
@@ -804,7 +788,7 @@ def pageCondition(params) {
                                     def evalMode = (settings["condMode$id"] == "All" && !condition.trg) ? "All" : "Any"
 
                                     //Attribute
-                                    def attribute = cleanUpAttribute(settings["condAttr$id"])
+                                    attribute = cleanUpAttribute(settings["condAttr$id"])
                                     if (attribute == null) {
                                         attribute = capability.attribute
                                     }
@@ -813,18 +797,20 @@ def pageCondition(params) {
                                         input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
                                     }
                                     if (capability.count) {
-                                    	def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
+                                        def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
                                         if (subDevices.size()) {
-                                        	input "condSubDev$id", "enum", title: "${capability.display}(s)", options: subDevices, defaultValue: subDevices.size() ? subDevices[0] : null, required: true, multiple: true, submitOnChange: true                                        
+                                            input "condSubDev$id", "enum", title: "${capability.display}(s)", options: subDevices, defaultValue: subDevices.size() ? subDevices[0] : null, required: true, multiple: true, submitOnChange: true                                        
                                         }
                                     }
                                     if (attribute) {                              
                                         //Condition
-                                        def attr = getAttributeByName(attribute)
-                                        def comparison = cleanUpComparison(settings["condComp$id"])
+                                        attr = getAttributeByName(attribute)
+                                        comparison = cleanUpComparison(settings["condComp$id"])
                                         input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, attr.momentary ? "momentary" : null), required: true, multiple: false, submitOnChange: true                                
                                         if (comparison) {                                	
                                             //Value
+                                            showParameters = true
+                                            /*
                                             def comp = getComparisonOption(attribute, comparison)
                                             if (attr && comp) {
                                                 trigger = (comp.trigger == comparison)                                            
@@ -878,15 +864,61 @@ def pageCondition(params) {
                                                     }
                                                 }
                                             }
+                                        */
                                         }
                                         //input "condDevice$id", "", title: title, required: true, multiple: false, submitOnChange: true
                                     }
                                 }
                             }
                         }
+
+                        if (showParameters) {
+                        	//build the parameters inputs for all physical capabilities and variables
+                            def comp = getComparisonOption(attribute, comparison, overrideAttributeType)
+                            if (attr && comp) {
+                                trigger = (comp.trigger == comparison)
+                                def extraComparisons = !comparison.contains("one of")
+                                def varList = (extraComparisons ? listVariables(true, overrideAttributeType) : [])
+                                def type = overrideAttributeType ? overrideAttributeType : (attr.type == "routine" ? "enum" : attr.type)
+
+                                for (def i = 1; i <= comp.parameters; i++) {
+                                    //input "condValue$id#1", type, title: "Value", options: attr.options, range: attr.range, required: true, multiple: comp.multiple, submitOnChange: true
+                                    def value = settings["condValue$id#$i"]
+                                    def device = settings["condDev$id#$i"]
+                                    def variable = settings["condVar$id#$i"]
+                                    if (!extraComparisons || ((device == null) && (variable == null))) {
+                                        input "condValue$id#$i", type == "boolean" ? "enum" : type, title: (comp.parameters == 1 ? "Value" : "${i == 1 ? "From" : "To"} value"), options: type == "boolean" ? ["true", "false"] : attr.options, range: attr.range, required: true, multiple: type == "boolean" ? false : comp.multiple, submitOnChange: true
+                                    }
+                                    if (extraComparisons) {
+                                        if ((value == null) && (variable == null) && (allowDeviceComparisons)) {
+                                            input "condDev$id#$i", "capability.${type == "boolean" ? "switch" : "sensor"}", title: (device == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device value" : "${i == 1 ? "From" : "To"} device value")), required: true, multiple: false, submitOnChange: true
+                                            if (device) {
+                                                input "condAttr$id#$i", "enum", title: "Attribute", options: listCommonDeviceAttributes([device]), required: true, multiple: false, submitOnChange: true, defaultValue: attribute
+                                            }
+                                        }
+                                        if ((value == null) && (device == null)) {
+                                            input "condVar$id#$i", "enum", options: varList, title: (variable == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable value" : "${i == 1 ? "From" : "To"} variable value")), required: true, multiple: comp.multiple, submitOnChange: true, capitalization: "none"
+                                        }
+                                        if (((variable != null) || (device != null)) && ((type == "number") || (type == "decimal"))) {
+                                            input "condOffset$id#$i", type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
+                                        }
+                                    }
+                                }
+
+                                if (comp.timed) {
+                                    if (comparison.contains("change")) {
+                                        input "condTime$id", "enum", title: "In the last (minutes)", options: timeOptions(true), required: true, multiple: false, submitOnChange: true
+                                    } else {
+                                        input "condFor$id", "enum", title: "Time restriction", options: ["for at least", "for less than"], required: true, multiple: false, submitOnChange: true
+                                        input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
+                                    }
+                                }
+
+                            }
+                        }
                     }
                 }
-
+                
                 if (showDateTimeRepeat) {
                     section(title: "Repeat this trigger...") {
                         input "condRepeat$id", "enum", title: "Repeat", options: timeRepeatOptions(), required: true, multiple: false, defaultValue: "every day", submitOnChange: true
@@ -1650,7 +1682,6 @@ private testDataType(value, dataType) {
         case "string":
         	return true
         case "time":
-        	log.trace "Checking $value for time: ${(value instanceof Long) && (value > 999999999999)}"
         	return (value instanceof Long) && (value > 999999999999)
         case "number":
         case "decimal":
@@ -2137,9 +2168,11 @@ private updateCondition(condition) {
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
     condition.val1 = settings["condValue${condition.id}#1"]
     condition.dev1 = settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].label : null
+    condition.attr1 = settings["condAttr${condition.id}#1"] ? settings["condAttr${condition.id}#1"].label : null
     condition.var1 = settings["condVar${condition.id}#1"]
     condition.val2 = settings["condValue${condition.id}#2"]
     condition.dev2 = settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].label : null
+    condition.attr2 = settings["condAttr${condition.id}#2"] ? settings["condAttr${condition.id}#2"].label : null
     condition.var2 = settings["condVar${condition.id}#2"]
     condition.for = settings["condFor${condition.id}"]
     condition.fort = settings["condTime${condition.id}"]
@@ -2605,7 +2638,8 @@ private exitPoint(milliseconds) {
     //to avoid race conditions
 	state.cache = atomicState.cache
     state.tasks = atomicState.tasks
-    state.runStats = atomicState.runStats    
+    state.runStats = atomicState.runStats   
+    state.temp = null
 }
 
 
@@ -2645,7 +2679,7 @@ private broadcastEvent(evt, primary, secondary) {
         ],
         delay: delay
     ]
-    state.lastEvent = lastEvent    
+    state.lastEvent = lastEvent
     setVariable("\$currentEventReceived", perf, true)
     setVariable("\$currentEventDevice", lastEvent.event.device, true)
     setVariable("\$currentEventDeviceIndex", 0, true)
@@ -3051,11 +3085,35 @@ private evaluateDeviceCondition(condition, evt) {
                     oldValueSince = cachedValue.t
                 }
             }
-            currentValue = evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr))
-            def value1 = condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr) : condition.val1)
-            def offset1 = condition.var1 || condition.dev1 ? condition.o1 : 0
-            def value2 = condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr) : condition.val2)
-            def offset2 = condition.var1 || condition.dev1 ? condition.o2 : 0
+			def type = attr.type
+            currentValue = cast(evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr)), type)
+
+			def value1
+            def offset1
+			def value2
+            def offset2
+            
+			if (comp.parameters > 0) {
+            	value1 = cast(condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr1 ? condition.attr1 : condition.attr) : condition.val1), type)
+            	offset1 = cast(condition.var1 || condition.dev1 ? condition.o1 : 0, type)
+                if (comp.parameters > 1) {
+                    value2 = cast(condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr2 ? condition.attr2 : condition.attr) : condition.val2), type)
+                    offset2 = cast(condition.var1 || condition.dev1 ? condition.o2 : 0, type)
+                }
+            }
+            
+            switch (type) {
+            	case "number":
+                case "decimal":
+                    if (comp.parameters > 0) {
+                        value1 += cast(condition.var1 || condition.dev1 ? condition.o1 : 0, type)
+                        if (comp.parameters > 1) {
+                            value2 += cast(condition.var1 || condition.dev1 ? condition.o2 : 0, type)
+                        }
+                    }
+                    break
+            }
+            /*
             //casting
             if (attr) {
                 switch (attr.type) {
@@ -3077,6 +3135,7 @@ private evaluateDeviceCondition(condition, evt) {
                     break
                 }
             }
+            */
             if (condition.trg && !ownsEvent) {
                 //all triggers should own the event, otherwise be false
                 deviceResult = false
@@ -4542,7 +4601,7 @@ private processCommandTask(task) {
 }
 
 private task_vcmd_toggle(device, task, suffix = "") {
-    if (!device || !device.hasCommand("on") || !device.hasCommand("off")) {
+    if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix")) {
     	//we need a device that has both on and off commands
     	return false
     }
@@ -4554,9 +4613,25 @@ private task_vcmd_toggle(device, task, suffix = "") {
     return true
 }
 
+private task_vcmd_toggleLevel(device, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || !device.hasCommand("setLevel") || (params.size() != 1)) {
+    	//we need a device that has both on and off commands
+    	return false
+    }
+    def level = params[0].d
+    if (device.currentValue("switch") == "on") {
+    	device."off$suffix"()
+    } else {
+    	device.setLevel(level)
+    	device."on$suffix"()
+    }
+    return true
+}
+
 private task_vcmd_delayedToggle(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-    if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 1)) {
+    if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
     	return false
     }
@@ -4571,7 +4646,7 @@ private task_vcmd_delayedToggle(device, task, suffix = "") {
 
 private task_vcmd_delayedOn(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-    if (!device || !device.hasCommand("on") || (params.size() != 1)) {
+    if (!device || !device.hasCommand("on$suffix") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
     	return false
     }
@@ -4582,7 +4657,7 @@ private task_vcmd_delayedOn(device, task, suffix = "") {
 
 private task_vcmd_delayedOff(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-    if (!device || !device.hasCommand("off") || (params.size() != 1)) {
+    if (!device || !device.hasCommand("off$suffix") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
     	return false
     }
@@ -4593,7 +4668,7 @@ private task_vcmd_delayedOff(device, task, suffix = "") {
 
 private task_vcmd_flash(device, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-    if (!device || !device.hasCommand("on") || !device.hasCommand("off") || (params.size() != 3)) {
+    if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || (params.size() != 3)) {
     	//we need a device that has both on and off commands
         //we also need three parameters
         //p[0] represents the on interval
@@ -4643,7 +4718,7 @@ private task_vcmd_setAlarmSystemStatus(device, task, suffix = "") {
         setAlarmSystemStatus(status)
         return true
     } else {
-    	debug "Not changing SHM's status because it already is $status"
+    	debug "WARNING: Not changing SHM's status because it already is $status", null, "warn"
     }
     return false
 }
@@ -5768,12 +5843,12 @@ private getConditionDescription(id, level = 0) {
                         break
                     case 1:
                     	def o1 = condition.o1 ? (condition.o1 < 0 ? " - " : " + ") + condition.o1.abs() : ""
-                    	values = " ${(condition.var1 ? "{" + condition.var1 + o1 + "}$unit" : (condition.dev1 ? "{[" + condition.dev1 + "]" + o1 + "}$unit" : condition.val1 + unit))}"
+                    	values = " ${(condition.var1 ? "{" + condition.var1 + o1 + "}$unit" : (condition.dev1 ? "{[" + condition.dev1 + "'s ${condition.attr1 ? condition.attr1 : attr.name}]" + o1 + "}$unit" : condition.val1 + unit))}"
                         break
                     case 2:
                     	def o1 = condition.o1 ? (condition.o1 < 0 ? " - " : " + ") + condition.o1.abs() : ""
                     	def o2 = condition.o2 ? (condition.o2 < 0 ? " - " : " + ") + condition.o2.abs() : ""
-                    	values = " ${(condition.var1 ? "{" + condition.var1 + o1 + "}$unit" : (condition.dev1 ? "{[" + condition.dev1 + "]" + o1 + "}$unit" : condition.val1 + unit)) + " - " + (condition.var2 ? "{" + condition.var2 + o2 + "}$unit" : (condition.dev2 ? "{[" + condition.dev2 + "]" + o2 + "}$unit" : condition.val2 + unit))}"
+                    	values = " ${(condition.var1 ? "{" + condition.var1 + o1 + "}$unit" : (condition.dev1 ? "{[" + condition.dev1 + "'s ${condition.attr1 ? condition.attr1 : attr.name}]" + o1 + "}$unit" : condition.val1 + unit)) + " - " + (condition.var2 ? "{" + condition.var2 + o2 + "}$unit" : (condition.dev2 ? "{[" + condition.dev2 + "'s ${condition.attr2 ? condition.attr2 : attr.name}]" + o2 + "}$unit" : condition.val2 + unit))}"
                         break                       
             	}
                 if (comp.timed) {
@@ -6151,9 +6226,10 @@ private setAlarmSystemStatus(status) {
             break
     }
     if (value && (value != location.currentState("alarmSystemStatus")?.value)) {
-		sendLocationEvent(name: 'alarmSystemStatus', value: status)
+		sendLocationEvent(name: 'alarmSystemStatus', value: value)
         return true
     }
+    debug "WARNING: Could not set SHM status to '$status' because that status does not exist.", null, "warn"
     return false
 }
 
@@ -6739,7 +6815,7 @@ private capabilities() {
     	[ name: "switch",							display: "Outlet",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "outlets",			],
     	[ name: "polling",							display: "Polling",							attribute: null,						commands: ["poll"],																	multiple: true,			devices: "pollable devices",	],
         [ name: "powerMeter",						display: "Power Meter",						attribute: "power",						commands: null,																		multiple: true,			devices: "power meters",	],
-        [ name: "powerSource",						display: "Power Source",					attribute: "powerSource",				commands: null,																		multiple: true,			devices: "powered devices",	],
+        [ name: "power",							display: "Power",							attribute: "powerSource",				commands: null,																		multiple: true,			devices: "powered devices",	],
     	[ name: "presenceSensor",					display: "Presence Sensor",					attribute: "presence",					commands: null,																		multiple: true,			devices: "presence sensors",	],
     	[ name: "refresh",							display: "Refresh",							attribute: null,						commands: ["refresh"],																multiple: true,			devices: "refreshable devices",	],
     	[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					commands: null,																		multiple: true,			devices: "humidity sensors",	],
@@ -6887,6 +6963,7 @@ private virtualCommands() {
     	[ name: "toggle#6",				requires: ["on6", "off6"], 			display: "Toggle #6",																																															],
     	[ name: "toggle#7",				requires: ["on7", "off7"], 			display: "Toggle #7",																																															],
     	[ name: "toggle#8",				requires: ["on8", "off8"], 			display: "Toggle #8",																																															],
+    	[ name: "toggleLevel",			requires: ["on", "off", "setLevel"],display: "Toggle level",					parameters: ["Level:level"],																																	description: "Toggle level between 0% and {0}%",	],
     	[ name: "delayedOn",			requires: ["on"], 					display: "Turn on (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on after {0}ms",	],
     	[ name: "delayedOn#1",			requires: ["on1"], 					display: "Turn on #1 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #1 after {0}ms",	],
     	[ name: "delayedOn#2",			requires: ["on2"], 					display: "Turn on #2 (delayed)",			parameters: ["Delay (ms):number[1..60000]"],																													description: "Turn on #2 after {0}ms",	],
