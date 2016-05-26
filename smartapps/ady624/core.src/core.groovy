@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.047.20160526 - Alpha test version - Fixed a problem with casting enums... they are now handled as strings
  *	 5/26/2016 >>> v0.0.046.20160526 - Alpha test version - Pretty major changes at conditions UI and logic. Added the ability to compare against another device/attribute pair (can choose any attribute of that device). Added the toggleLevel command and fixed some bugs with setting SHM status.
  *	 5/25/2016 >>> v0.0.045.20160525 - Alpha test version - Caching attributes - attempt to speed up some things
  *	 5/25/2016 >>> v0.0.044.20160525 - Alpha test version - Fixed the command description for custom commands - temporary until custom commands are complete
@@ -108,7 +109,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.046.20160526"
+	return "v0.0.047.20160526"
 }
 
 
@@ -219,9 +220,9 @@ private pageMainCoRE() {
             href "pageStatistics", title: "Runtime Statistics"
         }
 
-        section(title: "Advanced options", hideable: true, hidden: true) {
-            input "expertMode", "bool", title: "Expert Mode", defaultValue: false
-            input "debugging", "bool", title: "Enable debugging", defaultValue: false
+        section(title: "Advanced options", hideable: !settings.expertMode && !settings.debugging, hidden: true) {
+            input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true
+            input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
             def debugging = settings.debugging
             if (debugging) {
 	            input "log#info", "bool", title: "Log info messages", defaultValue: true
@@ -494,13 +495,13 @@ private pageMainCoREPiston() {
             href "pageVariables", title: "Local Variables"
         }
         
-        section(title: "Advanced options", hideable: true, hidden: true) {
+        section(title: "Advanced options", hideable: !settings.debugging, hidden: true) {
             input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
             def debugging = settings.debugging
             if (debugging) {
 	            input "log#info", "bool", title: "Log info messages", defaultValue: true
 	            input "log#trace", "bool", title: "Log trace messages", defaultValue: true
-	            input "log#debug", "bool", title: "Log debug messages", defaultValue: true
+	            input "log#debug", "bool", title: "Log debug messages", defaultValue: false
 	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
 	            input "log#error", "bool", title: "Log error messages", defaultValue: true
             }
@@ -4973,8 +4974,11 @@ private task_vcmd_setVariable(device, task, simulate = false) {
 
 
 private cast(value, dataType) {
+	def trueStrings = ["1", "on", "open", "locked", "active", "wet", "detected", "present", "occupied", "muted", "sleeping"]
+    def falseStrings = ["0", "false", "off", "closed", "unlocked", "inactive", "dry", "clear", "not detected", "not present", "not occupied", "unmuted", "not sleeping"]
 	switch (dataType) {
     	case "string":
+    	case "enum":
         case "text":
         	return value ? "$value" : ""
         case "number":
@@ -4983,6 +4987,8 @@ private cast(value, dataType) {
                 	return value.toInteger()
             	if (value.isFloat())
                 	return (int) Math.round(value.toFloat())
+                if (value in trueStrings)
+                	return (int) 1
             }
             try {
             	return (int) value
@@ -4995,6 +5001,8 @@ private cast(value, dataType) {
                 	return (long) value.toInteger()
             	if (value.isFloat())
                 	return (long) Math.round(value.toFloat())
+                if (value in trueStrings)
+                	return (long) 1
             }
             try {
             	return (long) value
@@ -5007,6 +5015,8 @@ private cast(value, dataType) {
                 	return (float) value.toFloat()
             	if (value.isInteger())
                 	return (float) value.toInteger()
+                if (value in trueStrings)
+                	return (float) 1
             }
             try {
             	return (float) value
@@ -5015,7 +5025,7 @@ private cast(value, dataType) {
             }
         case "boolean":
         	if (value instanceof String) {
-            	if (!value || (value == "false") || (value == "0"))
+            	if (!value || (value in falseStrings))
                 	return false
                 return true
             }
