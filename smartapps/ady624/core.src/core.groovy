@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.049.20160526 - Alpha test version - Fixed a problem with the new casting function. There are several special data types, namely mode, alarmSystemStatus, etc. that act as strings.
  *	 5/26/2016 >>> v0.0.048.20160526 - Alpha test version - Conditions for capability Variable should now work. Triggers are only available for @ (global) variables, but the mechanism for subscribing to changes is not yet here. So triggers don't yet work.
  *	 5/26/2016 >>> v0.0.047.20160526 - Alpha test version - Fixed a problem with casting enums... they are now handled as strings
  *	 5/26/2016 >>> v0.0.046.20160526 - Alpha test version - Pretty major changes at conditions UI and logic. Added the ability to compare against another device/attribute pair (can choose any attribute of that device). Added the toggleLevel command and fixed some bugs with setting SHM status.
@@ -110,7 +111,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.048.20160526"
+	return "v0.0.049.20160526"
 }
 
 
@@ -4979,10 +4980,6 @@ private cast(value, dataType) {
 	def trueStrings = ["1", "on", "open", "locked", "active", "wet", "detected", "present", "occupied", "muted", "sleeping"]
     def falseStrings = ["0", "false", "off", "closed", "unlocked", "inactive", "dry", "clear", "not detected", "not present", "not occupied", "unmuted", "not sleeping"]
 	switch (dataType) {
-    	case "string":
-    	case "enum":
-        case "text":
-        	return value ? "$value" : ""
         case "number":
         	if (value instanceof String) {
             	if (value.isInteger())
@@ -5035,6 +5032,8 @@ private cast(value, dataType) {
 		case "time":
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
     }
+    //anything else...
+	return value ? "$value" : ""
 }
 
 
