@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.04b.20160526 - Alpha test version - Fixed a bug introduced by the simulator
  *	 5/26/2016 >>> v0.0.04a.20160526 - Alpha test version - First attempt at simulations :)
  *	 5/26/2016 >>> v0.0.049.20160526 - Alpha test version - Fixed a problem with the new casting function. There are several special data types, namely mode, alarmSystemStatus, etc. that act as strings.
  *	 5/26/2016 >>> v0.0.048.20160526 - Alpha test version - Conditions for capability Variable should now work. Triggers are only available for @ (global) variables, but the mechanism for subscribing to changes is not yet here. So triggers don't yet work.
@@ -112,7 +113,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.04a.20160526"
+	return "v0.0.04b.20160526"
 }
 
 
@@ -3005,7 +3006,7 @@ private evaluateConditionSet(evt, primary, force = false) {
     //then we don't want to evaluate anything, as only triggers should be executed
     //this check ensures that an event that is used in both blocks, but as different types, one as a trigger
     //and one as a condition do not interfere with each other
-    def app = state.config == "run" ? state.app : state.config.app
+    def app = state.run == "config" ? state.config.app : state.app
     def eligibilityStatus = force || !!(state.sim) ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
     def evaluation = null
     if (!force) {
@@ -3888,7 +3889,7 @@ private scheduleTimeTriggers() {
 	debug "Rescheduling time triggers", null, "trace"
     //remove all pending events
     unscheduleTask("evt", null, null)
-    def app = state.config == "run" ? state.app : state.config.app
+    def app = state.run == "config" ? state.config.app : state.app
     if (getTriggerCount(app) > 0) {
         withEachTrigger(app.conditions, "scheduleTimeTrigger")
         if (app.mode in ["Latching", "And-If", "Or-If"]) {
