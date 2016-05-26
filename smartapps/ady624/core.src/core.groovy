@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.048.20160526 - Alpha test version - Conditions for capability Variable should now work. Triggers are only available for @ (global) variables, but the mechanism for subscribing to changes is not yet here. So triggers don't yet work.
  *	 5/26/2016 >>> v0.0.047.20160526 - Alpha test version - Fixed a problem with casting enums... they are now handled as strings
  *	 5/26/2016 >>> v0.0.046.20160526 - Alpha test version - Pretty major changes at conditions UI and logic. Added the ability to compare against another device/attribute pair (can choose any attribute of that device). Added the toggleLevel command and fixed some bugs with setting SHM status.
  *	 5/25/2016 >>> v0.0.045.20160525 - Alpha test version - Caching attributes - attempt to speed up some things
@@ -109,7 +110,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.047.20160526"
+	return "v0.0.048.20160526"
 }
 
 
@@ -3023,7 +3024,7 @@ private evaluateDeviceCondition(condition, evt) {
         	break    	
         case "Variable":
         	devices = [location]
-            virtualCurrentValue = "???"
+            virtualCurrentValue = getVariable(condition.var)
             eventDeviceId = location.id
         	break    	
     }
@@ -3070,7 +3071,7 @@ private evaluateDeviceCondition(condition, evt) {
     def vn = []
     //the real deal goes here
     for (device in devices) {
-        def comp = getComparisonOption(condition.attr, condition.comp)
+        def comp = getComparisonOption(condition.attr, condition.comp, (condition.attr == "variable" ? condition.dt : null))
         if (comp) {
             //if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
             def deviceResult = false
@@ -3087,8 +3088,9 @@ private evaluateDeviceCondition(condition, evt) {
                 }
             }
 			def type = attr.type
+            //if we're dealing with an owned event, use that event's value
+            //if we're dealing with a virtual device, get the virtual value
             currentValue = cast(evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr)), type)
-
 			def value1
             def offset1
 			def value2
