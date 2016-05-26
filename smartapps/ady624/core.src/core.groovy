@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.04a.20160526 - Alpha test version - First attempt at simulations :)
  *	 5/26/2016 >>> v0.0.049.20160526 - Alpha test version - Fixed a problem with the new casting function. There are several special data types, namely mode, alarmSystemStatus, etc. that act as strings.
  *	 5/26/2016 >>> v0.0.048.20160526 - Alpha test version - Conditions for capability Variable should now work. Triggers are only available for @ (global) variables, but the mechanism for subscribing to changes is not yet here. So triggers don't yet work.
  *	 5/26/2016 >>> v0.0.047.20160526 - Alpha test version - Fixed a problem with casting enums... they are now handled as strings
@@ -155,6 +156,7 @@ preferences {
     page(name: "pageActionDevices")
     page(name: "pageVariables")  
     page(name: "pageSetVariable")
+    page(name: "pageSimulate")
 }
 
 
@@ -1474,6 +1476,80 @@ private pageSetVariable(params) {
     }
 }
 
+def pageSimulate() {
+	dynamicPage(name: "pageSimulate", title: "", uninstall: false, install: false) {
+		section("") {
+        	paragraph "Preparing to simulate piston..."
+            paragraph "Current piston state is: ${state.currentState}"
+        }
+        state.sim = [
+        	evals: [],
+            cmds: []
+        ]
+        def error
+        def perf = now()
+        try {
+        	broadcastEvent([name: "time", date: new Date(), deviceId: "time", conditionId: null], true, false)
+        	processTasks()
+        } catch(all) {
+        	error = all
+        }
+        perf = now() - perf
+        
+        def evals = state.sim.evals
+        def cmds = state.sim.cmds
+        state.sim = null
+        
+		section("") {
+        	paragraph "Simulation ended in ${perf}ms.", state: "complete"
+            paragraph "New piston state is: ${state.currentState}"
+            if (error) {
+            	paragraph error, required: true, state: null
+            }
+        }
+        section("Evaluations performed") {
+            if (evals.size()) {
+	            for(msg in evals) {
+	                paragraph msg, state: "complete"
+	            }
+            } else {
+            	paragraph "No evaluations have been performed."
+            }
+        }
+        section("Commands executed") {
+            if (cmds.size()) {
+		    	for(msg in cmds) {
+                    paragraph msg, state: "complete"
+                }
+            } else {
+            	paragraph "No commands have been executed."
+            }
+        }
+
+        section("Scheduled ST job") {
+        	def time = getVariable("\$nextScheduledTime")
+            paragraph time ? formatLocalTime(time) : "No ST job has been scheduled.", state: time ? "complete" : null
+        }
+
+		def tasks = atomicState.tasks
+        tasks = tasks ? tasks : [:]
+		section("Pending tasks") {
+        	if (!tasks.size()) {
+            	paragraph "No tasks are currently scheduled."
+			} else {
+                for(task in tasks.sort { it.value.time } ) {
+                    def time = formatLocalTime(task.value.time)
+                    if (task.value.type == "evt") {                    
+                        paragraph "EVENT - $time\n$task.value"
+                    } else {
+                        paragraph "COMMAND - $time\n$task.value"
+                    }
+                }
+	        }
+        }
+
+    }
+}
 
 private buildIfContent() {
 	buildIfContent(state.config.app.conditions.id, 0)
@@ -1981,6 +2057,7 @@ private configApp() {
     }
     //get expert savvy
     state.config.expertMode = parent.expertMode()
+	state.config.app.mode = settings.mode
 }
 private subscribeToAll(app) {
 	debug "Initializing subscriptions...", 1
@@ -2170,12 +2247,12 @@ private updateCondition(condition) {
     condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
     condition.val1 = settings["condValue${condition.id}#1"]
-    condition.dev1 = settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].label : null
-    condition.attr1 = settings["condAttr${condition.id}#1"] ? settings["condAttr${condition.id}#1"].label : null
+    condition.dev1 = settings["condDev${condition.id}#1"] ? getDeviceLabel(settings["condDev${condition.id}#1"]) : null
+    condition.attr1 = settings["condAttr${condition.id}#1"] ? getDeviceLabel(settings["condAttr${condition.id}#1"]) : null
     condition.var1 = settings["condVar${condition.id}#1"]
     condition.val2 = settings["condValue${condition.id}#2"]
-    condition.dev2 = settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].label : null
-    condition.attr2 = settings["condAttr${condition.id}#2"] ? settings["condAttr${condition.id}#2"].label : null
+    condition.dev2 = settings["condDev${condition.id}#2"] ? getDeviceLabel(settings["condDev${condition.id}#2"]) : null
+    condition.attr2 = settings["condAttr${condition.id}#2"] ? getDeviceLabel(settings["condAttr${condition.id}#2"]) : null
     condition.var2 = settings["condVar${condition.id}#2"]
     condition.for = settings["condFor${condition.id}"]
     condition.fort = settings["condTime${condition.id}"]
@@ -2607,6 +2684,7 @@ private entryPoint() {
 	//initialize whenever app runs
     //use the "app" version throughout
     state.run = "app"
+    state.sim = null
 	state.debugLevel = 0
 	state.tasker = state.tasker ? state.tasker : []
 }
@@ -2643,6 +2721,7 @@ private exitPoint(milliseconds) {
     state.tasks = atomicState.tasks
     state.runStats = atomicState.runStats   
     state.temp = null
+    state.sim = null
 }
 
 
@@ -2729,7 +2808,9 @@ private broadcastEvent(evt, primary, secondary) {
                 result1 = evaluateConditionSet(evt, true, force)
                 state.lastPrimaryEvaluationResult = result1
                 state.lastPrimaryEvaluationDate = now()
-                debug "Primary IF block evaluation result is $result1"
+                def msg = "Primary IF block evaluation result is $result1"
+                if (state.sim) state.sim.evals.push(msg)
+                debug msg
                 
                 switch (mode) {
                 	case "Then-If":
@@ -2750,11 +2831,15 @@ private broadcastEvent(evt, primary, secondary) {
                 result2 = evaluateConditionSet(evt, false, force)
                 state.lastSecondaryEvaluationResult = result2
                 state.lastSecondaryEvaluationDate = now()
-                debug "Secondary IF block evaluation result is $result1"
+                def msg = "Secondary IF block evaluation result is $result2"
+                if (state.sim) state.sim.evals.push(msg)
+                debug msg
             }
             def currentState = state.currentState
             def currentStateSince = state.currentStateSince
             def mode = state.app.mode
+            
+            def stateMsg = null
 
             switch (mode) {
                 case "Latching":
@@ -2763,7 +2848,7 @@ private broadcastEvent(evt, primary, secondary) {
                             //flip on
                             state.currentState = true
                             state.currentStateSince = now()
-                            debug "♦♦♦ Latching Piston changed state to true ♦♦♦", null, "info"
+                            stateMsg = "♦ Latching Piston changed state to true ♦"
                         }
                     }
                     if (currentState in [null, true]) {
@@ -2771,7 +2856,7 @@ private broadcastEvent(evt, primary, secondary) {
                             //flip off
                             state.currentState = false
                             state.currentStateSince = now()
-                            debug "♦♦♦♦ Latching Piston changed state to false ♦♦♦", null, "info"
+                            stateMsg = "♦ Latching Piston changed state to false ♦"
                         }
                     }
                     break
@@ -2780,7 +2865,7 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != result1) {
                         state.currentState = result1
                         state.currentStateSince = now()
-                        debug "♦♦♦♦ Simple Piston changed state to $result1 ♦♦♦", null, "info"
+                        stateMsg = "♦ Simple Piston changed state to $result1 ♦"
                     }
                     break
                 case "And-If":
@@ -2788,7 +2873,7 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != newState) {
                         state.currentState = newState
                         state.currentStateSince = now()
-                        debug "♦♦♦ And-If Piston changed state to $result1 ♦♦♦", null, "info"
+                        stateMsg = "♦ And-If Piston changed state to $result1 ♦"
                     }
                     break
                 case "Or-If":
@@ -2796,7 +2881,7 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != newState) {
                         state.currentState = newState
                         state.currentStateSince = now()
-                        debug "♦♦♦ Or-If Piston changed state to $result1 ♦♦♦", null, "info"
+                        stateMsg = "♦ Or-If Piston changed state to $result1 ♦"
                     }
                     break
                 case "Then-If":
@@ -2804,7 +2889,7 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != newState) {
                         state.currentState = newState
                         state.currentStateSince = now()
-                        debug "♦♦♦ Then-If Piston changed state to $result1 ♦♦♦", null, "info"
+                        stateMsg = "♦ Then-If Piston changed state to $result1 ♦"
                     }
                     break
                 case "Else-If":
@@ -2812,10 +2897,14 @@ private broadcastEvent(evt, primary, secondary) {
                     if (currentState != newState) {
                         state.currentState = newState
                         state.currentStateSince = now()
-                        debug "♦♦♦ Else-If Piston changed state to $result1 ♦♦♦", null, "info"
+                        stateMsg = "♦ Else-If Piston changed state to $result1 ♦"
                     }
                     break
             }
+            if (stateMsg) {
+            	if (state.sim) state.sim.evals.push stateMsg
+				debug stateMsg, null, "info"
+			}
             def stateChanged = false
             if (currentState != state.currentState) {
             	stateChanged = true
@@ -2916,13 +3005,14 @@ private evaluateConditionSet(evt, primary, force = false) {
     //then we don't want to evaluate anything, as only triggers should be executed
     //this check ensures that an event that is used in both blocks, but as different types, one as a trigger
     //and one as a condition do not interfere with each other
-    def eligibilityStatus = force ? 1 : checkEventEligibility(primary ? state.app.conditions: state.app.otherConditions , evt)
+    def app = state.config == "run" ? state.app : state.config.app
+    def eligibilityStatus = force || !!(state.sim) ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
     def evaluation = null
     if (!force) {
     	debug "Event eligibility for the ${primary ? "primary" : "secondary"} IF block is $eligibilityStatus  - ${eligibilityStatus > 0 ? "ELIGIBLE" : "INELIGIBLE"} (" + (eligibilityStatus == 2 ? "triggers required, event is a trigger" : (eligibilityStatus == 1 ? "triggers not required, event is a condition" : (eligibilityStatus == -2 ? "triggers required, but event is a condition" : "something is messed up"))) + ")"
     }
     if (eligibilityStatus > 0) {
-        evaluation = evaluateCondition(primary ? state.app.conditions: state.app.otherConditions, evt)
+        evaluation = evaluateCondition(primary ? app.conditions: app.otherConditions, evt)
         //log.info "${primary ? "PRIMARY" : "SECONDARY"} EVALUATION IS $evaluation\n${getConditionDescription(primary ? 0 : -1)}\n"
         //pushNote = "${evt.device}.${evt.name} >>> ${evt.value}\n${primary ? "primary" : "secondary"} evaluation result: $evaluation\n\n${getConditionDescription(primary ? 0 : -1)}\n\nEvent received after ${perf - evt.date.getTime()}ms\n"
     } else {
@@ -3149,9 +3239,14 @@ private evaluateDeviceCondition(condition, evt) {
                 //also, if there are subdevices and the one we're looking for does not match, no need to evaluate the function either
                 if ((momentary && !ownsEvent) || (hasSubDevices && !matchesSubDevice)) {
                     deviceResult = false
+                    def msg = "${deviceResult ? "♣" : "♠"} Evaluation for ${momentary ? "momentary " : ""}$device's ${condition.attr} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
+                    if (state.sim) state.sim.evals.push(msg)
+					debug msg
                 } else {
                     deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt, momentary)
-                    debug "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} $value1${comp.parameters == 2 ? " - $value2" : ""} returned $deviceResult"
+                    def msg = "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
+                    if (state.sim) state.sim.evals.push(msg)
+                    debug msg
                 }
 
                 if (deviceResult) {
@@ -3793,16 +3888,17 @@ private scheduleTimeTriggers() {
 	debug "Rescheduling time triggers", null, "trace"
     //remove all pending events
     unscheduleTask("evt", null, null)
-    if (getTriggerCount(state.app) > 0) {
-        withEachTrigger(state.app.conditions, "scheduleTimeTrigger")
-        if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
-            withEachTrigger(state.app.otherConditions, "scheduleTimeTrigger")
+    def app = state.config == "run" ? state.app : state.config.app
+    if (getTriggerCount(app) > 0) {
+        withEachTrigger(app.conditions, "scheduleTimeTrigger")
+        if (app.mode in ["Latching", "And-If", "Or-If"]) {
+            withEachTrigger(app.otherConditions, "scheduleTimeTrigger")
         }
     } else {
     	//we're not using triggers, let's mess up with time conditions
-        withEachCondition(state.app.conditions, "scheduleTimeTrigger")
-        if (state.app.mode in ["Latching", "And-If", "Or-If"]) {
-            withEachCondition(state.app.otherConditions, "scheduleTimeTrigger")
+        withEachCondition(app.conditions, "scheduleTimeTrigger")
+        if (app.mode in ["Latching", "And-If", "Or-If"]) {
+            withEachCondition(app.otherConditions, "scheduleTimeTrigger")
         }
     }
 }
@@ -4417,6 +4513,8 @@ private processTasks() {
             state.nextScheduledTime = nextTime
             setVariable("\$nextScheduledTime", nextTime, true)
             debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
+        } else {
+            setVariable("\$nextScheduledTime", null, true)
         }
 
         //we're done with the scheduling, let's do some real work, if we have any
@@ -4542,7 +4640,9 @@ private processCommandTask(task) {
                     suffix = parts[1]
 				}
             }
-            debug "Executing virtual command ${cn}", null, "info"
+            def msg = "Executing virtual command ${cn}"
+            if (state.sim) state.sim.cmds.push(msg)
+            debug msg, null, "info"
             def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
             return "$function"(device, task, suffix)
         }
@@ -4585,15 +4685,21 @@ private processCommandTask(task) {
                                 p.saturation = saturation
                                 p.level - lightness
                             }
-							debug "Executing with parameters: [${device}].${command.name}($p)", null, "info"
+                            def msg = "Executing with parameters: [${device}].${command.name}($p)"
+				            if (state.sim) state.sim.cmds.push(msg)
+							debug msg, null, "info"
                         	device."${command.name}"(p)
                         } else {
-                        	debug "Executing with parameters: [${device}].${command.name}($params)", null, "info"
+                        	def msg = "Executing with parameters: [${device}].${command.name}($params)" 
+				            if (state.sim) state.sim.cmds.push(msg)
+                        	debug msg, null, "info"
                         	device."${command.name}"(params as Object[])
                         }
                         return true
                     } else {
-                        debug "Executing: [${device}].${command.name}()", null, "info"
+                    	def msg = "Executing: [${device}].${command.name}()"
+                        if (state.sim) state.sim.cmds.push(msg)
+                        debug msg, null, "info"
                         device."${command.name}"()
                         return true
                     }
@@ -6207,7 +6313,7 @@ private buildNameList(list, suffix) {
 }
 
 private getDeviceLabel(device) {
-	return device instanceof String ? device : (device ? ( device?.label ? device.label : (device.name ? device.name : "$device")) : "Unknown device")
+	return device instanceof String ? device : (device ? ( device.label ? device.label : (device.name ? device.name : "$device")) : "Unknown device")
 }
 
 private getAlarmSystemStatus() {
