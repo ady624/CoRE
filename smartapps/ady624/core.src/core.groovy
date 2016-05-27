@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/27/2016 >>> v0.0.04e.20160527 - Alpha test version - Implemented saveAttribute, introduced "aggregated" commands, these only run once, even when used on a list of devices
  *	 5/27/2016 >>> v0.0.04d.20160527 - Alpha test version - Fixed a bug (for good?) with item in list for is_one_of. Types enum, mode, and other special types need not be casted.
  *	 5/26/2016 >>> v0.0.04c.20160526 - Alpha test version - Fixed a bug with item in list for is_one_of.
  *	 5/26/2016 >>> v0.0.04b.20160526 - Alpha test version - Fixed a bug introduced by the simulator
@@ -115,7 +116,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.04d.20160527"
+	return "v0.0.04e.20160527"
 }
 
 
@@ -1305,6 +1306,12 @@ def pageAction(params) {
                                                 } else if (param.type == "routine") {
                                                 	def routines = location.helloHome?.getPhrases()*.label
                                                     input "actParam$id#$tid-$i", "enum", options: routines, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                                } else if (param.type == "aggregation") {
+                                                	def aggregationOptions = ["First", "Last", "Min", "Avg", "Max", "Sum", "Count", "Boolean And", "Boolean Or", "Boolean True Count", "Boolean False Count"]
+                                                    input "actParam$id#$tid-$i", "enum", options: aggregationOptions, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                                } else if (param.type == "dataType") {
+                                                	def dataTypeOptions = ["boolean", "decimal", "number", "string"]
+                                                    input "actParam$id#$tid-$i", "enum", options: dataTypeOptions, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else {
                                                     input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
                                                 }
@@ -2743,7 +2750,6 @@ private exitPoint(milliseconds) {
 /******************************************************************************/
 
 private broadcastEvent(evt, primary, secondary) {
-	state.run = "app"
 	//filter duplicate events and broadcast event to proper IF blocks
     def perf = now()
     def delay = perf - evt.date.getTime()
@@ -3940,6 +3946,7 @@ private scheduleAction(action) {
     def tos = action.tos ? action.tos : "Action"
     if (tos != "None") {
     	def aid = (tos == "Action") ? action.id : null
+        unscheduleTask("cmd", action.id, null)
         for (deviceId in deviceIds) {
             //remove all tasks for all involved devices
             unscheduleTask("cmd", aid, deviceId)
@@ -3976,18 +3983,24 @@ private scheduleAction(action) {
             }
             if (command) {
                 for (deviceId in deviceIds) {
-                	def data = task.p && task.p.size() ? [p: task.p] : null
+                    def data = task.p && task.p.size() ? [p: task.p] : null
                     if (waitFor) {
-                    	data = data ? data : [:]
-                    	data.w = waitFor //what to wait for
-						data.o = time - waitSince //delay after state change
+                        data = data ? data : [:]
+                        data.w = waitFor //what to wait for
+                        data.o = time - waitSince //delay after state change
                     }
                     if (action.tcp && action.tcp != "None") {
-                    	data = data ? data : [:]
+                        data = data ? data : [:]
                         data.c = true
                     }
-		            scheduleTask("cmd", action.id, deviceId, task.i, time, data)
-                }            	
+					if (command.aggregated) {
+                    	//an aggregated command schedules one command task for the whole group
+                    	deviceId = null
+					}
+                    scheduleTask("cmd", action.id, deviceId, task.i, time, data)
+                    //an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
+                    if (command.aggregated) break
+                }
             }           
         }
     }
@@ -4394,6 +4407,11 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 	}
 }
 
+def keepAlive() {
+	state.run = "app"
+    processTasks()
+}
+
 private processTasks() {
 	//pfew, off to process tasks
     //first, we make a variable to help us pick up where we left off
@@ -4653,7 +4671,7 @@ private processCommandTask(task) {
             if (state.sim) state.sim.cmds.push(msg)
             debug msg, null, "info"
             def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
-            return "$function"(device, task, suffix)
+            return "$function"(command.aggregated ? devices : device, task, suffix)
         }
     } else {
         command = getCommandByDisplay(cmd)
@@ -4812,7 +4830,7 @@ private task_vcmd_flash(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_setLocationMode(device, task, suffix = "") {
+private task_vcmd_setLocationMode(devices, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4827,7 +4845,7 @@ private task_vcmd_setLocationMode(device, task, suffix = "") {
     return false
 }
 
-private task_vcmd_setAlarmSystemStatus(device, task, suffix = "") {
+private task_vcmd_setAlarmSystemStatus(devices, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4885,7 +4903,7 @@ private task_vcmd_sendSMSNotification(device, task, suffix = "") {
 }
 
 
-private task_vcmd_executeRoutine(device, task, suffix = "") {
+private task_vcmd_executeRoutine(devices, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4907,7 +4925,128 @@ private task_vcmd_cancelPendingTasks(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_setVariable(device, task, simulate = false) {
+
+private task_vcmd_saveAttribute(devices, task, simulate = false) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!devices || (params.size() != 4)) {
+    	return false
+    }
+	def attribute = cleanUpAttribute(params[0].d)
+    def aggregation = params[1].d
+    def dataType = params[2].d
+    def variable = params[3].d    
+    //work, work, work
+    def result
+    def attr = getAttributeByName(attribute)
+    if (attr) {
+    	def type = attr.type
+        result = cast("", attr.type)
+        def values = []
+        for (device in devices) {
+            values.push cast(device.currentValue(attribute), type)
+        }        
+        if (values.size()) {
+            switch (aggregation) {
+				case "First":
+                    result = null
+                    for(value in values) {
+                        result = value
+                        break
+                    }            	
+                    break
+				case "Last":
+                    result = null
+                    for(value in values) {
+                        result = value
+                    }            	
+                    break
+				case "Min":
+                    result = null
+                    for(value in values) {
+                        if ((result == null) || (value < result)) result = value
+                    }            	
+                    break
+                case "Max":
+                    result = null
+                    for(value in values) {
+                        if ((result == null) || (value > result)) result = value
+                    }            	
+                    break
+                case "Avg":
+                    result = null
+                    if (attr.type in ["number", "decimal"]) {
+                        for(value in values) {
+                        	result = result == null ? value : result + value
+                        }
+                        result = cast(result / values.size(), attr.type)
+                    } else {
+                        //average will act differently on strings and booleans
+                        //we look for the value that is used most and we consider that the average
+                        def map = [:]
+                        for (value in values) {
+                            map[value] = map[value] ? map[value] + 1 : 1
+                        }
+                        for (item in map.sort { - it.value }) {
+	                        result = cast(item.key, attr.type)
+                            break
+                        }
+                    }
+                    break                    
+                case "Sum":
+                    result = null
+                    if (attr.type in ["number", "decimal"]) {
+                        for(value in values) {
+                        	result = result == null ? value : result + value
+                        }
+                    } else {
+                        //sum will act differently on strings and booleans
+                        result = buildNameList(values, "")
+                    }
+                    break
+                case "Count":
+                    result = (int) values.size()
+                    break
+				case "Boolean And":
+                	result = true
+                    for (value in values) {
+                    	result = result && cast(value, "boolean")
+                        if (!result) break
+                    }
+                    break
+                case "Boolean Or":
+                	result = false
+                    for (value in values) {
+                    	result = result || cast(value, "boolean")
+                        if (result) break
+                    }
+                    break
+                case "Boolean True Count":
+                	result = (int) 0
+                    for (value in values) {
+                    	if (cast(value, "boolean")) result += 1
+                    }
+                    break
+                case "Boolean True Count":
+                	result = (int) 0
+                    for (value in values) {
+                    	if (!cast(value, "boolean")) result += 1
+                    }
+                    break                    
+            }
+        }
+    }
+    
+   
+    if (dataType) {
+    	//if user wants a certain data type, we comply
+    	result = cast(result, dataType)
+    }
+    setVariable(variable, result)
+    return true
+}
+
+
+private task_vcmd_setVariable(devices, task, simulate = false) {
     def params = simulate ? ((task && task.p && task.p.size()) ? task.p : []) : ((task && task.data && task.data.p && task.data.p.size()) ? task.data.p : [])
 	//we need at least 7 params
 	if (params.size() < 7) {
@@ -6829,7 +6968,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["attribute", "attributes", "variable", "variables", "routine"]) {
+    if (dataType in ["attribute", "attributes", "variable", "variables", "routine", "aggregation", "dataType"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -6989,25 +7128,25 @@ private commands() {
 	return [
         [ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set location mode",			parameters: [], ],
         [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set Smart Home Monitor status",parameters: [], ],
-    	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], ],
-    	[ name: "on1",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #1", 					parameters: [], ],
-    	[ name: "on2",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #2", 					parameters: [], ],
-    	[ name: "on3",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #3", 					parameters: [], ],
-    	[ name: "on4",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #4", 					parameters: [], ],
-    	[ name: "on5",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #5", 					parameters: [], ],
-    	[ name: "on6",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #6", 					parameters: [], ],
-    	[ name: "on7",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #7", 					parameters: [], ],
-    	[ name: "on8",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #8", 					parameters: [], ],
-    	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], ],
-    	[ name: "off1",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #1",					parameters: [], ],
-    	[ name: "off2",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #2",					parameters: [], ],
-    	[ name: "off3",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #3",					parameters: [], ],
-    	[ name: "off4",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #4",					parameters: [], ],
-    	[ name: "off5",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #5",					parameters: [], ],
-    	[ name: "off6",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #6",					parameters: [], ],
-    	[ name: "off7",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #7",					parameters: [], ],
-    	[ name: "off8",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #8",					parameters: [], ],
-    	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], ],
+    	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], 	attribute: "switch",	value: "on",	],
+        [ name: "on1",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #1", 					parameters: [], 	attribute: "switch1",	value: "on",	],
+    	[ name: "on2",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #2", 					parameters: [], 	attribute: "switch2",	value: "on",	],
+    	[ name: "on3",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #3", 					parameters: [], 	attribute: "switch3",	value: "on",	],
+    	[ name: "on4",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #4", 					parameters: [], 	attribute: "switch4",	value: "on",	],
+    	[ name: "on5",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #5", 					parameters: [], 	attribute: "switch5",	value: "on",	],
+    	[ name: "on6",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #6", 					parameters: [], 	attribute: "switch6",	value: "on",	],
+    	[ name: "on7",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #7", 					parameters: [], 	attribute: "switch7",	value: "on",	],
+    	[ name: "on8",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #8", 					parameters: [], 	attribute: "switch8",	value: "on",	],
+    	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], 	attribute: "switch",	value: "off",	],
+    	[ name: "off1",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #1",					parameters: [], 	attribute: "switch1",	value: "off",	],
+    	[ name: "off2",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #2",					parameters: [], 	attribute: "switch2",	value: "off",	],
+    	[ name: "off3",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #3",					parameters: [], 	attribute: "switch3",	value: "off",	],
+    	[ name: "off4",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #4",					parameters: [], 	attribute: "switch4",	value: "off",	],
+    	[ name: "off5",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #5",					parameters: [], 	attribute: "switch5",	value: "off",	],
+    	[ name: "off6",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #6",					parameters: [], 	attribute: "switch6",	value: "off",	],
+    	[ name: "off7",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #7",					parameters: [], 	attribute: "switch7",	value: "off",	],
+    	[ name: "off8",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #8",					parameters: [], 	attribute: "switch8",	value: "off",	],
+    	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], 	],
     	[ name: "toggle1",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
     	[ name: "toggle2",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
     	[ name: "toggle3",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
@@ -7016,33 +7155,33 @@ private commands() {
     	[ name: "toggle6",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
     	[ name: "toggle7",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
     	[ name: "toggle8",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
-    	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",	],
-    	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], ],
-    	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	],
-    	[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], description: "Set saturation to {0}%",	],
-    	[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], description: "Set color temperature to {0}°K",	],
-    	[ name: "open",										category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], ],
-    	[ name: "close",									category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], ],
+    	[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",		attribute: "level",		value: "*|number",	],
+    	[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], 	attribute: "color",		value: "*|color",	],
+    	[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	attribute: "hue",		value: "*|number",	],
+    	[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], description: "Set saturation to {0}%",	attribute: "saturation",		value: "*|number",	],
+    	[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], description: "Set color temperature to {0}°K",	attribute: "colorTemperature",		value: "*|number",	],
+    	[ name: "open",										category: "Convenience",				group: "Control [devices]",			display: "Open",						parameters: [], attribute: "door",		value: "open",	],
+    	[ name: "close",									category: "Convenience",				group: "Control [devices]",			display: "Close",						parameters: [], attribute: "door",		value: "close",	],
     	[ name: "windowShade.open",							category: "Convenience",				group: "Control [devices]",			display: "Open fully",					parameters: [], ],
     	[ name: "windowShade.close",						category: "Convenience",				group: "Control [devices]",			display: "Close fully",					parameters: [], ],
     	[ name: "windowShade.presetPosition",				category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		parameters: [], ],
-		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], ],
-    	[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], ],
+		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						parameters: [], attribute: "lock",		value: "locked",	],
+    	[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						parameters: [], attribute: "lock",		value: "unlocked",	],
     	[ name: "take",										category: "Safety and Security",		group: "Control [devices]",			display: "Take a picture",				parameters: [], ],
-    	[ name: "alarm.off",								category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						parameters: [], ],
-    	[ name: "alarm.strobe",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe",						parameters: [], ],
-    	[ name: "alarm.siren",								category: "Safety and Security",		group: "Control [devices]",			display: "Siren",						parameters: [], ],
-    	[ name: "alarm.both",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe and Siren",			parameters: [], ],
-    	[ name: "thermostat.off",							category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					parameters: [], ],
-    	[ name: "thermostat.heat",							category: "Comfort",					group: "Control [devices]",			display: "Set to Heat",					parameters: [], ],
-    	[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], ],
-    	[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], ],
-    	[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], ],
+    	[ name: "alarm.off",								category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						parameters: [], attribute: "alarm",		value: "stop",	],
+    	[ name: "alarm.strobe",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe",						parameters: [], attribute: "alarm",		value: "strobe",	],
+    	[ name: "alarm.siren",								category: "Safety and Security",		group: "Control [devices]",			display: "Siren",						parameters: [], attribute: "alarm",		value: "siren",	],
+    	[ name: "alarm.both",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe and Siren",			parameters: [], attribute: "alarm",		value: "both",	],
+    	[ name: "thermostat.off",							category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					parameters: [], attribute: "thermostatMode",	value: "off",	],
+    	[ name: "thermostat.heat",							category: "Comfort",					group: "Control [devices]",			display: "Set to Heat",					parameters: [], attribute: "thermostatMode",	value: "heat",	],
+    	[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], attribute: "thermostatMode",	value: "cool",	],
+    	[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], attribute: "thermostatMode",	value: "auto",	],
+    	[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], attribute: "thermostatMode",	value: "emergencyHeat",	],
     	[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
     	[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
-    	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	],
-    	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	],
-    	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	],
+    	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "thermostatHeatingSetpoint",	value: "*|decimal",	],
+    	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	attribute: "thermostatCoolingSetpoint",	value: "*|decimal",	],
+    	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	attribute: "thermostatMode",	value: "*|string",	],
 		[ name: "fanOn",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",				parameters: [], ],
     	[ name: "fanCirculate",								category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",		parameters: [], ],
     	[ name: "fanAuto",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",				parameters: [], ],
@@ -7129,23 +7268,23 @@ private virtualCommands() {
     	[ name: "flash#6",				requires: ["on6", "off6"], 			display: "Flash #6",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #6 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#7",				requires: ["on7", "off7"], 			display: "Flash #7",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #7 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#8",				requires: ["on8", "off8"], 			display: "Flash #8",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #8 {0}ms/{1}ms for {2} time(s)",	],
-    	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,	],
-    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","Save to variable:string"],					varEntry: 2,										],
-    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Save to state variable...:string"],												varEntry: 1,										],
+    	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,															aggregated: true,	],
+    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable {3}",	aggregated: true,	],
+    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Save to state variable...:string"],												varEntry: 1,																				aggregated: true,	],
     	[ name: "saveStateLocally",		requires: [],			 			display: "Save state",																																				],
     	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state (global)",																																			],
     	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Load from variable...:variable","Attribute:attribute"],																								],
     	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Load from state variable...:stateVariable","Attributes:attributes"],																								],
     	[ name: "loadStateLocally",		requires: [],			 			display: "Load state",						parameters: ["Attributes:attributes"],																															],
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state (global)",				parameters: ["Attributes:attributes"],																															],
-    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to \"{0}\"",	],
-    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to \"{0}\"",	],
+    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to \"{0}\"",		aggregated: true,	],
+    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to \"{0}\"",			aggregated: true,	],
     	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",	],
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",	],
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",	],
-    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",	],
-        [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",	],
+    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",				aggregated: true,	],
+        [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
     ]
 }
 
