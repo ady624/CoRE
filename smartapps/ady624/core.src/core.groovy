@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/26/2016 >>> v0.0.04c.20160526 - Alpha test version - Fixed a bug with item in list for is_one_of.
  *	 5/26/2016 >>> v0.0.04b.20160526 - Alpha test version - Fixed a bug introduced by the simulator
  *	 5/26/2016 >>> v0.0.04a.20160526 - Alpha test version - First attempt at simulations :)
  *	 5/26/2016 >>> v0.0.049.20160526 - Alpha test version - Fixed a problem with the new casting function. There are several special data types, namely mode, alarmSystemStatus, etc. that act as strings.
@@ -113,7 +114,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.04b.20160526"
+	return "v0.0.04c.20160526"
 }
 
 
@@ -1478,6 +1479,7 @@ private pageSetVariable(params) {
 }
 
 def pageSimulate() {
+	state.run = "config"
 	dynamicPage(name: "pageSimulate", title: "", uninstall: false, install: false) {
 		section("") {
         	paragraph "Preparing to simulate piston..."
@@ -3543,7 +3545,13 @@ private eval_cond_is_not(condition, device, attribute, oldValue, oldValueSince, 
 }
 
 private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return (currentValue in value1)
+	if (value1 instanceof List) {
+    	for(def value in value1) {
+        	if (value == currentValue)
+            	return true
+        }
+    }
+    return false
 }
 
 private eval_cond_is_not_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
@@ -5136,6 +5144,12 @@ private cast(value, dataType) {
                 return true
             }
             return !!value
+        case "enum":
+        	if (value instanceof List) {
+            	log.trace "GOT A LIST"
+            	return value
+            }
+            return value ? "$value" : ""
 		case "time":
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
     }
@@ -7201,7 +7215,7 @@ private attributes() {
         [ name: "voltage",					type: "decimal",			range: "*..*",			unit: "V",		options: null,																								],
     	[ name: "water",					type: "enum",				range: null,			unit: null,		options: ["dry", "wet"],																					],
     	[ name: "windowShade",				type: "enum",				range: null,			unit: null,		options: ["unknown", "open", "closed", "opening", "closing", "partially open"],								],
-    	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? location.modes : [],																					],
+    	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? location.modes.sort { it } : [],																					],
     	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],																		],
     	[ name: "routineExecuted",			type: "routine",			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],															],
     	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true, null, true, true, true, false) : [],												],
