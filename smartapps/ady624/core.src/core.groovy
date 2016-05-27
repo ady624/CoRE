@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/27/2016 >>> v0.0.04d.20160527 - Alpha test version - Fixed a bug (for good?) with item in list for is_one_of. Types enum, mode, and other special types need not be casted.
  *	 5/26/2016 >>> v0.0.04c.20160526 - Alpha test version - Fixed a bug with item in list for is_one_of.
  *	 5/26/2016 >>> v0.0.04b.20160526 - Alpha test version - Fixed a bug introduced by the simulator
  *	 5/26/2016 >>> v0.0.04a.20160526 - Alpha test version - First attempt at simulations :)
@@ -114,7 +115,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.04c.20160526"
+	return "v0.0.04d.20160527"
 }
 
 
@@ -3545,11 +3546,10 @@ private eval_cond_is_not(condition, device, attribute, oldValue, oldValueSince, 
 }
 
 private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	if (value1 instanceof List) {
-    	for(def value in value1) {
-        	if (value == currentValue)
-            	return true
-        }
+    def v = "$currentValue".trim()
+    for(def value in value1) {
+        if ("$value".trim() == v)
+        return true
     }
     return false
 }
@@ -5095,6 +5095,9 @@ private cast(value, dataType) {
 	def trueStrings = ["1", "on", "open", "locked", "active", "wet", "detected", "present", "occupied", "muted", "sleeping"]
     def falseStrings = ["0", "false", "off", "closed", "unlocked", "inactive", "dry", "clear", "not detected", "not present", "not occupied", "unmuted", "not sleeping"]
 	switch (dataType) {
+        case "string":
+        case "text":
+			return value ? "$value" : ""
         case "number":
         	if (value instanceof String) {
             	if (value.isInteger())
@@ -5144,17 +5147,11 @@ private cast(value, dataType) {
                 return true
             }
             return !!value
-        case "enum":
-        	if (value instanceof List) {
-            	log.trace "GOT A LIST"
-            	return value
-            }
-            return value ? "$value" : ""
 		case "time":
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
     }
     //anything else...
-	return value ? "$value" : ""
+    return value
 }
 
 
@@ -7215,7 +7212,7 @@ private attributes() {
         [ name: "voltage",					type: "decimal",			range: "*..*",			unit: "V",		options: null,																								],
     	[ name: "water",					type: "enum",				range: null,			unit: null,		options: ["dry", "wet"],																					],
     	[ name: "windowShade",				type: "enum",				range: null,			unit: null,		options: ["unknown", "open", "closed", "opening", "closing", "partially open"],								],
-    	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? location.modes.sort { it } : [],																					],
+    	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? getLocationModeOptions() : [],																					],
     	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],																		],
     	[ name: "routineExecuted",			type: "routine",			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],															],
     	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true, null, true, true, true, false) : [],												],
@@ -7300,6 +7297,13 @@ private comparisons() {
     ]
 }
 
+private getLocationModeOptions() {
+	def result = []
+    for (mode in location.modes) {
+    	if (mode) result.push("$mode")
+    }
+    return result
+}
 private getAlarmSystemStatusOptions() {
 	return ["Disarmed", "Armed/Stay", "Armed/Away"]
 }
