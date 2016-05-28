@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/27/2016 >>> v0.0.04f.20160527 - Alpha test version - We have an official icon! Also, fixed a problem with time scheduling for "not in between", fixed a potential problem with casting null values.
  *	 5/27/2016 >>> v0.0.04e.20160527 - Alpha test version - Implemented saveAttribute, introduced "aggregated" commands, these only run once, even when used on a list of devices
  *	 5/27/2016 >>> v0.0.04d.20160527 - Alpha test version - Fixed a bug (for good?) with item in list for is_one_of. Types enum, mode, and other special types need not be casted.
  *	 5/26/2016 >>> v0.0.04c.20160526 - Alpha test version - Fixed a bug with item in list for is_one_of.
@@ -116,7 +117,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.04e.20160527"
+	return "v0.0.04f.20160527"
 }
 
 
@@ -131,9 +132,9 @@ definition(
     description: "CoRE - Community's own Rule Engine",
     singleInstance: true,
     category: "Convenience",
-    iconUrl: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png",
-    iconX2Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png",
-    iconX3Url: "https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png"
+    iconUrl: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/app-CoRE.png",
+    iconX2Url: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/app-CoRE@2x.png",
+    iconX3Url: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/app-CoRE@2x.png"
 )
 
 preferences {
@@ -3446,14 +3447,8 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                 def a1 = addOffsetToMinutes(m1, o1)
                 def a2 = addOffsetToMinutes(m2, o2)
                 def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
-                if (comparison.contains("not")) {
-                    eval = !eval
-                }
-                if (eval) {
-                    result = false
-                }
                 if (getNextEventTime) {
-                	if (result) {
+                	if (!eval) {
                     	//we're in between the a1 and a2
                         if (a1 < a2) {
                         	//normal range, a2 is our time
@@ -3473,6 +3468,12 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                         }
                     }
                 }                
+                if (comparison.contains("not")) {
+                    eval = !eval
+                }
+                if (eval) {
+                    result = false
+                }
                 if (!result) return result
                 break
         }
@@ -4925,6 +4926,30 @@ private task_vcmd_cancelPendingTasks(device, task, suffix = "") {
     return true
 }
 
+private task_vcmd_loadAttribute(device, task, simulate = false) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || (params.size() != 4)) {
+    	return false
+    }
+	def attribute = cleanUpAttribute(params[0].d)
+    def variable = params[1].d
+    def allowTranslations = !!params[2].d
+    def negateTranslations = !!params[3].d   
+    //work, work, work
+    //get the real value
+    def value = getVariable(variable)
+    def commands = commands().findAll{ (it.attribute == attribute) && it.value }
+    log.trace "Possible commands are: ${commands*.name}"
+    //oh boy, we can pick and choose...
+    for (command in commands) {
+    	if (command.value == value) {
+        	//found an exact match, let's do it
+            if (device.hasCommand(command.name)) {
+            	device."$command"()
+            }
+        }
+    }
+}
 
 private task_vcmd_saveAttribute(devices, task, simulate = false) {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -5238,6 +5263,7 @@ private cast(value, dataType) {
         case "text":
 			return value ? "$value" : ""
         case "number":
+        	if (value == null) return (int) 0
         	if (value instanceof String) {
             	if (value.isInteger())
                 	return value.toInteger()
@@ -5252,6 +5278,7 @@ private cast(value, dataType) {
             	return (int) 0
             }
         case "long":
+        	if (value == null) return (long) 0
         	if (value instanceof String) {
             	if (value.isInteger())
                 	return (long) value.toInteger()
@@ -5266,6 +5293,7 @@ private cast(value, dataType) {
             	return (long) 0
             }
         case "decimal":
+        	if (value == null) return (float) 0
         	if (value instanceof String) {
             	if (value.isFloat())
                 	return (float) value.toFloat()
@@ -7271,9 +7299,9 @@ private virtualCommands() {
     	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,															aggregated: true,	],
     	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable {3}",	aggregated: true,	],
     	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Save to state variable...:string"],												varEntry: 1,																				aggregated: true,	],
-    	[ name: "saveStateLocally",		requires: [],			 			display: "Save state",																																				],
-    	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state (global)",																																			],
-    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Load from variable...:variable","Attribute:attribute"],																								],
+        [ name: "saveStateLocally",		requires: [],			 			display: "Save state",																																																											aggregated: true,	],
+    	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state (global)",																																																									aggregated: true,	],
+    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable...:variable","Allow translations:bool","Negate translation:bool"],																								],
     	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Load from state variable...:stateVariable","Attributes:attributes"],																								],
     	[ name: "loadStateLocally",		requires: [],			 			display: "Load state",						parameters: ["Attributes:attributes"],																															],
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state (global)",				parameters: ["Attributes:attributes"],																															],
