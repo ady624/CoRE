@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/28/2016 >>> v0.0.052.20160528 - Alpha test version - Fixed a bug where last executed task was not correctly removed
  *	 5/28/2016 >>> v0.0.051.20160528 - Alpha test version - More fixes for casting and variable condition description
  *	 5/27/2016 >>> v0.0.050.20160527 - Alpha test version - Load Attribute from variable done and partially tested. Missing: color support - this is a complex data type...
  *	 5/27/2016 >>> v0.0.04f.20160527 - Alpha test version - We have an official icon! Also, fixed a problem with time scheduling for "not in between", fixed a potential problem with casting null values.
@@ -119,7 +120,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.051.20160528"
+	return "v0.0.052.20160528"
 }
 
 
@@ -3055,7 +3056,7 @@ private evaluateCondition(condition, evt = null) {
         } else {
             //we evaluate a group
             result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
-            for (child in condition.children) {
+            for (child in condition.children.sort { it.id }) {
                 //evaluate the child
                 def subResult = evaluateCondition(child, evt)
                 //apply it to the composite result
@@ -4575,6 +4576,7 @@ private processTasks() {
                         tasks = atomicState.tasks
                         tasks.remove(firstSubTask.key)
                         atomicState.tasks = tasks
+                        state.tasks = tasks
                         //throw away the task list as this procedure below may take time, making our list stale
                         //not to worry, we'll read it again on our next iteration
                         tasks = null
@@ -5126,7 +5128,7 @@ private task_vcmd_setVariable(devices, task, simulate = false) {
         	result = 0
             break
     }
-    def algebra = !!params[2].d
+    def immediate = !!params[2].d
     if (algebra) {
     	//no complex algebra yet :(
         return simulate ? null : false
