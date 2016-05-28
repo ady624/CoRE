@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/27/2016 >>> v0.0.050.20160527 - Alpha test version - Load Attribute from variable done and partially tested. Missing: color support - this is a complex data type...
  *	 5/27/2016 >>> v0.0.04f.20160527 - Alpha test version - We have an official icon! Also, fixed a problem with time scheduling for "not in between", fixed a potential problem with casting null values.
  *	 5/27/2016 >>> v0.0.04e.20160527 - Alpha test version - Implemented saveAttribute, introduced "aggregated" commands, these only run once, even when used on a list of devices
  *	 5/27/2016 >>> v0.0.04d.20160527 - Alpha test version - Fixed a bug (for good?) with item in list for is_one_of. Types enum, mode, and other special types need not be casted.
@@ -117,7 +118,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.04f.20160527"
+	return "v0.0.050.20160527"
 }
 
 
@@ -4942,13 +4943,47 @@ private task_vcmd_loadAttribute(device, task, simulate = false) {
     log.trace "Possible commands are: ${commands*.name}"
     //oh boy, we can pick and choose...
     for (command in commands) {
-    	if (command.value == value) {
-        	//found an exact match, let's do it
-            if (device.hasCommand(command.name)) {
-            	device."$command"()
+    	if (command.value.startsWith("*")) {
+        	if (command.parameters && (command.parameters.size() == 1)) {
+                def parts = command.value.tokenize(":")
+                def v = value
+                if (parts.size() == 2) {
+                    v = cast(v, parts[1])
+                }
+                if (device.hasCommand(command.name)) {
+                    log.trace "Executing [${getDeviceLabel(device)}].$command($v)"
+                    device."${command.name}"(v)
+                    return true
+                }
+            }        	
+        } else {
+            if ((command.value == value) && (!command.parameters)) {
+                //found an exact match, let's do it
+                if (device.hasCommand(command.name)) {
+                    log.trace "Executing [${getDeviceLabel(device)}].$command()"
+                    device."${command.name}"()
+                    return true
+                }
             }
         }
     }
+    //boolean stuff goes here
+    if (!allowTranslations) return false
+    def v = cast(value, "boolean")
+    if (negateTranslations) v = !v
+    for (command in commands) {
+    	if (!command.value.startsWith("*")) {
+            if ((cast(command.value, "boolean") == v) && (!command.parameters)) {
+                //found an exact match, let's do it
+                if (device.hasCommand(command.name)) {
+                    log.trace "Executing [${getDeviceLabel(device)}].$command() (boolean translation)"
+                    device."${command.name}"()
+                    return true
+                }
+            }
+        }
+    }
+    return false
 }
 
 private task_vcmd_saveAttribute(devices, task, simulate = false) {
