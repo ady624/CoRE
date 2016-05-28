@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/28/2016 >>> v0.0.051.20160528 - Alpha test version - More fixes for casting and variable condition description
  *	 5/27/2016 >>> v0.0.050.20160527 - Alpha test version - Load Attribute from variable done and partially tested. Missing: color support - this is a complex data type...
  *	 5/27/2016 >>> v0.0.04f.20160527 - Alpha test version - We have an official icon! Also, fixed a problem with time scheduling for "not in between", fixed a potential problem with casting null values.
  *	 5/27/2016 >>> v0.0.04e.20160527 - Alpha test version - Implemented saveAttribute, introduced "aggregated" commands, these only run once, even when used on a list of devices
@@ -118,7 +119,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.050.20160527"
+	return "v0.0.051.20160528"
 }
 
 
@@ -3190,7 +3191,7 @@ private evaluateDeviceCondition(condition, evt) {
                     oldValueSince = cachedValue.t
                 }
             }
-			def type = attr.type
+			def type = attr.name == "variable" ? (condition.dt ? condition.dt : attr.type) : attr.type
             //if we're dealing with an owned event, use that event's value
             //if we're dealing with a virtual device, get the virtual value
             currentValue = cast(evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr)), type)
@@ -5307,11 +5308,12 @@ private cast(value, dataType) {
                 if (value in trueStrings)
                 	return (int) 1
             }
+            def result = (int) 0
             try {
-            	return (int) value
+            	result = (int) value
             } catch(all) {
-            	return (int) 0
             }
+            return result ? result : (int) 0
         case "long":
         	if (value == null) return (long) 0
         	if (value instanceof String) {
@@ -5322,11 +5324,12 @@ private cast(value, dataType) {
                 if (value in trueStrings)
                 	return (long) 1
             }
+            def result = (long) 0
             try {
-            	return (long) value
+            	result = (long) value
             } catch(all) {
-            	return (long) 0
             }
+            return result ? result : (long) 0
         case "decimal":
         	if (value == null) return (float) 0
         	if (value instanceof String) {
@@ -5337,11 +5340,12 @@ private cast(value, dataType) {
                 if (value in trueStrings)
                 	return (float) 1
             }
+            def result = (float) 0
             try {
-            	return (float) value
+            	result = (float) value
             } catch(all) {
-            	return (float) 0
             }
+            return result ? result : (float) 0
         case "boolean":
         	if (value instanceof String) {
             	if (!value || (value in falseStrings))
@@ -6648,7 +6652,7 @@ private listComparisonOptions(attributeName, allowTriggers, overrideAttributeTyp
 private getComparisonOption(attributeName, comparisonOption, overrideAttributeType = null) {	
     def attribute = getAttributeByName(attributeName)
     if (attribute && comparisonOption) {
-		def attributeType = overrideAttributeType ? overrideAttributeType : attribute.type
+		def attributeType = overrideAttributeType ? overrideAttributeType : (attributeName == "variable" ? "variable" : attribute.type)
         for (comparison in comparisons()) {
             if (comparison.type == attributeType) {
                 for (option in comparison.options) {
@@ -7493,6 +7497,7 @@ private comparisons() {
     	[ type: "alarmSystemStatus",	options: optionsEnum,		],
     	[ type: "routine",				options: optionsRoutine,	],
     	[ type: "number",				options: optionsNumber,		],
+    	[ type: "variable",				options: optionsNumber,		],
     	[ type: "decimal",				options: optionsNumber		],
     	[ type: "time",					options: optionsTime,		],        
     	[ type: "momentary",			options: optionsMomentary,	],        
