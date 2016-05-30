@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands startLoop, stopLoop, 
  *	 5/28/2016 >>> v0.0.052.20160528 - Alpha test version - Fixed a bug where last executed task was not correctly removed
  *	 5/28/2016 >>> v0.0.051.20160528 - Alpha test version - More fixes for casting and variable condition description
  *	 5/27/2016 >>> v0.0.050.20160527 - Alpha test version - Load Attribute from variable done and partially tested. Missing: color support - this is a complex data type...
@@ -120,7 +121,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.052.20160528"
+	return "v0.0.053.20160530"
 }
 
 
@@ -3257,7 +3258,7 @@ private evaluateDeviceCondition(condition, evt) {
                     if (state.sim) state.sim.evals.push(msg)
 					debug msg
                 } else {
-                    deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt, momentary)
+                    deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt, momentary, type)
                     def msg = "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
                     if (state.sim) state.sim.evals.push(msg)
                     debug msg
@@ -3547,15 +3548,15 @@ private testDateTimeFilters(condition, now) {
 }
 
 /* low-level evaluation functions */
-private eval_cond_is(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_cond_is(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_cond_is_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_cond_is_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def v = "$currentValue".trim()
     for(def value in value1) {
         if ("$value".trim() == v)
@@ -3564,49 +3565,49 @@ private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSinc
     return false
 }
 
-private eval_cond_is_not_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_cond_is_not_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return currentValue == value1
 }
 
-private eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return currentValue != value1
 }
 
-private eval_cond_is_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return currentValue < value1
 }
 
-private eval_cond_is_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return currentValue <= value1
 }
 
-private eval_cond_is_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return currentValue > value1
 }
 
-private eval_cond_is_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return currentValue >= value1
 }
 
-private eval_cond_is_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	try {
    		return Math.round(currentValue).mod(2) == 0
     } catch(all) {}
     return false
 }
 
-private eval_cond_is_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	try {
    		return Math.round(currentValue).mod(2) == 1
     } catch(all) {}
     return false
 }
 
-private eval_cond_is_inside_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_inside_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	if (value1 < value2) {
 		return (currentValue >= value1) && (currentValue <= value2)
     } else {
@@ -3614,7 +3615,7 @@ private eval_cond_is_inside_range(condition, device, attribute, oldValue, oldVal
     }
 }
 
-private eval_cond_is_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_is_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	if (value1 < value2) {
 		return (currentValue < value1) || (currentValue > value2)
 	} else {
@@ -3645,31 +3646,31 @@ private listPreviousStates(device, attribute, currentValue, minutes, excludeLast
     return result
 }
 
-private eval_cond_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	def minutes = timeToMinutes(condition.fort)
 	def events = device.eventsSince(new Date(now() - minutes * 60000)).findAll{it.name == attribute}
     return (events.size() > 0)
 }
 
-private eval_cond_did_not_change(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_cond_did_not_change(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_cond_was(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_cond_was(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_cond_was_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_cond_was_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value == value1) {
+    	if (cast(state.value, dataType) == value1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3678,13 +3679,13 @@ private eval_cond_was_equal_to(condition, device, attribute, oldValue, oldValueS
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value != value1) {
+    	if (cast(state.value, dataType) != value1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3693,13 +3694,13 @@ private eval_cond_was_not_equal_to(condition, device, attribute, oldValue, oldVa
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value < value1) {
+    	if (cast(state.value, dataType) < value1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3708,13 +3709,13 @@ private eval_cond_was_less_than(condition, device, attribute, oldValue, oldValue
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value <= value1) {
+    	if (cast(state.value, dataType) <= value1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3723,13 +3724,13 @@ private eval_cond_was_less_than_or_equal_to(condition, device, attribute, oldVal
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value > value1) {
+    	if (cast(state.value, dataType) > value1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3738,13 +3739,13 @@ private eval_cond_was_greater_than(condition, device, attribute, oldValue, oldVa
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value >= value1) {
+    	if (cast(state.value, dataType) >= value1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3753,13 +3754,13 @@ private eval_cond_was_greater_than_or_equal_to(condition, device, attribute, old
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value.isInteger() ? state.value.toInteger().mod(2) == 0 : false) {
+    	if (cast(state.value, "number").mod(2) == 0) {
         	stableTime += state.duration
         } else {
         	break
@@ -3768,13 +3769,13 @@ private eval_cond_was_even(condition, device, attribute, oldValue, oldValueSince
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (state.value.isInteger() ? state.value.toInteger().mod(2) == 1 : false) {
+    	if (cast(state.value, "number").mod(2) == 1) {
         	stableTime += state.duration
         } else {
         	break
@@ -3783,13 +3784,14 @@ private eval_cond_was_odd(condition, device, attribute, oldValue, oldValueSince,
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_inside_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_inside_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (value1 < value2 ? (state.value >= value1) && (state.value <= value2) : (state.value >= value2) && (state.value <= value1)) {
+    	def v = cast(state.value, dataType)
+    	if (value1 < value2 ? (v >= value1) && (v <= value2) : (v >= value2) && (v <= value1)) {
         	stableTime += state.duration
         } else {
         	break
@@ -3798,13 +3800,14 @@ private eval_cond_was_inside_range(condition, device, attribute, oldValue, oldVa
     return (stableTime > 0) && (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
     def time = timeToMinutes(condition.fort)
 	def states = listPreviousStates(device, attribute, currentValue, time, evt ? 1 : 0)
     def thresholdTime = time * 60000
     def stableTime = 0
     for (state in states) {
-    	if (value1 < value2 ? (state.value < value1) || (state.value > value2) : (state.value < value2) || (state.value > value1)) {
+        def v = cast(state.value, dataType)
+    	if (value1 < value2 ? (v < value1) || (v > value2) : (v < value2) || (v > value1)) {
         	stableTime += state.duration
         } else {
         	break
@@ -3818,72 +3821,72 @@ private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, 
 	return momentary || (oldValue != currentValue)
 }
 
-private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return (momentary || !eval_cond_is_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary)) &&
-    		eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return (momentary || !eval_cond_is_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
+    		eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return (momentary || !eval_cond_is_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary)) &&
-    		eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return (momentary || !eval_cond_is_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
+    		eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_changes_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return (momentary || !eval_cond_is_not_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary)) &&
-    		eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_changes_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return (momentary || !eval_cond_is_not_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
+    		eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return (momentary || !eval_cond_is_not_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary)) &&
-    		eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return (momentary || !eval_cond_is_not_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
+    		eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_less_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_less_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_less_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_less_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_drops_to_or_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_drops_to_or_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_raises_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_greater_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_greater_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_raises_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_greater_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_greater_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_raises_to_or_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_raises_to_or_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_changes_to_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_even(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_even(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_changes_to_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_even(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_even(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_changes_to_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_odd(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_odd(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_changes_to_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_odd(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_odd(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_enters_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_inside_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_inside_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_enters_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_inside_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_inside_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_exits_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
-	return !eval_cond_is_outside_of_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary) &&
-    		eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary)
+private eval_trg_exits_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_outside_of_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+    		eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
-private eval_trg_executed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_trg_executed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return (evt && evt.displayName && evt.displayName == value1)
 }
 
 /*
-private eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	if (!oldValueSince) return false
     def time = timeToMinutes(condition.fort)
     def thresholdTime = time * 60000
@@ -3891,9 +3894,9 @@ private eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, 
     return (condition.for == "for at least" ? stableTime >= thresholdTime : stableTime < thresholdTime)
 }
 
-private eval_trg_did_not_change(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_trg_did_not_change(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	if (!oldValueSince) return false
-	return !eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary)
+	return !eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 */
 
@@ -3983,7 +3986,11 @@ private scheduleAction(action) {
                     command = null
                 }
             } else {
-                command = getCommandByDisplay(cmd)
+            	if (custom) {
+                	command = [name: cmd]
+                } else {
+	                command = getCommandByDisplay(cmd)
+                }
             }
             if (command) {
                 for (deviceId in deviceIds) {
@@ -4679,6 +4686,13 @@ private processCommandTask(task) {
             return "$function"(command.aggregated ? devices : device, task, suffix)
         }
     } else {
+    	if (custom) {
+            def msg = "Executing custom command: [${device}].${cmd}()"
+            if (state.sim) state.sim.cmds.push(msg)
+            debug msg, null, "info"
+            device."${cmd}"()
+            return true
+        }
         command = getCommandByDisplay(cmd)
         if (command) {
             if (device.hasCommand(command.name)) {
@@ -5833,6 +5847,7 @@ private timeToMinutes(time) {
     if (value.isInteger()) {
     	return value.toInteger()
     }
+    debug "ERROR: Time '$time' could not be parsed", null, "error"
     return 0
 }
 
@@ -7283,6 +7298,17 @@ private commands() {
 		[ name: "configure",								category: null,							group: null,						display: "Configure",					parameters: [], ],
     	[ name: "poll",										category: null,							group: null,						display: "Poll",						parameters: [], ],
     	[ name: "refresh",									category: null,							group: null,						display: "Refresh",						parameters: [], ],
+        /* predfined commands below */
+        //hue
+    	[ name: "startLoop",								category: null,							group: null,						display: "Start color loop",			parameters: [], ],
+    	[ name: "stopLoop",									category: null,							group: null,						display: "Stop color loop",				parameters: [], ],
+    	[ name: "setLoopTime",								category: null,							group: null,						display: "Set loop duration",			parameters: ["Duration [s]:number[1..*]"], description: "Set loop duration to {0}s"],
+        //harmony
+    	[ name: "allOn",									category: null,							group: null,						display: "Turn all on",					parameters: [], ],
+    	[ name: "allOff",									category: null,							group: null,						display: "Turn all off",				parameters: [], ],
+    	[ name: "hubOn",									category: null,							group: null,						display: "Turn hub on",					parameters: [], ],
+    	[ name: "hubOff",									category: null,							group: null,						display: "Turn hub off",				parameters: [], ],
+        
     ]
 }
 
