@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/30/2016 >>> v0.0.054.20160530 - Alpha test version - Enabled custom commands with simple parameters (boolean, decimal, number, string)
  *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands for hue: startLoop, stopLoop, setLoopTime and for Harmony: allOn, allOff, hubOn, hubOff
  *	 5/28/2016 >>> v0.0.052.20160528 - Alpha test version - Fixed a bug where last executed task was not correctly removed
  *	 5/28/2016 >>> v0.0.051.20160528 - Alpha test version - More fixes for casting and variable condition description
@@ -121,7 +122,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.053.20160530"
+	return "v0.0.054.20160530"
 }
 
 
@@ -1330,6 +1331,19 @@ def pageAction(params) {
                                             i += 1
                                         }
                                     }
+                                } else if (custom) {
+                                	//custom command parameters... complicated stuff
+                                    def i = (int) 1
+                                    while (true) {
+                                    	def type = settings["actParam$id#$tid-$i"]
+                                        def j = (int) Math.floor((i - 1)/2) + 1
+                                        input "actParam$id#$tid-$i", "enum", options: ["boolean", "decimal", "number", "string"], title: type ? "Parameter #$j type" : "Add a parameter", required: false, submitOnChange: true, multiple: false
+                                        if (!type) break
+                                        i += 1
+                                        input "actParam$id#$tid-$i", type, range: "*..*", title: "Parameter #$j value", required: true, submitOnChange: true, multiple: false
+                                        i += 1
+                                    }
+                                
                                 }
                                 idx += 1
                             }
@@ -2469,6 +2483,23 @@ private updateAction(action) {
                             i++
                         }
                     }
+                } else if (custom) {
+                	//custom parameters
+                    def i = 1
+                    while (true) {
+                        //value
+                        def type = settings["actParam$id#$tid-$i"]
+                        if (type) {
+    	                    //parameter type
+	                        task.p.push([i: i, t: "string", d: settings["actParam$id#$tid-$i"]])
+    	                    //parameter value
+        	                task.p.push([i: i + 1, t: type, d: settings["actParam$id#$tid-${i + 1}"]])
+                        } else {
+                        	break
+                       	}
+						i += 2
+                    }
+                    
                 }
                 action.t.push(task)
             }
@@ -4687,10 +4718,23 @@ private processCommandTask(task) {
         }
     } else {
     	if (custom) {
-            def msg = "Executing custom command: [${device}].${cmd}()"
+        	def availableParams = t.p ? t.p.size() : 0
+			def params = []
+            if (availableParams && (availableParams.mod(2) == 0)) {
+				for (def i = 0; i < Math.floor(availableParams / 2); i++) {
+                	def type = t.p[i * 2].d
+                    def value = t.p[i * 2 + 1].d
+                    params.push cast(value, type)
+                }
+            }
+            def msg = "Executing custom command: [${device}].${cmd}(${params.size() ? params : ""})"
             if (state.sim) state.sim.cmds.push(msg)
             debug msg, null, "info"
-            device."${cmd}"()
+            if (params.size()) {
+                device."${cmd}"(params as Object[])
+            } else {
+                device."${cmd}"()
+            }
             return true
         }
         command = getCommandByDisplay(cmd)
@@ -4731,19 +4775,19 @@ private processCommandTask(task) {
                                 p.saturation = saturation
                                 p.level - lightness
                             }
-                            def msg = "Executing with parameters: [${device}].${command.name}($p)"
+                            def msg = "Executing command: [${device}].${command.name}($p)"
 				            if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
                         	device."${command.name}"(p)
                         } else {
-                        	def msg = "Executing with parameters: [${device}].${command.name}($params)" 
+                        	def msg = "Executing command: [${device}].${command.name}($params)" 
 				            if (state.sim) state.sim.cmds.push(msg)
                         	debug msg, null, "info"
                         	device."${command.name}"(params as Object[])
                         }
                         return true
                     } else {
-                    	def msg = "Executing: [${device}].${command.name}()"
+                    	def msg = "Executing command: [${device}].${command.name}()"
                         if (state.sim) state.sim.cmds.push(msg)
                         debug msg, null, "info"
                         device."${command.name}"()
@@ -4957,7 +5001,6 @@ private task_vcmd_loadAttribute(device, task, simulate = false) {
     //get the real value
     def value = getVariable(variable)
     def commands = commands().findAll{ (it.attribute == attribute) && it.value }
-    log.trace "Possible commands are: ${commands*.name}"
     //oh boy, we can pick and choose...
     for (command in commands) {
     	if (command.value.startsWith("*")) {
@@ -7303,6 +7346,9 @@ private commands() {
     	[ name: "startLoop",								category: null,							group: null,						display: "Start color loop",			parameters: [], ],
     	[ name: "stopLoop",									category: null,							group: null,						display: "Stop color loop",				parameters: [], ],
     	[ name: "setLoopTime",								category: null,							group: null,						display: "Set loop duration",			parameters: ["Duration [s]:number[1..*]"], description: "Set loop duration to {0}s"],
+    	[ name: "setDirection",								category: null,							group: null,						display: "Switch loop direction",		parameters: [], description: "Set loop duration to {0}s"],
+    	[ name: "alert",									category: null,							group: null,						display: "Alert with lights",			parameters: ["Method:enum[Blink,Breathe,Okay,Stop]"], description: "Alert with lights: {0}"],
+    	[ name: "setAdjustedColor",							category: null,							group: null,						display: "Transition to color",			parameters: ["Color:color","Duration [s]:number[1..60]"], description: "Transition to color in {1}s"],
         //harmony
     	[ name: "allOn",									category: null,							group: null,						display: "Turn all on",					parameters: [], ],
     	[ name: "allOff",									category: null,							group: null,						display: "Turn all off",				parameters: [], ],
