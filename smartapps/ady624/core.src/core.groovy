@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/30/2016 >>> v0.0.055.20160530 - Alpha test version - Added the repeatAction command - minimal testing done
  *	 5/30/2016 >>> v0.0.054.20160530 - Alpha test version - Enabled custom commands with simple parameters (boolean, decimal, number, string)
  *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands for hue: startLoop, stopLoop, setLoopTime and for Harmony: allOn, allOff, hubOn, hubOff
  *	 5/28/2016 >>> v0.0.052.20160528 - Alpha test version - Fixed a bug where last executed task was not correctly removed
@@ -122,7 +123,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.054.20160530"
+	return "v0.0.055.20160530"
 }
 
 
@@ -1366,8 +1367,8 @@ def pageAction(params) {
                 }
 
             	section(title: "Advanced options") {
-                	paragraph "When an action schedules tasks for a certain device or devices, these new tasks may cause a conflict with pending future scheduled tasks for the same device or devices. The task override scope defines how these conflicts are handled. Depending on your choice, the following pending tasks are cancelled:\n ● None - no pending task is cancelled\n ● Action - only tasks scheduled by the same action are cancelled (default)\n ● Local - only local tasks (scheduled by the same piston) are cancelled\n ● Global - all global tasks (scheduled by any piston in the CoRE) are cancelled"
-                	input "actTOS$id", "enum", title: "Task override scope", options:["None", "Action", "Local", "Global"], defaultValue: "Action", required: true
+                	paragraph "When an action schedules tasks for a certain device or devices, these new tasks may cause a conflict with pending future scheduled tasks for the same device or devices. The task override scope defines how these conflicts are handled. Depending on your choice, the following pending tasks are cancelled:\n ● None - no pending task is cancelled\n ● Action - only tasks scheduled by the same action are cancelled\n ● Local - only local tasks (scheduled by the same piston) are cancelled (default)\n ● Global - all global tasks (scheduled by any piston in the CoRE) are cancelled"
+                	input "actTOS$id", "enum", title: "Task override scope", options:["None", "Action", "Local", "Global"], defaultValue: "Local", required: true
                 	input "actTCP$id", "enum", title: "Task cancellation policy", options:["None", "Cancel on piston state change"], defaultValue: "None", required: true
                 }
 
@@ -4014,7 +4015,9 @@ private scheduleAction(action) {
                     	waitFor = result.waitFor
                         waitSince = time
                     }
-                    command = null
+                    if (!result.schedule) {
+                        command = null
+                    }
                 }
             } else {
             	if (custom) {
@@ -4046,6 +4049,13 @@ private scheduleAction(action) {
             }           
         }
     }
+}
+
+
+private cmd_repeatAction(action, task, time) {
+	def result = cmd_wait(action, task, time)
+    result.schedule = true
+    return result
 }
 
 private cmd_wait(action, task, time) {
@@ -4457,6 +4467,7 @@ def keepAlive() {
 private processTasks() {
 	//pfew, off to process tasks
     //first, we make a variable to help us pick up where we left off
+    state.rerunSchedule = false
     def tasks = null
     def perf = now()
     debug "Processing tasks", 1, "trace"
@@ -4526,112 +4537,121 @@ private processTasks() {
             }
         }
         
-        //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
-        if (state.tasker && state.tasker.size()) {
-            for (task in state.tasker.sort{ it.idx }) {
-                if (task.add) {
-                    def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data])
-                    def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}"
-                    idx++
-                    tasks[n] = t
-                } else if (task.del) {
-                    //delete a task
-                    def dirty = true
-                    while (dirty) {
-                        dirty = false
-                        for (it in tasks) {
-                        	if ((it.value.type == task.del) && (!task.ownerId || (it.value.ownerId == task.ownerId)) && (!task.deviceId || (task.deviceId == it.value.deviceId)) && (!task.taskId || (task.taskId == it.value.taskId))) {
-                            	tasks.remove(it.key)
-    	                        dirty = true
-                                break
-	                        }
-	                    }
-	                }
-                }
-            }
-            //we save the tasks list atomically, ouch
-            //this is to avoid spending too much time with the tasks list on our hands and having other instances
-            //running and modifying the old list that we picked up above
-            state.tasksProcessed = now()
-            atomicState.tasks = tasks
-            state.tasks = tasks
-            state.tasker = null
-        }
+        
+        def repeatCount = 0
+        
+        while (repeatCount < 2) {
+			//we allow some tasks to rerun this code because they're altering our task list...
 
-        //time to see if there is any ST schedule needed for the future
-        def nextTime = null
-        def immediateTasks = 0
-        def thresholdTime = now() + threshold
-        for (item in tasks) {
-            def task = item.value
-            //if a command task is waiting, we ignore it
-            if (!task.data || !task.data.w) {
-            	//if a task is already due, we keep track of it
-            	if (task.time <= thresholdTime) {
-	                immediateTasks++
-	            } else {
-	                //we try to get the nearest time in the future
-	                nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
-    	        }
-            }
-        }
-        //if we found a time that's after 
-        if (nextTime) {
-            def seconds = Math.round((nextTime - now()) / 1000)
-            runIn(seconds, timeHandler)
-            state.nextScheduledTime = nextTime
-            setVariable("\$nextScheduledTime", nextTime, true)
-            debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
-        } else {
-            setVariable("\$nextScheduledTime", null, true)
-        }
-
-        //we're done with the scheduling, let's do some real work, if we have any
-        if (immediateTasks) {
-            if (!safetyNet) {
-                //setup a safety net ST schedule to resume the process if we fail
-                safetyNet = true
-                debug "Installing ST safety net", null, "trace"
-                runIn(90, recoveryHandler)
-            }
-
-            debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
-            //we loop a seemingly infinite loop
-            //no worries, we'll break out of it, maybe :)
-            def found = true
-            while (found) {
-                found = false
-                //we need to read the list every time we get here because the loop itself takes time.
-                //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
-                tasks = tasks ? tasks : atomicState.tasks
-                tasks = tasks ? tasks : [:]
-                def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time <= (now() + threshold)) }
-                if (firstTask) {
-                    def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time == firstTask.value.time) }
-                    if (firstSubTask) {
-                        def task = firstSubTask.value
-                        //remove from tasks
-                        tasks = atomicState.tasks
-                        tasks.remove(firstSubTask.key)
-                        atomicState.tasks = tasks
-                        state.tasks = tasks
-                        //throw away the task list as this procedure below may take time, making our list stale
-                        //not to worry, we'll read it again on our next iteration
-                        tasks = null
-                        //do some work
-                        if (settings.enabled && (task.type == "cmd")) {
-                            debug "Processing command task $task"
-                            try {
-                            	processCommandTask(task)
-							} catch (e) {
-                            	debug "ERROR: Error while processing command task: $e", null, "error"
+            //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
+            if (state.tasker && state.tasker.size()) {
+                for (task in state.tasker.sort{ it.idx }) {
+                    if (task.add) {
+                        def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data])
+                        def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}"
+                        idx++
+                        tasks[n] = t
+                    } else if (task.del) {
+                        //delete a task
+                        def dirty = true
+                        while (dirty) {
+                            dirty = false
+                            for (it in tasks) {
+                                if ((it.value.type == task.del) && (!task.ownerId || (it.value.ownerId == task.ownerId)) && (!task.deviceId || (task.deviceId == it.value.deviceId)) && (!task.taskId || (task.taskId == it.value.taskId))) {
+                                    tasks.remove(it.key)
+                                    dirty = true
+                                    break
+                                }
                             }
                         }
-                        //repeat the while since we just modified the task
-                        found = true
+                    }
+                }
+                //we save the tasks list atomically, ouch
+                //this is to avoid spending too much time with the tasks list on our hands and having other instances
+                //running and modifying the old list that we picked up above
+                state.tasksProcessed = now()
+                atomicState.tasks = tasks
+                state.tasks = tasks
+                state.tasker = null
+            }
+
+            //time to see if there is any ST schedule needed for the future
+            def nextTime = null
+            def immediateTasks = 0
+            def thresholdTime = now() + threshold
+            for (item in tasks) {
+                def task = item.value
+                //if a command task is waiting, we ignore it
+                if (!task.data || !task.data.w) {
+                    //if a task is already due, we keep track of it
+                    if (task.time <= thresholdTime) {
+                        immediateTasks++
+                    } else {
+                        //we try to get the nearest time in the future
+                        nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
                     }
                 }
             }
+            //if we found a time that's after 
+            if (nextTime) {
+                def seconds = Math.round((nextTime - now()) / 1000)
+                runIn(seconds, timeHandler)
+                state.nextScheduledTime = nextTime
+                setVariable("\$nextScheduledTime", nextTime, true)
+                debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
+            } else {
+                setVariable("\$nextScheduledTime", null, true)
+            }
+
+            //we're done with the scheduling, let's do some real work, if we have any
+            if (immediateTasks) {
+                if (!safetyNet) {
+                    //setup a safety net ST schedule to resume the process if we fail
+                    safetyNet = true
+                    debug "Installing ST safety net", null, "trace"
+                    runIn(90, recoveryHandler)
+                }
+
+                debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
+                //we loop a seemingly infinite loop
+                //no worries, we'll break out of it, maybe :)
+                def found = true
+                while (found) {
+                    found = false
+                    //we need to read the list every time we get here because the loop itself takes time.
+                    //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
+                    tasks = tasks ? tasks : atomicState.tasks
+                    tasks = tasks ? tasks : [:]
+                    def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time <= (now() + threshold)) }
+                    if (firstTask) {
+                        def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time == firstTask.value.time) }
+                        if (firstSubTask) {
+                            def task = firstSubTask.value
+                            //remove from tasks
+                            tasks = atomicState.tasks
+                            tasks.remove(firstSubTask.key)
+                            atomicState.tasks = tasks
+                            state.tasks = tasks
+                            //throw away the task list as this procedure below may take time, making our list stale
+                            //not to worry, we'll read it again on our next iteration
+                            tasks = null
+                            //do some work
+                            if (settings.enabled && (task.type == "cmd")) {
+                                debug "Processing command task $task"
+                                try {
+                                    processCommandTask(task)
+                                } catch (e) {
+                                    debug "ERROR: Error while processing command task: $e", null, "error"
+                                }
+                            }
+                            //repeat the while since we just modified the task
+                            found = true
+                        }
+                    }
+                }
+            }
+			if (!state.rerunSchedule) break
+            repeatCount += 1
         }
         //would you look at that, we finished!
         //remove the safety net, wasn't worth the investment
@@ -4697,7 +4717,7 @@ private processCommandTask(task) {
     if (virtual) {
         //dealing with a virtual command
         command = getVirtualCommandByDisplay(cmd)
-        if (command && !command.immediate) {
+        if (command) {
         	//we can't run immediate tasks here
             //execute the virtual task
             def cn = command.name
@@ -4711,10 +4731,13 @@ private processCommandTask(task) {
 				}
             }
             def msg = "Executing virtual command ${cn}"
+            def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
+            def perf = now()
+            def result = "$function"(command.aggregated ? devices : device, action, task, suffix)
+            msg += " (${now() - perf}ms)"            
             if (state.sim) state.sim.cmds.push(msg)
             debug msg, null, "info"
-            def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
-            return "$function"(command.aggregated ? devices : device, task, suffix)
+            return result
         }
     } else {
     	if (custom) {
@@ -4728,13 +4751,19 @@ private processCommandTask(task) {
                 }
             }
             def msg = "Executing custom command: [${device}].${cmd}(${params.size() ? params : ""})"
+            def perf = now()
+            try {
+                if (params.size()) {
+                    device."${cmd}"(params as Object[])
+                } else {
+                    device."${cmd}"()
+                }
+            } catch (all) {
+            	msg += " (ERROR: $all)"
+            }
+            msg += " (${now() - perf}ms)"
             if (state.sim) state.sim.cmds.push(msg)
             debug msg, null, "info"
-            if (params.size()) {
-                device."${cmd}"(params as Object[])
-            } else {
-                device."${cmd}"()
-            }
             return true
         }
         command = getCommandByDisplay(cmd)
@@ -4776,21 +4805,39 @@ private processCommandTask(task) {
                                 p.level - lightness
                             }
                             def msg = "Executing command: [${device}].${command.name}($p)"
+                            def perf = now()
+                        	try {
+                                device."${command.name}"(p)
+                            } catch(all) {
+                            	msg += " (ERROR)"
+                            }
+                            msg += " (${now() - perf}ms)"
 				            if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
-                        	device."${command.name}"(p)
                         } else {
                         	def msg = "Executing command: [${device}].${command.name}($params)" 
+                            def perf = now()
+                        	try {
+                                device."${command.name}"(params as Object[])
+                            } catch(all) {
+                            	msg += " (ERROR)"
+                            }
+                            msg += " (${now() - perf}ms)"
 				            if (state.sim) state.sim.cmds.push(msg)
                         	debug msg, null, "info"
-                        	device."${command.name}"(params as Object[])
                         }
                         return true
                     } else {
                     	def msg = "Executing command: [${device}].${command.name}()"
+                        def perf = now()
+                        try {
+                            device."${command.name}"()
+                        } catch(all) {
+                            msg += " (ERROR)"
+                        }
+                        msg += " (${now() - perf}ms)"                        
                         if (state.sim) state.sim.cmds.push(msg)
                         debug msg, null, "info"
-                        device."${command.name}"()
                         return true
                     }
                 }
@@ -4800,7 +4847,7 @@ private processCommandTask(task) {
 	return false
 }
 
-private task_vcmd_toggle(device, task, suffix = "") {
+private task_vcmd_toggle(device, action, task, suffix = "") {
     if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix")) {
     	//we need a device that has both on and off commands
     	return false
@@ -4813,7 +4860,7 @@ private task_vcmd_toggle(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_toggleLevel(device, task, suffix = "") {
+private task_vcmd_toggleLevel(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || !device.hasCommand("setLevel") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
@@ -4829,7 +4876,7 @@ private task_vcmd_toggleLevel(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_delayedToggle(device, task, suffix = "") {
+private task_vcmd_delayedToggle(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
@@ -4844,7 +4891,7 @@ private task_vcmd_delayedToggle(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_delayedOn(device, task, suffix = "") {
+private task_vcmd_delayedOn(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on$suffix") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
@@ -4855,7 +4902,7 @@ private task_vcmd_delayedOn(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_delayedOff(device, task, suffix = "") {
+private task_vcmd_delayedOff(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("off$suffix") || (params.size() != 1)) {
     	//we need a device that has both on and off commands
@@ -4866,7 +4913,7 @@ private task_vcmd_delayedOff(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_flash(device, task, suffix = "") {
+private task_vcmd_flash(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || (params.size() != 3)) {
     	//we need a device that has both on and off commands
@@ -4893,7 +4940,7 @@ private task_vcmd_flash(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_setLocationMode(devices, task, suffix = "") {
+private task_vcmd_setLocationMode(devices, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4908,7 +4955,7 @@ private task_vcmd_setLocationMode(devices, task, suffix = "") {
     return false
 }
 
-private task_vcmd_setAlarmSystemStatus(devices, task, suffix = "") {
+private task_vcmd_setAlarmSystemStatus(devices, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4923,7 +4970,7 @@ private task_vcmd_setAlarmSystemStatus(devices, task, suffix = "") {
     return false
 }
 
-private task_vcmd_sendNotification(device, task, suffix = "") {
+private task_vcmd_sendNotification(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4932,7 +4979,7 @@ private task_vcmd_sendNotification(device, task, suffix = "") {
     sendNotificationEvent(message)
 }
 
-private task_vcmd_sendPushNotification(device, task, suffix = "") {
+private task_vcmd_sendPushNotification(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 2) {
     	return false
@@ -4946,7 +4993,7 @@ private task_vcmd_sendPushNotification(device, task, suffix = "") {
 	}
 }
 
-private task_vcmd_sendSMSNotification(device, task, suffix = "") {
+private task_vcmd_sendSMSNotification(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 3) {
     	return false
@@ -4966,7 +5013,7 @@ private task_vcmd_sendSMSNotification(device, task, suffix = "") {
 }
 
 
-private task_vcmd_executeRoutine(devices, task, suffix = "") {
+private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (params.size() != 1) {
     	return false
@@ -4976,7 +5023,8 @@ private task_vcmd_executeRoutine(devices, task, suffix = "") {
     return true
 }
 
-private task_vcmd_cancelPendingTasks(device, task, suffix = "") {
+private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
+	state.rerunSchedule = true
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || (params.size() != 1)) {
     	return false
@@ -4988,7 +5036,17 @@ private task_vcmd_cancelPendingTasks(device, task, suffix = "") {
     return true
 }
 
-private task_vcmd_loadAttribute(device, task, simulate = false) {
+private task_vcmd_repeatAction(device, action, task, suffix = "") {
+	state.rerunSchedule = true
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!action || (params.size() != 2)) {
+    	return false
+    }
+    scheduleAction(action)
+    return true
+}
+
+private task_vcmd_loadAttribute(device, action, task, simulate = false) {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || (params.size() != 4)) {
     	return false
@@ -5046,7 +5104,7 @@ private task_vcmd_loadAttribute(device, task, simulate = false) {
     return false
 }
 
-private task_vcmd_saveAttribute(devices, task, simulate = false) {
+private task_vcmd_saveAttribute(devices, action, task, simulate = false) {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!devices || (params.size() != 4)) {
     	return false
@@ -5166,7 +5224,7 @@ private task_vcmd_saveAttribute(devices, task, simulate = false) {
 }
 
 
-private task_vcmd_setVariable(devices, task, simulate = false) {
+private task_vcmd_setVariable(devices, action, task, simulate = false) {
     def params = simulate ? ((task && task.p && task.p.size()) ? task.p : []) : ((task && task.data && task.data.p && task.data.p.size()) ? task.data.p : [])
 	//we need at least 7 params
 	if (params.size() < 7) {
@@ -7342,6 +7400,8 @@ private commands() {
     	[ name: "poll",										category: null,							group: null,						display: "Poll",						parameters: [], ],
     	[ name: "refresh",									category: null,							group: null,						display: "Refresh",						parameters: [], ],
         /* predfined commands below */
+        //general
+    	[ name: "reset",									category: null,							group: null,						display: "Reset",						parameters: [], ],
         //hue
     	[ name: "startLoop",								category: null,							group: null,						display: "Start color loop",			parameters: [], ],
     	[ name: "stopLoop",									category: null,							group: null,						display: "Stop color loop",				parameters: [], ],
@@ -7426,6 +7486,7 @@ private virtualCommands() {
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",	],
     	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",				aggregated: true,	],
         [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
+        [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													,immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
     ]
 }
 
