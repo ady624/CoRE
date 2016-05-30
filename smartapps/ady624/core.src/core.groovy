@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands startLoop, stopLoop, 
+ *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands for hue: startLoop, stopLoop, setLoopTime and for Harmony: allOn, allOff, hubOn, hubOff
  *	 5/28/2016 >>> v0.0.052.20160528 - Alpha test version - Fixed a bug where last executed task was not correctly removed
  *	 5/28/2016 >>> v0.0.051.20160528 - Alpha test version - More fixes for casting and variable condition description
  *	 5/27/2016 >>> v0.0.050.20160527 - Alpha test version - Load Attribute from variable done and partially tested. Missing: color support - this is a complex data type...
