@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/31/2016 >>> v0.0.056.20160531 - Alpha test version - Initial DTH integration of custom attributes. DTHs can describe their attributes so they become "standard" instead of "custom" in the Attribute list
  *	 5/30/2016 >>> v0.0.055.20160530 - Alpha test version - Added the repeatAction command - minimal testing done
  *	 5/30/2016 >>> v0.0.054.20160530 - Alpha test version - Enabled custom commands with simple parameters (boolean, decimal, number, string)
  *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands for hue: startLoop, stopLoop, setLoopTime and for Harmony: allOn, allOff, hubOn, hubOff
@@ -123,7 +124,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.055.20160530"
+	return "v0.0.056.20160531"
 }
 
 
@@ -3963,7 +3964,9 @@ private scheduleTimeTrigger(condition) {
     }
     def time = condition.trg ? getNextTimeTriggerTime(condition, condition.lt) : getNextTimeConditionTime(condition, condition.lt)
     condition.nt = time
-    scheduleTask("evt", condition.id, null, null, time)
+    if (time) {
+    	scheduleTask("evt", condition.id, null, null, time)
+    }
 }
 
 private scheduleActions(conditionId, stateChanged = false) {
@@ -4173,6 +4176,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 	//get UTC now if no unixTime is provided
 	def unixTime = startTime ? startTime : now()
     //convert that to location's timezone, for comparison
+    def currentTime = adjustTime()
 	def now = adjustTime(unixTime)
 	def attr = getAttributeByName(condition.attr)
     def comparison = cleanUpComparison(condition.comp)
@@ -4181,6 +4185,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
     if (!attr || !comp || comp.trigger != comparison) {
     	return null
     }
+    
     
     def repeat = (condition.val1 && condition.val1.contains("every") ? condition.val1 : condition.r)
     if (!repeat) {
@@ -4191,6 +4196,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
     	return null
 	}
     repeat = repeat.replace("every ", "").replace("number of ", "").replace("s", "")
+    
 	//do the work
     def maxCycles = null
 	while ((maxCycles == null) || (maxCycles > 0)) {
@@ -4198,12 +4204,21 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 	    def repeatCycle = false
         if (repeat == "minute") {
             //increment minutes
+            //we need to catch up with the present
+            def pastMinutes = (long) (Math.floor((currentTime.time - now.time) / 60000))
+            if (pastMinutes > 1) {
+            	now = new Date(now.time + pastMinutes * 60000)            
+            }
             now = new Date(now.time + interval * 60000)
             cycles = 1500 //up to 25 hours
         } else if (repeat == "hour") {
             //increment hours
             def m = now.minutes
             def rm = (condition.m ? condition.m : "0").toInteger()
+            def pastHours = (long) (Math.floor((currentTime.time - now.time) / 3600000))
+            if (pastHours > 1) {
+            	now = new Date(now.time + pastHours * 3600000)
+            }
             now = new Date(now.time + (m < rm ? interval - 1 : interval) * 3600000)
             now = new Date(now.year, now.month, now.date, now.hours, rm, 0)
             cycles = 744
@@ -4455,6 +4470,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
             	return result
             }
         }       
+
         maxCycles = (maxCycles == null ? cycles : maxCycles) - 1
 	}
 }
@@ -4524,7 +4540,7 @@ private processTasks() {
         }
 
         //okay, now let's give the time triggers a chance to readjust
-        scheduleTimeTriggers()
+        scheduleTimeTriggers()        
 
         //read the tasks
         tasks = atomicState.tasks
@@ -6822,8 +6838,32 @@ private listCommonDeviceAttributes(devices) {
     		list[attribute.name] = 0
         }
     }
+
+	for (device in devices) {    
+    	if (device.hasCommand("describeAttributes")) {
+	    	def payload = [attributes: null]
+            device.describeAttributes(payload)
+            if ((payload.attributes instanceof List) && payload.attributes.size()) {
+				if (!state.customAttributes) state.customAttributes = [:]
+            	//save the custom attributes
+            	for( def customAttribute in payload.attributes) {
+                	if (customAttribute.name && customAttribute.type) {
+                        state.customAttributes[customAttribute.name] = customAttribute
+                    }
+                }
+            }
+        }
+    }
+
+	//add known custom attributes to the standard list
+	if (state.customAttributes) {
+    	for(def customAttribute in state.customAttributes) {
+        	list[customAttribute.key] = 0
+        }
+    }
+
 	//get supported attributes
-    for (device in devices) {
+    for (device in devices) {    
     	def attrs = device.supportedAttributes
         for (attr in attrs) {        	
         	if (list.containsKey(attr.name)) {
@@ -6987,11 +7027,20 @@ private getCapabilityByDisplay(display) {
 
 private getAttributeByName(name) {
 	def name2 = name instanceof String ? name.replaceAll("[\\d]", "").trim() + "*" : null
+    def attribute = attributes().find{ (it.name == name) || (name2 && (it.name == name2)) }
+    if (attribute) return attribute
+    if (state.customAttributes) {
+    	def item = state.customAttributes.find{ it.key == name }
+        if (item) return item.value
+    }
+    /*
     for (attribute in attributes()) {
     	if ((attribute.name == name) || (name2 && (attribute.name == name2))) {
         	return attribute
         }
     }
+    */
+    //give up, return whatever...
     return [ name: name, type: "text", range: null, unit: null, options: null]
 }
 
