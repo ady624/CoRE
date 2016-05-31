@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 5/31/2016 >>> v0.0.057.20160531 - Alpha test version - Fixed some bugs with trg_changes missing a parameter, as well as vcmd_setVariable missing a new parameter. (also introduced the Dashboard)
  *	 5/31/2016 >>> v0.0.056.20160531 - Alpha test version - Initial DTH integration of custom attributes. DTHs can describe their attributes so they become "standard" instead of "custom" in the Attribute list
  *	 5/30/2016 >>> v0.0.055.20160530 - Alpha test version - Added the repeatAction command - minimal testing done
  *	 5/30/2016 >>> v0.0.054.20160530 - Alpha test version - Enabled custom commands with simple parameters (boolean, decimal, number, string)
@@ -124,7 +125,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.056.20160531"
+	return "v0.0.057.20160531"
 }
 
 
@@ -149,6 +150,7 @@ preferences {
 	page(name: "pageMain")
     
     //CoRE pages
+    page(name: "pageInitializeDashboard")
     page(name: "pageStatistics")
     page(name: "pageChart")
     page(name: "pageGlobalVariables")
@@ -225,8 +227,19 @@ def pageMain() {
 /******************************************************************************/
 private pageMainCoRE() {
     //CoRE main page
-    dynamicPage(name: "pageMain", title: "CoRE Pistons", install: true, uninstall: true) {
-        section {
+    dynamicPage(name: "pageMain", title: "", install: true, uninstall: true) {
+    	section() {
+            if (!state.endpoint) {
+            	href "pageInitializeDashboard", title: "CoRE Dashboard", description: "Tap here to initialize the CoRE dashboard"
+            } else {
+            	//reinitialize endpoint
+                initializeCoREEndpoint()
+            	def url = "${state.endpoint}dashboard"
+                href "", title: "CoRE Dashboard", style: "embedded", url: url
+            }
+		}        
+        
+        section() {
             app( name: "pistons", title: "Add a CoRE piston...", appName: "CoRE", namespace: "ady624", multiple: true)
         }
 
@@ -249,6 +262,20 @@ private pageMainCoRE() {
             }
         }
 
+    }
+}
+
+private pageInitializeDashboard() {
+    //CoRE Dashboard initialization
+    def success = initializeCoREEndpoint()
+    dynamicPage(name: "pageInitializeDashboard", title: "") {
+    	section() {
+        	if (success) {
+    			paragraph "Success! Your CoRE dashboard is now enabled. Tap Done to continue"
+            } else {
+    			paragraph "Please go to your SmartThings IDE, select the My SmartApps section, click the 'Edit Properties' button of the CoRE app, open the OAuth section and click the 'Enable OAuth in Smart App' button. Click the Update button to finish.\n\nOnce finished, tap Done and try again.", title: "Please enable OAuth for CoRE", required: true, state: null
+            }
+        }
     }
 }
 
@@ -1298,7 +1325,7 @@ def pageAction(params) {
                                                     def description = desc.size() == 2 ? desc[1].trim() : null
                                                     href "pageSetVariable", params: [actionId: id, taskId: tid], title: title, description: description, required: true, state: description ? "complete" : null, submitOnChange: true
                                                     if (description) {
-                                                    	def value = task_vcmd_setVariable(null, task, true)
+                                                    	def value = task_vcmd_setVariable(null, action, task, true)
                                                     	paragraph "Current evaluation: " + value
                                                     }
 													break
@@ -1904,6 +1931,41 @@ def initializeCoRE() {
 
 def childUninstalled() {}
 
+
+private initializeCoREEndpoint() {
+	if (!state.endpoint) {
+        try {
+            def accessToken = createAccessToken()
+            if (accessToken) {
+                state.endpoint = apiServerUrl("/api/token/${accessToken}/smartapps/installations/${app.id}/")
+            }
+        } catch(e) {
+            state.endpoint = null
+        }
+    }
+    return state.endpoint
+}
+
+mappings {
+	path("/dashboard") {action: [GET: "api_dashboard"]}
+	path("/getDashboardData") {action: [GET: "api_getDashboardData"]}
+}
+
+def api_dashboard(params) {
+	def cdn = "https://core.caramaliu.com/dashboard"
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/bootstrap.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/angular-loading-bar.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/font-awesome.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-route.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-resource.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-sanitize.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-loading-bar.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
+}
+
+def api_getDashboardData(params) {
+	def result = [
+    	pistons: []
+    ]
+    for(app in getChildApps()) {
+    	result.pistons.push app.getSummary()
+    }
+	return result
+}
+
 /******************************************************************************/
 /*** CoRE PUBLISHED METHODS													***/
 /******************************************************************************/
@@ -2029,6 +2091,8 @@ def initializeCoREPiston() {
     state.app = state.config ? state.config.app : state.app
     //save misc
     state.app.mode = settings.mode
+    state.app.enabled = settings.enabled
+    state.app.description = settings.description
     
 	state.run = "app"
     
@@ -3850,7 +3914,7 @@ private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, o
 }
 
 /* triggers */
-private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary) {
+private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return momentary || (oldValue != currentValue)
 }
 
@@ -4652,7 +4716,11 @@ private processTasks() {
                             //not to worry, we'll read it again on our next iteration
                             tasks = null
                             //do some work
-                            if (settings.enabled && (task.type == "cmd")) {
+                            
+                            //temporary fix for old pistons using new code
+                            if (state.app && (state.app.enabled == null)) state.app.enabled = settings.enabled
+                            
+                            if (state.app.enabled && (task.type == "cmd")) {
                                 debug "Processing command task $task"
                                 try {
                                     processCommandTask(task)
@@ -5549,6 +5617,20 @@ def getConditionStats() {
     ]
 }
 
+def getSummary() {
+	return [
+    	l: app.label,
+        d: state.app.description,
+        e: !!state.app.enabled,
+        m: state.app.mode,
+        s: state.currentState,
+        ss: state.currentStateSince,
+        n: state.nextScheduledTime,
+        d: state.deviceSubscriptions ? state.deviceSubscriptions : 0,
+        c: getConditionCount(state.app),
+        t: getTriggerCount(state.app),
+    ]
+}
 
 
 
