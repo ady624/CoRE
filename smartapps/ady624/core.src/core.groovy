@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/01/2016 >>> v0.0.058.20160601 - Alpha test version - More dashboard work. Nasty stuff, really. Dashboard is built in angular.js and css3. HTML is minimal :)
  *	 5/31/2016 >>> v0.0.057.20160531 - Alpha test version - Fixed some bugs with trg_changes missing a parameter, as well as vcmd_setVariable missing a new parameter. (also introduced the Dashboard)
  *	 5/31/2016 >>> v0.0.056.20160531 - Alpha test version - Initial DTH integration of custom attributes. DTHs can describe their attributes so they become "standard" instead of "custom" in the Attribute list
  *	 5/30/2016 >>> v0.0.055.20160530 - Alpha test version - Added the repeatAction command - minimal testing done
@@ -125,7 +126,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.057.20160531"
+	return "v0.0.058.20160601"
 }
 
 
@@ -235,7 +236,8 @@ private pageMainCoRE() {
             	//reinitialize endpoint
                 initializeCoREEndpoint()
             	def url = "${state.endpoint}dashboard"
-                href "", title: "CoRE Dashboard", style: "embedded", url: url
+                log.trace "Dashboard URL: $url"
+                href "", title: "CoRE Dashboard", style: "external", url: url
             }
 		}        
         
@@ -1949,14 +1951,16 @@ private initializeCoREEndpoint() {
 mappings {
 	path("/dashboard") {action: [GET: "api_dashboard"]}
 	path("/getDashboardData") {action: [GET: "api_getDashboardData"]}
+	path("/pause") {action: [POST: "api_pause"]}
+	path("/resume") {action: [POST: "api_resume"]}
 }
 
-def api_dashboard(params) {
+def api_dashboard() {
 	def cdn = "https://core.caramaliu.com/dashboard"
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/bootstrap.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/angular-loading-bar.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/font-awesome.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-route.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-resource.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-sanitize.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-loading-bar.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
 
-def api_getDashboardData(params) {
+def api_getDashboardData() {
 	def result = [
     	pistons: []
     ]
@@ -1964,6 +1968,30 @@ def api_getDashboardData(params) {
     	result.pistons.push app.getSummary()
     }
 	return result
+}
+
+def api_pause() {
+	def data = request?.JSON
+    def pistonId = data?.pistonId
+    if (pistonId) {
+    	def child = getChildApps()?.find { it.id == pistonId }
+        if (child) {
+        	child.pause()
+        }
+    }
+    return api_getDashboardData()
+}
+
+def api_resume() {
+	def data = request?.JSON
+    def pistonId = data?.pistonId
+    if (pistonId) {
+    	def child = getChildApps().find { it.id == pistonId }
+        if (child) {
+        	child.resume()
+        }
+    }
+    return api_getDashboardData()
 }
 
 /******************************************************************************/
@@ -2091,7 +2119,7 @@ def initializeCoREPiston() {
     state.app = state.config ? state.config.app : state.app
     //save misc
     state.app.mode = settings.mode
-    state.app.enabled = settings.enabled
+    state.app.enabled = !!settings.enabled
     state.app.description = settings.description
     
 	state.run = "app"
@@ -4718,7 +4746,7 @@ private processTasks() {
                             //do some work
                             
                             //temporary fix for old pistons using new code
-                            if (state.app && (state.app.enabled == null)) state.app.enabled = settings.enabled
+                            if (state.app && (state.app.enabled == null)) state.app.enabled = !!settings.enabled
                             
                             if (state.app.enabled && (task.type == "cmd")) {
                                 debug "Processing command task $task"
@@ -5619,6 +5647,7 @@ def getConditionStats() {
 
 def getSummary() {
 	return [
+    	i: app.id,        
     	l: app.label,
         d: state.app.description,
         e: !!state.app.enabled,
@@ -5629,9 +5658,18 @@ def getSummary() {
         d: state.deviceSubscriptions ? state.deviceSubscriptions : 0,
         c: getConditionCount(state.app),
         t: getTriggerCount(state.app),
+        le: state.lastEvent,
+        lx: state.lastExecutionTime
     ]
 }
 
+def pause() {
+	state.app.enabled = false
+}
+
+def resume() {
+	state.app.enabled = true
+}
 
 
 
