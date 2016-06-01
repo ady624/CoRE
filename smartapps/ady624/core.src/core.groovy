@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/01/2016 >>> v0.0.059.20160601 - Alpha test version - Replaced the Enabled boolean checkbox in the UI to allow for dashboard ON/OFF integration.
  *	 6/01/2016 >>> v0.0.058.20160601 - Alpha test version - More dashboard work. Nasty stuff, really. Dashboard is built in angular.js and css3. HTML is minimal :)
  *	 5/31/2016 >>> v0.0.057.20160531 - Alpha test version - Fixed some bugs with trg_changes missing a parameter, as well as vcmd_setVariable missing a new parameter. (also introduced the Dashboard)
  *	 5/31/2016 >>> v0.0.056.20160531 - Alpha test version - Initial DTH integration of custom attributes. DTHs can describe their attributes so they become "standard" instead of "custom" in the Attribute list
@@ -126,7 +127,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.058.20160601"
+	return "v0.0.059.20160601"
 }
 
 
@@ -172,6 +173,7 @@ preferences {
     page(name: "pageVariables")  
     page(name: "pageSetVariable")
     page(name: "pageSimulate")
+    page(name: "pageToggleEnabled")
 }
 
 
@@ -445,7 +447,7 @@ private pageMainCoREPiston() {
     dynamicPage(name: "pageMain", title: "", uninstall: true, install: true) {
     	def currentState = state.currentState
     	section() {
-        	def enabled = settings["enabled"] != false
+        	def enabled = !!state.config.app.enabled
             def pistonModes = ["Simple", "Latching", "And-If", "Or-If"]
             if (!getConditionTriggerCount(state.config.app.otherConditions)) {
             	pistonModes += ["Then-If", "Else-If"]
@@ -453,7 +455,8 @@ private pageMainCoREPiston() {
             if (listActions(-1).size()) {
             	pistonModes.remove("Simple")
             }
-        	input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
+        	//input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
+        	href "pageToggleEnabled", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete"
             input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Simple", submitOnChange: true
             switch (settings.mode) {
                 case "Latching":
@@ -1612,6 +1615,16 @@ def pageSimulate() {
     }
 }
 
+def pageToggleEnabled() {
+	state.config.app.enabled = !state.config.app.enabled
+    if (state.app) state.app.enabled = !!state.config.app.enabled
+   	dynamicPage(name: "pageToggleEnabled", title: "", uninstall: false, install: false) {
+    	section() {
+    		paragraph "The piston is now ${state.config.app.enabled ? "running" : "paused"}."
+        }
+    }
+}
+
 private buildIfContent() {
 	buildIfContent(state.config.app.conditions.id, 0)
 }
@@ -1953,6 +1966,7 @@ mappings {
 	path("/getDashboardData") {action: [GET: "api_getDashboardData"]}
 	path("/pause") {action: [POST: "api_pause"]}
 	path("/resume") {action: [POST: "api_resume"]}
+	path("/piston") {action: [POST: "api_piston"]}
 }
 
 def api_dashboard() {
@@ -1992,6 +2006,21 @@ def api_resume() {
         }
     }
     return api_getDashboardData()
+}
+
+def api_piston() {
+	def data = request?.JSON
+    def pistonId = data?.pistonId
+    if (pistonId) {
+    	def child = getChildApps().find { it.id == pistonId }
+        if (child) {
+        	return [
+            	app: child.getPistonApp(),
+                summary: child.getSummary()
+            ]
+        }
+    }
+    return null
 }
 
 /******************************************************************************/
@@ -2119,7 +2148,6 @@ def initializeCoREPiston() {
     state.app = state.config ? state.config.app : state.app
     //save misc
     state.app.mode = settings.mode
-    state.app.enabled = !!settings.enabled
     state.app.description = settings.description
     
 	state.run = "app"
@@ -2163,6 +2191,9 @@ private configApp() {
     state.temp = [:]
     state.store = state.store ? state.store : [:]
     state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
+    if (!state.app) {
+    	state.app = [:]
+    }
     
 	if (!state.config) {
     	//initiate config app, since we have no running version yet (not yet installed)
@@ -2177,11 +2208,14 @@ private configApp() {
             state.config.app.otherConditions = createCondition(true)
             state.config.app.otherConditions.id = -1
             state.config.app.actions = []
+            state.config.app.enabled = true
         }
     }
     //get expert savvy
     state.config.expertMode = parent.expertMode()
 	state.config.app.mode = settings.mode
+	state.config.app.description = settings.description
+    state.config.app.enabled = !!state.config.app.enabled
 }
 private subscribeToAll(app) {
 	debug "Initializing subscriptions...", 1
@@ -4745,10 +4779,15 @@ private processTasks() {
                             tasks = null
                             //do some work
                             
-                            //temporary fix for old pistons using new code
-                            if (state.app && (state.app.enabled == null)) state.app.enabled = !!settings.enabled
                             
-                            if (state.app.enabled && (task.type == "cmd")) {
+                            def enabled = !!state.config.app.enabled
+                            if (evt) {
+	                            if (state.app && (state.app.enabled == null)) state.app.enabled = true
+    							enabled = !!state.app.enabled                        
+                            }
+                            //temporary fix for old pistons using new code
+                            
+                            if (enabled && (task.type == "cmd")) {
                                 debug "Processing command task $task"
                                 try {
                                     processCommandTask(task)
@@ -5645,6 +5684,10 @@ def getConditionStats() {
     ]
 }
 
+def getPistonApp() {
+	return state.app
+}
+
 def getSummary() {
 	return [
     	i: app.id,        
@@ -5665,10 +5708,12 @@ def getSummary() {
 
 def pause() {
 	state.app.enabled = false
+    if (state.config && state.config.app) state.config.app.enabled = false
 }
 
 def resume() {
 	state.app.enabled = true
+    if (state.config && state.config.app) state.config.app.enabled = true
 }
 
 
