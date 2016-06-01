@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/01/2016 >>> v0.0.05b.20160601 - Alpha test version - Updated dashboard, first attempt at displaying an IF statement
  *	 6/01/2016 >>> v0.0.05a.20160601 - Alpha test version - Fixed a bug introduced in v0.0.059 where some pistons would not run due to state.app.enabled missing
  *	 6/01/2016 >>> v0.0.059.20160601 - Alpha test version - Replaced the Enabled boolean checkbox in the UI to allow for dashboard ON/OFF integration.
  *	 6/01/2016 >>> v0.0.058.20160601 - Alpha test version - More dashboard work. Nasty stuff, really. Dashboard is built in angular.js and css3. HTML is minimal :)
@@ -128,7 +129,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.05a.20160601"
+	return "v0.0.05b.20160601"
 }
 
 
@@ -2017,13 +2018,21 @@ def api_piston() {
     if (pistonId) {
     	def child = getChildApps().find { it.id == pistonId }
         if (child) {
-        	return [
+        	def result = [
             	app: child.getPistonApp(),
                 summary: child.getSummary()
             ]
-        }
+            if (result.app.conditions) withEachCondition(result.app.conditions, "api_piston_prepare", child, true)
+            if (result.app.otherConditions) withEachCondition(result.app.otherConditions, "api_piston_prepare", child, true)
+            return result
+        }        
     }
     return null
+}
+
+private api_piston_prepare(condition, child) {
+	if (!condition.children) condition.desc = child.getPistonConditionDescription(condition)
+    condition.state = evaluateCondition(condition)
 }
 
 /******************************************************************************/
@@ -4087,7 +4096,7 @@ private scheduleTimeTriggers() {
     }
 }
 
-private scheduleTimeTrigger(condition) {
+private scheduleTimeTrigger(condition, data = null) {
 	if (!condition || !(condition.attr) || (condition.attr != "time")) {
     	return
     }
@@ -5686,6 +5695,10 @@ def getPistonApp() {
 	return state.app
 }
 
+def getPistonConditionDescription(condition) {
+	return (condition ? getConditionDescription(condition.id) : null)
+}
+
 def getSummary() {
 	return [
     	i: app.id,        
@@ -6311,32 +6324,33 @@ private getConditionTriggerCount(condition) {
     return result
 }
 
-private withEachCondition(condition, callback) {
+private withEachCondition(condition, callback, data = null, includeGroups = false) {
 	def result = 0
     if (condition) {
         if (condition.children != null) {
             //we're dealing with a group
+            if (includeGroups) "$callback"(condition, data)
             for (child in condition.children) {
-                withEachCondition(child, callback)
+                withEachCondition(child, callback, data)
             }
         } else {
-           	"$callback"(condition)
+           	"$callback"(condition, data)
         }
     }
     return result
 }
 
-private withEachTrigger(condition, callback) {
+private withEachTrigger(condition, callback, data = null) {
 	def result = 0
     if (condition) {
         if (condition.children != null) {
             //we're dealing with a group
             for (child in condition.children) {
-                withEachTrigger(child, callback)
+                withEachTrigger(child, callback, data)
             }
         } else {
         	if (condition.trg) {
-            	"$callback"(condition)
+            	"$callback"(condition, data)
             }
         }
     }
