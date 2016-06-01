@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/01/2016 >>> v0.0.05a.20160601 - Alpha test version - Fixed a bug introduced in v0.0.059 where some pistons would not run due to state.app.enabled missing
  *	 6/01/2016 >>> v0.0.059.20160601 - Alpha test version - Replaced the Enabled boolean checkbox in the UI to allow for dashboard ON/OFF integration.
  *	 6/01/2016 >>> v0.0.058.20160601 - Alpha test version - More dashboard work. Nasty stuff, really. Dashboard is built in angular.js and css3. HTML is minimal :)
  *	 5/31/2016 >>> v0.0.057.20160531 - Alpha test version - Fixed some bugs with trg_changes missing a parameter, as well as vcmd_setVariable missing a new parameter. (also introduced the Dashboard)
@@ -127,7 +128,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.059.20160601"
+	return "v0.0.05a.20160601"
 }
 
 
@@ -1981,6 +1982,8 @@ def api_getDashboardData() {
     for(app in getChildApps()) {
     	result.pistons.push app.getSummary()
     }
+    //sort the pistons
+    result.pistons = result.pistons.sort { it.l }    
 	return result
 }
 
@@ -4780,12 +4783,7 @@ private processTasks() {
                             //do some work
                             
                             
-                            def enabled = !!state.config.app.enabled
-                            if (evt) {
-	                            if (state.app && (state.app.enabled == null)) state.app.enabled = true
-    							enabled = !!state.app.enabled                        
-                            }
-                            //temporary fix for old pistons using new code
+                            def enabled = (state.app && (state.app.enabled != null) ? !!state.app.enabled : true)
                             
                             if (enabled && (task.type == "cmd")) {
                                 debug "Processing command task $task"
@@ -5714,6 +5712,8 @@ def pause() {
 def resume() {
 	state.app.enabled = true
     if (state.config && state.config.app) state.config.app.enabled = true
+    state.run = "app"    
+    processTasks()
 }
 
 
