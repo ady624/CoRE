@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/02/2016 >>> v0.0.061.20160602 - Alpha test version - Minor bug fixes. Introducing the Follow-Up piston. Chain them together, delay them forever, do whatever you need with them :)
  *	 6/02/2016 >>> v0.0.060.20160602 - Alpha test version - Fixed a problem with initialization of global variable store on first install of CoRE. Added $time and $time24 to system variables.
  *	 6/02/2016 >>> v0.0.05f.20160602 - Alpha test version - Dashboard enhancements (capture piston image) and minor bug fixes (i.e. aggregate Send Notification on multiple device actions)
  *	 6/02/2016 >>> v0.0.05e.20160602 - Alpha test version - Dashboard shows time till next trigger
@@ -134,7 +135,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.060.20160602"
+	return "v0.0.061.20160602"
 }
 
 
@@ -463,6 +464,8 @@ private pageMainCoREPiston() {
             }
             if (listActions(-1).size()) {
             	pistonModes.remove("Simple")
+            } else {
+            	pistonModes.add("Follow-Up")
             }
         	//input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
         	href "pageToggleEnabled", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete"
@@ -741,7 +744,7 @@ def pageCondition(params) {
             def trigger = false
 
             def branchId = getConditionMasterId(condition.id)
-            def supportsTriggers = (branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"])
+            def supportsTriggers = (settings.mode != "Follow-Up") && ((branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"]))
             dynamicPage(name: "pageCondition", title: (condition.trg ? "Trigger" : "Condition") + " #$id", uninstall: false, install: false) {
                 section() {
                     if (!settings["condDevices$id"] || (settings["condDevices$id"].size() == 0)) {
@@ -784,7 +787,8 @@ def pageCondition(params) {
                                                     }
                                                     if (value.contains("variable")) {
                                                         //using a time offset
-                                                        input "condVar$id#$i", "enum", options: varList, title: "Variable", required: true, multiple: false, submitOnChange: true
+                                                        def var = settings["condVar$id#$i"]
+                                                        input "condVar$id#$i", "enum", options: varList, title: "Variable${ var ? " [${getVariable(var, true)}]" : ""}", required: true, multiple: false, submitOnChange: true
                                                     }
                                                     if (comparison.contains("around") || !(value.contains('every') || value.contains('custom'))) {
                                                         //using a time offset
@@ -944,18 +948,25 @@ def pageCondition(params) {
                                     def value = settings["condValue$id#$i"]
                                     def device = settings["condDev$id#$i"]
                                     def variable = settings["condVar$id#$i"]
+                                    if (variable) {
+                                    	value = null
+                                        device = null
+                                    }
+                                    if (device) {
+                                    	value = null
+                                    }
                                     if (!extraComparisons || ((device == null) && (variable == null))) {
                                         input "condValue$id#$i", type == "boolean" ? "enum" : type, title: (comp.parameters == 1 ? "Value" : "${i == 1 ? "From" : "To"} value"), options: type == "boolean" ? ["true", "false"] : attr.options, range: attr.range, required: true, multiple: type == "boolean" ? false : comp.multiple, submitOnChange: true
                                     }
                                     if (extraComparisons) {
+                                        if ((value == null) && (device == null)) {
+                                            input "condVar$id#$i", "enum", options: varList, title: (variable == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable value${ variable ? " [${getVariable(variable, true)}]" : ""}" : "${i == 1 ? "From" : "To"} variable value${ variable ? " [${getVariable(variable, true)}]" : ""}")), required: true, multiple: comp.multiple, submitOnChange: true, capitalization: "none"
+                                        }
                                         if ((value == null) && (variable == null) && (allowDeviceComparisons)) {
                                             input "condDev$id#$i", "capability.${type == "boolean" ? "switch" : "sensor"}", title: (device == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device value" : "${i == 1 ? "From" : "To"} device value")), required: true, multiple: false, submitOnChange: true
                                             if (device) {
                                                 input "condAttr$id#$i", "enum", title: "Attribute", options: listCommonDeviceAttributes([device]), required: true, multiple: false, submitOnChange: true, defaultValue: attribute
                                             }
-                                        }
-                                        if ((value == null) && (device == null)) {
-                                            input "condVar$id#$i", "enum", options: varList, title: (variable == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable value" : "${i == 1 ? "From" : "To"} variable value")), required: true, multiple: comp.multiple, submitOnChange: true, capitalization: "none"
                                         }
                                         if (((variable != null) || (device != null)) && ((type == "number") || (type == "decimal"))) {
                                             input "condOffset$id#$i", type, range: "*..*", title: "Offset (+/-" + (attr.unit ? " ${attr.unit})" : ")"), required: true, multiple: false, defaultValue: 0, submitOnChange: true
@@ -1140,6 +1151,7 @@ def pageActionGroup(params) {
     if (conditionId < 0) {
     	switch (settings.mode) {
         	case "Simple":
+        	case "Follow-Up":
             	block = ""
             	value = false
                 break
@@ -1318,7 +1330,7 @@ def pageAction(params) {
                                 def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
                                 def custom = (cmd && cmd.startsWith(customCommandPrefix()))
                                 cmd = cleanUpCommand(cmd)
-                                def command = null
+                                def command = null                               
                                 if (virtual) {
                                     //dealing with a virtual command
                                     command = getVirtualCommandByDisplay(cmd)
@@ -1352,6 +1364,9 @@ def pageAction(params) {
                                                     input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "variables") {
                                                     input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else if (param.type == "piston") {
+                                                	def pistons = parent.listPistons(state.expertMode ? "Follow-Up" : "Follow-Up")
+                                                    input "actParam$id#$tid-$i", "enum", options: pistons, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "routine") {
                                                 	def routines = location.helloHome?.getPhrases()*.label
                                                     input "actParam$id#$tid-$i", "enum", options: routines, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
@@ -2068,6 +2083,28 @@ def expertMode() {
 	return !!settings["expertMode"]
 }
 
+def listPistons(type = null) {
+	if (!type) {
+    	return getChildApps()*.label.sort { it }
+    }
+	def result = []
+	def pistons = getChildApps()
+    for (piston in pistons) {
+    	if (piston.getPistonType() == type) {
+        	result.push piston.label
+        }
+    }
+    return result.sort{ it }
+}
+
+def followUp(pistonName) {
+	def piston = getChildApps().find{ it.label == pistonName }
+    if (piston) {
+    	//fire up the piston
+    	piston.followUpHandler()
+    }
+}
+
 def updateChart(name, value) {
 	def charts = atomicState.charts
     charts = charts ? charts : [:]
@@ -2199,9 +2236,12 @@ def initializeCoREPiston() {
         }
     }
     
-    subscribeToAll(state.app)
+    if (state.app.mode != "Follow-Up") {
+    	//follow-up pistons don't subscribe to anything
+    	subscribeToAll(state.app)
+    }
   
-    subscribe(app, appHandler)
+    //subscribe(app, appHandler)
     
     state.remove("config")
     //uncomment next line to clear system store
@@ -2446,14 +2486,14 @@ private updateCondition(condition) {
     condition.dt = settings["condDataType${condition.id}"]
     condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
-    condition.val1 = settings["condValue${condition.id}#1"]
-    condition.dev1 = settings["condDev${condition.id}#1"] ? getDeviceLabel(settings["condDev${condition.id}#1"]) : null
-    condition.attr1 = settings["condAttr${condition.id}#1"] ? getDeviceLabel(settings["condAttr${condition.id}#1"]) : null
     condition.var1 = settings["condVar${condition.id}#1"]
-    condition.val2 = settings["condValue${condition.id}#2"]
-    condition.dev2 = settings["condDev${condition.id}#2"] ? getDeviceLabel(settings["condDev${condition.id}#2"]) : null
-    condition.attr2 = settings["condAttr${condition.id}#2"] ? getDeviceLabel(settings["condAttr${condition.id}#2"]) : null
+    condition.dev1 = condition.var1 ? null : settings["condDev${condition.id}#1"] ? getDeviceLabel(settings["condDev${condition.id}#1"]) : null
+    condition.attr1 = condition.var1 ? null : settings["condAttr${condition.id}#1"] ? getDeviceLabel(settings["condAttr${condition.id}#1"]) : null
+    condition.val1 = condition.var1  || condition.dev1 ? null : settings["condValue${condition.id}#1"]
     condition.var2 = settings["condVar${condition.id}#2"]
+    condition.dev2 = condition.var2 ? null : settings["condDev${condition.id}#2"] ? getDeviceLabel(settings["condDev${condition.id}#2"]) : null
+    condition.attr2 = condition.var2 ? null : settings["condAttr${condition.id}#2"] ? getDeviceLabel(settings["condAttr${condition.id}#2"]) : null
+    condition.val2 = condition.var2 || condition.dev2 ? null : settings["condValue${condition.id}#2"]
     condition.for = settings["condFor${condition.id}"]
     condition.fort = settings["condTime${condition.id}"]
     condition.t1 = settings["condTime${condition.id}#1"]
@@ -2904,6 +2944,21 @@ def recoveryHandler() {
     debug "Done in ${perf}ms", -1
     exitPoint(perf)
 }
+
+def followUpHandler() {
+	if (state.app.mode != "Follow-Up") return false
+	entryPoint()
+	//executes whenever a device in the primary if block has an event
+	//starting primary IF block evaluation
+    def perf = now()
+    debug "Received a follow-up request", 1
+    broadcastEvent([name: "time", date: new Date(), deviceId: "time", conditionId: null], true, false)
+    processTasks()
+    perf = now() - perf
+    debug "Done in ${perf}ms", -1
+    exitPoint(perf)
+    return true
+}
 private entryPoint() {
 	//initialize whenever app runs
     //use the "app" version throughout
@@ -3084,6 +3139,7 @@ private broadcastEvent(evt, primary, secondary) {
                     }
                     break
                 case "Simple":
+                case "Follow-Up":
                 	result2 = !result1
                     if (currentState != result1) {
                         state.currentState = result1
@@ -3764,12 +3820,28 @@ private testDateTimeFilters(condition, now) {
 }
 
 /* low-level evaluation functions */
+private eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return currentValue == value1
+}
+
+private eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return currentValue != value1
+}
+
 private eval_cond_is(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_cond_is_not(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_cond_is_true(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, true, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_cond_is_false(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return !eval_cond_is_true(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -3783,14 +3855,6 @@ private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSinc
 
 private eval_cond_is_not_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
-}
-
-private eval_cond_is_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return currentValue == value1
-}
-
-private eval_cond_is_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return currentValue != value1
 }
 
 private eval_cond_is_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -5231,6 +5295,16 @@ private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
     return true
 }
 
+private task_vcmd_followUp(devices, action, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 1) {
+    	return false
+    }
+    def piston = params[0].d
+	parent.followUp(piston)
+    return true
+}
+
 private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
 	state.rerunSchedule = true
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -5743,6 +5817,10 @@ def getConditionStats() {
 
 def getPistonApp() {
 	return state.app
+}
+
+def getPistonType() {
+	return state.app.mode
 }
 
 def getPistonTasks() {
@@ -6438,7 +6516,7 @@ private getConditionConditionCount(condition) {
 }
 
 private getConditionCount(app) {
-	return getConditionConditionCount(app.conditions) + (settings.mode != "Simple" ? getConditionConditionCount(app.otherConditions) : 0)
+	return getConditionConditionCount(app.conditions) + (!(settings.mode in ["Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0)
 }
 
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
@@ -6530,15 +6608,19 @@ private getConditionDescription(id, level = 0) {
         if (virtualDevice || (devices && devices.size())) {
             def evaluation = (virtualDevice ? "" : (devices.size() > 1 ? (condition.mode == "All" ? "Each of " : "Any of ") : ""))
             def deviceList = (virtualDevice ? (capability.virtualDeviceName ? capability.virtualDeviceName : virtualDevice.name) : buildDeviceNameList(devices, "or")) + " "
+            if (condition.attr == "variable") {
+            	deviceList = "Variable ${condition.var ? "{${condition.var}} " : ""} (as ${condition.dt}) "
+            }
 	        def attribute = condition.attr + " "
             def attr = getAttributeByName(condition.attr)
             def unit = (attr && attr.unit ? attr.unit : "")
             def comparison = cleanUpComparison(condition.comp)
-            def comp = getComparisonOption(condition.attr, comparison)
+            //override comparison option type if we're dealing with a variable - take the variable's data type
+            def comp = getComparisonOption(condition.attr, comparison, condition.attr == "variable" ? condition.dt : null)
             def subDevices = capability.count && attr && (attr.name == capability.attribute) ? buildNameList(condition.sdev, "or") + " " : ""
             def values = " [ERROR]"
             def time = ""
-            if (comp) {
+            if (comp) {            	
             	switch (comp.parameters) {
                 	case 0:
                     	values = ""
@@ -7435,7 +7517,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["attribute", "attributes", "variable", "variables", "routine", "aggregation", "dataType"]) {
+    if (dataType in ["attribute", "attributes", "variable", "variables", "routine", "piston", "aggregation", "dataType"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -7769,6 +7851,7 @@ private virtualCommands() {
     	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",				aggregated: true,	],
         [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
         [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													,immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
+        [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Piston:piston"],																		location: true,	description: "Follow up with piston \"{0}\"",	aggregated: true],
     ]
 }
 
@@ -7862,8 +7945,8 @@ private comparisons() {
 	]
     
 	def optionsBool = [
-        [ condition: "is", parameters: 1, timed: false],
-        [ condition: "is not", parameters: 1, timed: false],
+        [ condition: "is equal to", parameters: 1, timed: false],
+        [ condition: "is not equal to", parameters: 1, timed: false],
         [ condition: "is true", parameters: 0, timed: false],
         [ condition: "is false", parameters: 0, timed: false],
     ]
