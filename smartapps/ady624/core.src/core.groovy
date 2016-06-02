@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/02/2016 >>> v0.0.05e.20160602 - Alpha test version - Dashboard shows time till next trigger
  *	 6/01/2016 >>> v0.0.05d.20160601 - Alpha test version - Fixed a problem with compound commands (i.e. thermostat.off instead of off)
  *	 6/01/2016 >>> v0.0.05c.20160601 - Alpha test version - Updated the startActivity action
  *	 6/01/2016 >>> v0.0.05b.20160601 - Alpha test version - Updated dashboard, first attempt at displaying an IF statement
@@ -131,7 +132,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.05d.20160601"
+	return "v0.0.05e.20160602"
 }
 
 
@@ -2022,10 +2023,17 @@ def api_piston() {
         if (child) {
         	def result = [
             	app: child.getPistonApp(),
+                tasks: child.getPistonTasks(),
                 summary: child.getSummary()
             ]
             if (result.app.conditions) withEachCondition(result.app.conditions, "api_piston_prepare", child)
             if (result.app.otherConditions) withEachCondition(result.app.otherConditions, "api_piston_prepare", child)
+            for(def action in result.app.actions) {
+            	action.desc = child.getActionDeviceList(action)
+            	for(def task in action.t) {
+                	task.desc = getTaskDescription(task)
+                }
+            }
             return result
         }        
     }
@@ -2683,6 +2691,7 @@ private listActionDevices(actionId) {
     }
 	return devices
 }
+
 private getActionDescription(action) {
 	if (!action) return null
     def devices = (action.l ? ["location"] : listActionDevices(action.id))
@@ -2711,6 +2720,12 @@ private getActionDescription(action) {
         result += "\n ► " + getTaskDescription(task)
     }
     return result
+}
+
+def getActionDeviceList(action) {
+	if (!action) return null
+    def devices = (action.l ? ["location"] : listActionDevices(action.id))
+    return buildDeviceNameList(devices, "and")
 }
 
 private getTaskDescription(task) {
@@ -3209,6 +3224,13 @@ private evaluateConditionSet(evt, primary, force = false) {
 	//if (pushNote) {
     	//sendPush(pushNote + "Event processed in ${perf}ms")
     //}
+    if (evaluation != null) {
+    	if (primary) {
+        	app.conditions.eval = evaluation
+        } else {
+        	app.otherConditions.eval = evaluation
+        }
+    }
     return evaluation
 }
 
@@ -5700,6 +5722,10 @@ def getConditionStats() {
 
 def getPistonApp() {
 	return state.app
+}
+
+def getPistonTasks() {
+	return atomicState.tasks
 }
 
 def getPistonConditionDescription(condition) {
