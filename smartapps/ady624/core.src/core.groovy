@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/02/2016 >>> v0.0.060.20160602 - Alpha test version - Fixed a problem with initialization of global variable store on first install of CoRE. Added $time and $time24 to system variables.
  *	 6/02/2016 >>> v0.0.05f.20160602 - Alpha test version - Dashboard enhancements (capture piston image) and minor bug fixes (i.e. aggregate Send Notification on multiple device actions)
  *	 6/02/2016 >>> v0.0.05e.20160602 - Alpha test version - Dashboard shows time till next trigger
  *	 6/01/2016 >>> v0.0.05d.20160601 - Alpha test version - Fixed a problem with compound commands (i.e. thermostat.off instead of off)
@@ -133,7 +134,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.05f.20160602"
+	return "v0.0.060.20160602"
 }
 
 
@@ -293,6 +294,8 @@ def pageGlobalVariables() {
 	dynamicPage(name: "pageGlobalVariables", title: "Global Variables", install: false, uninstall: false) {
     	section() {
         	def cnt = 0
+            //initialize the store if it doesn't yet exist
+            if (!state.store) state.store = [:]
             for (def variable in state.store.sort{ it.key }) {
             	def value = getVariable(variable.key, true)
                 paragraph "$value", title: "${variable.key}"
@@ -1781,6 +1784,18 @@ def getVariable(name) {
     }
     if (name == "\$minute") return adjustTime().minutes
     if (name == "\$second") return adjustTime().seconds
+    if (name == "\$time") {
+		def t = adjustTime()
+        def h = t.hours
+        def m = t.minutes
+        return (h == 0 ? 12 : (h > 12 ? h - 12 : h)) + ":" + (m < 10 ? "0$m" : "$m") + " " + (h <12 ? "A.M." : "P.M.")
+    }
+    if (name == "\$time24") {
+		def t = adjustTime()
+        def h = t.hours
+        def m = t.minutes
+        return h + ":" + (m < 10 ? "0$m" : "$m")
+    }
     if (name == "\$day") return adjustTime().date
     if (name == "\$dayOfWeek") return getDayOfWeekNumber()
     if (name == "\$dayOfWeekName") return getDayOfWeekName()
@@ -2209,10 +2224,15 @@ def initializeCoREPiston() {
 /* prepare configuration version of app */
 private configApp() {
 	//TODO: rebuild (object-oriented) app object from settings
-	//prepare stores    
+	//prepare stores
     state.temp = [:]
     state.store = state.store ? state.store : [:]
     state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
+    for (var in initialSystemStore()) {
+    	if (!state.containsKey(var.key)) {
+        	state.systemStore[var.key] = null
+        }
+    }
     if (!state.app) {
     	state.app = [:]
     }
@@ -7956,6 +7976,8 @@ private initialSystemStore() {
         "\$randomColor": "#FFFFFF",
         "\$randomColorName": "White",
         "\$randomLevel": 0,
+        "\$time": "",
+        "\$time24": "",
 	]
 }
 
