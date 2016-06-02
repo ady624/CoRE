@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/02/2016 >>> v0.0.05f.20160602 - Alpha test version - Dashboard enhancements (capture piston image) and minor bug fixes (i.e. aggregate Send Notification on multiple device actions)
  *	 6/02/2016 >>> v0.0.05e.20160602 - Alpha test version - Dashboard shows time till next trigger
  *	 6/01/2016 >>> v0.0.05d.20160601 - Alpha test version - Fixed a problem with compound commands (i.e. thermostat.off instead of off)
  *	 6/01/2016 >>> v0.0.05c.20160601 - Alpha test version - Updated the startActivity action
@@ -132,7 +133,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.05e.20160602"
+	return "v0.0.05f.20160602"
 }
 
 
@@ -1976,7 +1977,7 @@ mappings {
 
 def api_dashboard() {
 	def cdn = "https://core.caramaliu.com/dashboard"
-	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/bootstrap.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/angular-loading-bar.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/font-awesome.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-route.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-resource.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-sanitize.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-loading-bar.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/bootstrap.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/angular-loading-bar.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/font-awesome.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/html2canvas.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-route.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-resource.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-sanitize.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-loading-bar.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
 
 def api_getDashboardData() {
@@ -2945,7 +2946,7 @@ private broadcastEvent(evt, primary, secondary) {
 	//filter duplicate events and broadcast event to proper IF blocks
     def perf = now()
     def delay = perf - evt.date.getTime()
-	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago", 1, "trace"
+	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"
     //save previous event
 	setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
     setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
@@ -4648,7 +4649,7 @@ private processTasks() {
     state.rerunSchedule = false
     def tasks = null
     def perf = now()
-    debug "Processing tasks", 1, "trace"
+    debug "Processing tasks (${version()})", 1, "trace"
     
     try {
 
@@ -7741,10 +7742,10 @@ private virtualCommands() {
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state (global)",				parameters: ["Attributes:attributes"],																															],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to \"{0}\"",		aggregated: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to \"{0}\"",			aggregated: true,	],
-    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",	],
+    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",			aggregated: true,	],
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
-    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",	],
-    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",	],
+    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",		aggregated: true,	],
+    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",aggregated: true,	],
     	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",				aggregated: true,	],
         [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
         [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													,immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
