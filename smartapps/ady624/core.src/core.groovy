@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/02/2016 >>> v0.0.062.20160602 - Alpha test version - Updated Follow Up and added Execute. Not fully tested yet.
  *	 6/02/2016 >>> v0.0.061.20160602 - Alpha test version - Minor bug fixes. Introducing the Follow-Up piston. Chain them together, delay them forever, do whatever you need with them :)
  *	 6/02/2016 >>> v0.0.060.20160602 - Alpha test version - Fixed a problem with initialization of global variable store on first install of CoRE. Added $time and $time24 to system variables.
  *	 6/02/2016 >>> v0.0.05f.20160602 - Alpha test version - Dashboard enhancements (capture piston image) and minor bug fixes (i.e. aggregate Send Notification on multiple device actions)
@@ -135,7 +136,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.061.20160602"
+	return "v0.0.062.20160602"
 }
 
 
@@ -1365,7 +1366,7 @@ def pageAction(params) {
                                                 } else if (param.type == "variables") {
                                                     input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "piston") {
-                                                	def pistons = parent.listPistons(state.expertMode ? "Follow-Up" : "Follow-Up")
+                                                	def pistons = parent.listPistons()
                                                     input "actParam$id#$tid-$i", "enum", options: pistons, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "routine") {
                                                 	def routines = location.helloHome?.getPhrases()*.label
@@ -2097,12 +2098,13 @@ def listPistons(type = null) {
     return result.sort{ it }
 }
 
-def followUp(pistonName) {
+def execute(pistonName) {
 	def piston = getChildApps().find{ it.label == pistonName }
     if (piston) {
     	//fire up the piston
-    	piston.followUpHandler()
+    	return piston.executeHandler()
     }
+    return null
 }
 
 def updateChart(name, value) {
@@ -2945,19 +2947,18 @@ def recoveryHandler() {
     exitPoint(perf)
 }
 
-def followUpHandler() {
-	if (state.app.mode != "Follow-Up") return false
+def executeHandler() {
 	entryPoint()
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
     def perf = now()
-    debug "Received a follow-up request", 1
+    debug "Received an execute request", 1
     broadcastEvent([name: "time", date: new Date(), deviceId: "time", conditionId: null], true, false)
     processTasks()
     perf = now() - perf
     debug "Done in ${perf}ms", -1
     exitPoint(perf)
-    return true
+    return state.currentState
 }
 private entryPoint() {
 	//initialize whenever app runs
@@ -4261,6 +4262,7 @@ private scheduleAction(action) {
                		def function = "cmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
 					def result = "$function"(action, task, time)
                 	time = (result && result.time) ? result.time : time
+                    command.delay = (result && result.delay) ? result.delay : 0
                     if (result && result.waitFor) {
                     	waitFor = result.waitFor
                         waitSince = time
@@ -4292,7 +4294,7 @@ private scheduleAction(action) {
                     	//an aggregated command schedules one command task for the whole group
                     	deviceId = null
 					}
-                    scheduleTask("cmd", action.id, deviceId, task.i, time, data)
+                    scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
                     //an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
                     if (command.aggregated) break
                 }
@@ -4308,9 +4310,17 @@ private cmd_repeatAction(action, task, time) {
     return result
 }
 
+private cmd_followUp(action, task, time) {
+	def result = cmd_wait(action, task, time)
+    result.schedule = true
+    result.delay = result.time
+    result.time = null
+    return result
+}
+
 private cmd_wait(action, task, time) {
 	def result = [:]
-    if (task && task.p && task.p.size() == 2) {
+    if (task && task.p && task.p.size() >= 2) {
         def unit = 60000
         switch (task.p[1].d) {
         	case "seconds":
@@ -4787,7 +4797,9 @@ private processTasks() {
         }
 
         //okay, now let's give the time triggers a chance to readjust
-        scheduleTimeTriggers()        
+        if (state.app?.mode != "Follow-Up") {
+	        scheduleTimeTriggers()
+        }
 
         //read the tasks
         tasks = atomicState.tasks
@@ -5297,11 +5309,27 @@ private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
 
 private task_vcmd_followUp(devices, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-    if (params.size() != 1) {
+    if (params.size() != 4) {
+    	return false
+    }
+    def piston = params[2].d
+	def result = parent.execute(piston)
+    if (params[3].d) {
+    	setVariable(params[3].d, result)
+    }
+    return true
+}
+
+private task_vcmd_executePiston(devices, action, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 2) {
     	return false
     }
     def piston = params[0].d
-	parent.followUp(piston)
+	def result = parent.execute(piston)
+    if (params[1].d) {
+    	setVariable(params[1].d, result)
+    }
     return true
 }
 
@@ -7850,8 +7878,9 @@ private virtualCommands() {
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",aggregated: true,	],
     	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",				aggregated: true,	],
         [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
-        [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													,immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
-        [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Piston:piston"],																		location: true,	description: "Follow up with piston \"{0}\"",	aggregated: true],
+        [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
+        [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston \"{2}\" after {0} {1}",	aggregated: true],
+        [ name: "executePiston",		requires: [],						display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston \"{0}\"",	aggregated: true],
     ]
 }
 
