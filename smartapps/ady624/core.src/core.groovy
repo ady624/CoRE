@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/01/2016 >>> v0.0.05c.20160601 - Alpha test version - Updated the startActivity action
  *	 6/01/2016 >>> v0.0.05b.20160601 - Alpha test version - Updated dashboard, first attempt at displaying an IF statement
  *	 6/01/2016 >>> v0.0.05a.20160601 - Alpha test version - Fixed a bug introduced in v0.0.059 where some pistons would not run due to state.app.enabled missing
  *	 6/01/2016 >>> v0.0.059.20160601 - Alpha test version - Replaced the Enabled boolean checkbox in the UI to allow for dashboard ON/OFF integration.
@@ -129,7 +130,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.05b.20160601"
+	return "v0.0.05c.20160601"
 }
 
 
@@ -240,7 +241,7 @@ private pageMainCoRE() {
             	//reinitialize endpoint
                 initializeCoREEndpoint()
             	def url = "${state.endpoint}dashboard"
-                log.trace "Dashboard URL: $url"
+                log.trace "Dashboard URL: $url *** DO NOT SHARE THIS LINK WITH ANYONE ***"
                 href "", title: "CoRE Dashboard", style: "external", url: url
             }
 		}        
@@ -2022,8 +2023,8 @@ def api_piston() {
             	app: child.getPistonApp(),
                 summary: child.getSummary()
             ]
-            if (result.app.conditions) withEachCondition(result.app.conditions, "api_piston_prepare", child, true)
-            if (result.app.otherConditions) withEachCondition(result.app.otherConditions, "api_piston_prepare", child, true)
+            if (result.app.conditions) withEachCondition(result.app.conditions, "api_piston_prepare", child)
+            if (result.app.otherConditions) withEachCondition(result.app.otherConditions, "api_piston_prepare", child)
             return result
         }        
     }
@@ -2031,8 +2032,7 @@ def api_piston() {
 }
 
 private api_piston_prepare(condition, child) {
-	if (!condition.children) condition.desc = child.getPistonConditionDescription(condition)
-    condition.state = evaluateCondition(condition)
+	condition.desc = child.getPistonConditionDescription(condition)
 }
 
 /******************************************************************************/
@@ -3248,6 +3248,7 @@ private evaluateCondition(condition, evt = null) {
 
         //apply the NOT, if needed
         result = condition.not ? !result : result
+        condition.eval = result
 
         //store variables (only if evt is available, i.e. not simulating)
         if (evt) {
@@ -7613,7 +7614,7 @@ private commands() {
     	[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				parameters: [], ],
     	[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				parameters: [], ],
     	[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], description: "Speak \"{0}\"", ],
-    	[ name: "startActivity",							category: "Entertainment",				group: "Control [devices]",			display: "Start activity",				parameters: [], ],
+    	[ name: "startActivity",							category: "Entertainment",				group: "Control [devices]",			display: "Start activity",				parameters: ["Activity:string"], description: "Start activity\"{0}\"",	],
     	[ name: "getCurrentActivity",						category: "Entertainment",				group: "Control [devices]",			display: "Get current activity",		parameters: [], ],
     	[ name: "getAllActivities",							category: "Entertainment",				group: "Control [devices]",			display: "Get all activities",			parameters: [], ],
     	[ name: "push",										category: "Other",						group: "Control [devices]",			display: "Push",						parameters: [], ],
