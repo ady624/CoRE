@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/01/2016 >>> v0.0.05d.20160601 - Alpha test version - Fixed a problem with compound commands (i.e. thermostat.off instead of off)
  *	 6/01/2016 >>> v0.0.05c.20160601 - Alpha test version - Updated the startActivity action
  *	 6/01/2016 >>> v0.0.05b.20160601 - Alpha test version - Updated dashboard, first attempt at displaying an IF statement
  *	 6/01/2016 >>> v0.0.05a.20160601 - Alpha test version - Fixed a bug introduced in v0.0.059 where some pistons would not run due to state.app.enabled missing
@@ -130,7 +131,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.05c.20160601"
+	return "v0.0.05d.20160601"
 }
 
 
@@ -4927,7 +4928,12 @@ private processCommandTask(task) {
         }
         command = getCommandByDisplay(cmd)
         if (command) {
-            if (device.hasCommand(command.name)) {
+        	def cn = command.name
+            if (cn && cn.contains(".")) {
+            	def parts = cn.tokenize(".")
+                cn = parts[parts.size() - 1]
+            }
+            if (device.hasCommand(cn)) {
                 def requiredParams = command.parameters ? command.parameters.size() : 0
                 def availableParams = t.p ? t.p.size() : 0
                 if (requiredParams == availableParams) {
@@ -4936,7 +4942,7 @@ private processCommandTask(task) {
                         params.push(it.d instanceof String ? formatMessage(it.d) : it.d)
                     }
                     if (params.size()) {
-                    	if ((command.name == "setColor") && (params.size() == 5)) {
+                    	if ((cn == "setColor") && (params.size() == 5)) {
                         	//using a little bit of a hack here
                             //we should have 5 parameters:
                             //color name
@@ -4963,10 +4969,10 @@ private processCommandTask(task) {
                                 p.saturation = saturation
                                 p.level - lightness
                             }
-                            def msg = "Executing command: [${device}].${command.name}($p)"
+                            def msg = "Executing command: [${device}].${cn}($p)"
                             def perf = now()
                         	try {
-                                device."${command.name}"(p)
+                                device."${cn}"(p)
                             } catch(all) {
                             	msg += " (ERROR)"
                             }
@@ -4974,10 +4980,10 @@ private processCommandTask(task) {
 				            if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
                         } else {
-                        	def msg = "Executing command: [${device}].${command.name}($params)" 
+                        	def msg = "Executing command: [${device}].${cn}($params)" 
                             def perf = now()
                         	try {
-                                device."${command.name}"(params as Object[])
+                                device."${cn}"(params as Object[])
                             } catch(all) {
                             	msg += " (ERROR)"
                             }
@@ -4987,10 +4993,10 @@ private processCommandTask(task) {
                         }
                         return true
                     } else {
-                    	def msg = "Executing command: [${device}].${command.name}()"
+                    	def msg = "Executing command: [${device}].${cn}()"
                         def perf = now()
                         try {
-                            device."${command.name}"()
+                            device."${cn}"()
                         } catch(all) {
                             msg += " (ERROR)"
                         }
