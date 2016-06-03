@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
  *	 6/02/2016 >>> v0.0.062.20160602 - Alpha test version - Updated Follow Up and added Execute. Not fully tested yet.
  *	 6/02/2016 >>> v0.0.061.20160602 - Alpha test version - Minor bug fixes. Introducing the Follow-Up piston. Chain them together, delay them forever, do whatever you need with them :)
  *	 6/02/2016 >>> v0.0.060.20160602 - Alpha test version - Fixed a problem with initialization of global variable store on first install of CoRE. Added $time and $time24 to system variables.
@@ -136,7 +137,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.062.20160602"
+	return "v0.0.063.20160603"
 }
 
 
@@ -247,7 +248,7 @@ private pageMainCoRE() {
             	//reinitialize endpoint
                 initializeCoREEndpoint()
             	def url = "${state.endpoint}dashboard"
-                log.trace "Dashboard URL: $url *** DO NOT SHARE THIS LINK WITH ANYONE ***"
+                debug "Dashboard URL: $url *** DO NOT SHARE THIS LINK WITH ANYONE ***", null, "info"
                 href "", title: "CoRE Dashboard", style: "external", url: url
             }
 		}        
@@ -1358,13 +1359,17 @@ def pageAction(params) {
 													break
                                                 }
                                                 if (param.type == "attribute") {
-                                                    input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                                    input "actParam$id#$tid-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "attributes") {
-                                                    input "actParam$id#$tid-$i", "devices", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                    input "actParam$id#$tid-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "variable") {
                                                     input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "variables") {
                                                     input "actParam$id#$tid-$i", "enum", options:  listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else if (param.type == "stateVariable") {
+                                                    input "actParam$id#$tid-$i", "enum", options: listStateVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
+                                                } else if (param.type == "stateVariables") {
+                                                    input "actParam$id#$tid-$i", "enum", options:  listStateVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "piston") {
                                                 	def pistons = parent.listPistons()
                                                     input "actParam$id#$tid-$i", "enum", options: pistons, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
@@ -1734,11 +1739,13 @@ private buildIfContent(id, level) {
 /********** COMMON INITIALIZATION METHODS **********/
 def installed() {
 	initialize()
+    return true
 }
 
 def updated() {
 	unsubscribe()
 	initialize()
+    return true
 }
 
 def initialize() {
@@ -1864,6 +1871,32 @@ def setVariable(name, value, system = false) {
     //TODO: date&time triggers based on variables being changed need to be reevaluated
 }
 
+
+def getStateVariable(name, global = false) {
+    name = sanitizeVariableName(name)
+	if (!name) {
+    	return null
+    }
+    if (parent && global) {
+    	return parent.getStateVariable(name)
+    } else {
+		return state.stateStore[name]
+    }
+}
+
+def setStateVariable(name, value, global = false) {
+    name = sanitizeVariableName(name)
+	if (!name) {
+    	return
+    }
+    if (parent && global) {
+    	parent.setStateVariable(name, value)
+    } else {
+    	debug "Storing state variable $name with value $value"
+		state.stateStore[name] = value
+    }
+}
+
 private testDataType(value, dataType) {
 	if (!dataType || !value) return true
 	switch (dataType) {
@@ -1880,7 +1913,7 @@ private testDataType(value, dataType) {
     return false
 }
 
-def listVariables(config = false, dataType = null, listLocal = true, listGlobal = true, listSystem = true, listState = false) {
+def listVariables(config = false, dataType = null, listLocal = true, listGlobal = true, listSystem = true) {
 	def result = []
     def parentResult = null
     def systemResult = []
@@ -1900,7 +1933,7 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
     }
     if (listGlobal) {
         if (parent) {
-            parentResult = parent.listVariables(config, dataType, listLocal, listGlobal, false, listState)
+            parentResult = parent.listVariables(config, dataType)
         }
     }
     if (parent && config) {
@@ -1953,7 +1986,48 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
     return result.sort() + (parentResult ? parentResult.sort() : []) + systemResult.sort()
 }
 
-
+def listStateVariables(config = false, dataType = null, listLocal = true, listGlobal = true) {
+	def result = []
+    def parentResult = null
+    if (listLocal) {
+        for (variable in state.stateStore) {
+        	if (!dataType || testDataType(variable.value, dataType)) {
+	            result.push(variable.key)
+            }
+        }
+    }
+    if (listGlobal) {
+        if (parent) {
+            parentResult = parent.listStateVariables(config, dataType)
+        }
+    }
+    if (parent && config) {
+    	//look for variables set during conditions
+        def list = settings.findAll{it.key.startsWith("actTask")}
+        for (it in list) {
+        	if (it.value) {
+            	def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
+                if (virtualCommand && (virtualCommand.stateVarEntry != null)) {
+                	def var = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.stateVarEntry}"])
+                    if (var) {
+                        if (var.startsWith("@")) {
+                            //global
+                            if (!(var in parentResult)) {
+                                parentResult.push(var)
+                            }
+                        } else {
+                            //local
+                            if (!(var in result)) {
+                                result.push(var)
+                            }
+                        }
+                    }
+				}
+            }
+        }
+    }
+    return result.sort() + (parentResult ? parentResult.sort() : [])
+}
 
 
 
@@ -1978,11 +2052,11 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
 
 def initializeCoRE() {
     state.store = state.store ? state.store : [:]
+    state.stateStore = state.stateStore ? state.stateStore : [:]
     state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
 }
 
 def childUninstalled() {}
-
 
 private initializeCoREEndpoint() {
 	if (!state.endpoint) {
@@ -2231,6 +2305,7 @@ def initializeCoREPiston() {
     state.cache = [:]
     state.tasks = state.tasks ? state.tasks : [:]
     state.store = state.store ? state.store : [:]
+    state.stateStore = state.stateStore ? state.stateStore : [:]
     state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
     for (var in initialSystemStore()) {
     	if (!state.containsKey(var.key)) {
@@ -2243,8 +2318,6 @@ def initializeCoREPiston() {
     	subscribeToAll(state.app)
     }
   
-    //subscribe(app, appHandler)
-    
     state.remove("config")
     //uncomment next line to clear system store
     //state.systemStore = [:]
@@ -2269,6 +2342,7 @@ private configApp() {
 	//prepare stores
     state.temp = [:]
     state.store = state.store ? state.store : [:]
+    state.stateStore = state.stateStore ? state.stateStore : [:]
     state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
     for (var in initialSystemStore()) {
     	if (!state.containsKey(var.key)) {
@@ -2875,9 +2949,6 @@ private getTaskDescription(task) {
 /******************************************************************************/
 /*** ENTRY AND EXIT POINT HANDLERS											***/
 /******************************************************************************/
-
-def appHandler() {
-}
 
 def deviceHandler(evt) {
 	entryPoint()
@@ -5368,6 +5439,52 @@ private task_vcmd_loadAttribute(device, action, task, simulate = false) {
     //work, work, work
     //get the real value
     def value = getVariable(variable)
+	setAttributeValue(device, attribute, value, allowTranslations, negateTranslations)
+    return true
+}
+
+private task_vcmd_loadState(device, action, task, simulate = false) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || (params.size() != 4)) {
+    	return false
+    }
+	def attributes = params[0].d
+    def variable = params[1].d
+    def value = getStateVariable(variable)
+    def allowTranslations = !!params[2].d
+    def negateTranslations = !!params[3].d   
+    //work, work, work
+    //get the real value
+    for(attribute in attributes.sort{ it }) {   	
+		setAttributeValue(device, cleanUpAttribute(attribute), value, allowTranslations, negateTranslations)
+    }
+    return true
+}
+
+private task_vcmd_loadStateLocally(device, action, task, simulate = false, global = false) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.id || (params.size() != 1)) {
+    	return false
+    }
+	def attributes = params[0].d
+    def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
+    debug "Load from state: attributes are $attributes, values are $values"
+    if (values instanceof Map) {
+    	for(attribute in attributes.sort { it }) {
+        	def cleanAttribute = cleanUpAttribute(attribute)
+            if (values[cleanAttribute] != null) {
+				setAttributeValue(device, cleanAttribute, values[cleanAttribute], false, false)
+            }
+	    }
+    }
+    return true
+}
+
+private task_vcmd_loadStateGlobally(device, action, task, simulate = false) {
+	return task_vcmd_loadStateLocally(device, action, task, simulate, true)
+}
+
+private setAttributeValue(device, attribute, value, allowTranslations, negateTranslations) {
     def commands = commands().findAll{ (it.attribute == attribute) && it.value }
     //oh boy, we can pick and choose...
     for (command in commands) {
@@ -5379,7 +5496,7 @@ private task_vcmd_loadAttribute(device, action, task, simulate = false) {
                     v = cast(v, parts[1])
                 }
                 if (device.hasCommand(command.name)) {
-                    log.trace "Executing [${getDeviceLabel(device)}].$command($v)"
+                    debug "Executing [${getDeviceLabel(device)}].${command.name}($v)", null, "info"
                     device."${command.name}"(v)
                     return true
                 }
@@ -5388,7 +5505,7 @@ private task_vcmd_loadAttribute(device, action, task, simulate = false) {
             if ((command.value == value) && (!command.parameters)) {
                 //found an exact match, let's do it
                 if (device.hasCommand(command.name)) {
-                    log.trace "Executing [${getDeviceLabel(device)}].$command()"
+                    debug "Executing [${getDeviceLabel(device)}].${command.name}()", null, "info"
                     device."${command.name}"()
                     return true
                 }
@@ -5404,14 +5521,13 @@ private task_vcmd_loadAttribute(device, action, task, simulate = false) {
             if ((cast(command.value, "boolean") == v) && (!command.parameters)) {
                 //found an exact match, let's do it
                 if (device.hasCommand(command.name)) {
-                    log.trace "Executing [${getDeviceLabel(device)}].$command() (boolean translation)"
+                    debug "Executing [${getDeviceLabel(device)}].${command.name}() (boolean translation)", null, "info"
                     device."${command.name}"()
                     return true
                 }
             }
         }
     }
-    return false
 }
 
 private task_vcmd_saveAttribute(devices, action, task, simulate = false) {
@@ -5424,6 +5540,51 @@ private task_vcmd_saveAttribute(devices, action, task, simulate = false) {
     def dataType = params[2].d
     def variable = params[3].d    
     //work, work, work
+	def result = getAggregatedAttributeValue(devices, attribute, aggregation, dataType)
+    setVariable(variable, result)
+    return true
+}
+
+private task_vcmd_saveState(devices, action, task, simulate = false) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!devices || (params.size() != 4)) {
+    	return false
+    }
+	def attributes = params[0].d
+    def aggregation = params[1].d
+    def dataType = params[2].d
+    def variable = params[3].d    
+    //work, work, work
+	def values = [:]
+    for (attribute in attributes) {
+    	def cleanAttribute = cleanUpAttribute(attribute)
+    	values[cleanAttribute] = getAggregatedAttributeValue(devices, cleanAttribute, aggregation, dataType)
+    }
+    setStateVariable(variable, values)
+    return true
+}
+
+private task_vcmd_saveStateLocally(device, action, task, simulate = false, global = false) {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.id || (params.size() != 1)) {
+    	return false
+    }
+	def attributes = params[0].d
+	def values = [:]
+    for (attribute in attributes) {
+       	def cleanAttribute = cleanUpAttribute(attribute)
+    	values[cleanAttribute] = device.currentValue(cleanAttribute)
+    }
+    debug "Save to state: attributes are $attributes, values are $values"
+	setStateVariable("${ global ? "@" : "" }:::${device.id}:::", values)
+    return true
+}
+
+private task_vcmd_saveStateGlobally(device, action, task, simulate = false) {
+	return task_vcmd_saveStateGlobally(device, action, task, simulate, true)
+}
+
+private getAggregatedAttributeValue(devices, attribute, aggregation, dataType) {
     def result
     def attr = getAttributeByName(attribute)
     if (attr) {
@@ -5529,10 +5690,9 @@ private task_vcmd_saveAttribute(devices, action, task, simulate = false) {
     	//if user wants a certain data type, we comply
     	result = cast(result, dataType)
     }
-    setVariable(variable, result)
-    return true
+    
+    return result
 }
-
 
 private task_vcmd_setVariable(devices, action, task, simulate = false) {
     def params = simulate ? ((task && task.p && task.p.size()) ? task.p : []) : ((task && task.data && task.data.p && task.data.p.size()) ? task.data.p : [])
@@ -7861,15 +8021,15 @@ private virtualCommands() {
     	[ name: "flash#6",				requires: ["on6", "off6"], 			display: "Flash #6",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #6 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#7",				requires: ["on7", "off7"], 			display: "Flash #7",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #7 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#8",				requires: ["on8", "off8"], 			display: "Flash #8",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #8 {0}ms/{1}ms for {2} time(s)",	],
-    	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,															aggregated: true,	],
-    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable {3}",	aggregated: true,	],
-    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Save to state variable...:string"],												varEntry: 1,																				aggregated: true,	],
-        [ name: "saveStateLocally",		requires: [],			 			display: "Save state",																																																											aggregated: true,	],
-    	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state (global)",																																																									aggregated: true,	],
-    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable...:variable","Allow translations:bool","Negate translation:bool"],																								],
-    	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Load from state variable...:stateVariable","Attributes:attributes"],																								],
-    	[ name: "loadStateLocally",		requires: [],			 			display: "Load state",						parameters: ["Attributes:attributes"],																															],
-    	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state (global)",				parameters: ["Attributes:attributes"],																															],
+    	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,																	aggregated: true,	],
+    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable {{3}}",			aggregated: true,	],
+    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable {{3}}",	aggregated: true,	],
+        [ name: "saveStateLocally",		requires: [],			 			display: "Save state to local store",		parameters: ["Attributes:attributes"],																															description: "Save state of attributes {0} to local store",							],
+    	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state to global store",		parameters: ["Attributes:attributes"],																															description: "Save state of attributes {0} to global store",						],
+    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable {{1}}",	],
+    	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable {{1}}"														],
+    	[ name: "loadStateLocally",		requires: [],			 			display: "Load state from local store",		parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from local store",													],
+    	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state from global store",	parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from global store",													],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to \"{0}\"",		aggregated: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to \"{0}\"",			aggregated: true,	],
     	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",			aggregated: true,	],
@@ -7950,7 +8110,8 @@ private attributes() {
     	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? getLocationModeOptions() : [],																					],
     	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],																		],
     	[ name: "routineExecuted",			type: "routine",			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],															],
-    	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true, null, true, true, true, false) : [],												],
+    	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true) : [],												],
+    	[ name: "stateVariable",			type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listStateVariables(true) : [],												],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
     ]
     return state.temp.attributes
