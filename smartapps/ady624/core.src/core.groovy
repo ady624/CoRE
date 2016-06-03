@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/03/2016 >>> v0.0.064.20160603 - Alpha test version - Introducing the Basic piston. It's... umm... basic. IF (conditions) THEN (actions). Minor bug fixes.
  *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
  *	 6/02/2016 >>> v0.0.062.20160602 - Alpha test version - Updated Follow Up and added Execute. Not fully tested yet.
  *	 6/02/2016 >>> v0.0.061.20160602 - Alpha test version - Minor bug fixes. Introducing the Follow-Up piston. Chain them together, delay them forever, do whatever you need with them :)
@@ -137,7 +138,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.063.20160603"
+	return "v0.0.064.20160603"
 }
 
 
@@ -460,18 +461,22 @@ private pageMainCoREPiston() {
     	def currentState = state.currentState
     	section() {
         	def enabled = !!state.config.app.enabled
-            def pistonModes = ["Simple", "Latching", "And-If", "Or-If"]
+            def pistonModes = ["Basic", "Simple", "Latching", "And-If", "Or-If"]
             if (!getConditionTriggerCount(state.config.app.otherConditions)) {
             	pistonModes += ["Then-If", "Else-If"]
             }
+            if (listActions(-2).size()) {
+            	pistonModes.remove("Basic")
+            }
             if (listActions(-1).size()) {
+            	pistonModes.remove("Basic")
             	pistonModes.remove("Simple")
             } else {
             	pistonModes.add("Follow-Up")
             }
         	//input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
         	href "pageToggleEnabled", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete"
-            input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Simple", submitOnChange: true
+            input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Basic", submitOnChange: true
             switch (settings.mode) {
                 case "Latching":
                 paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
@@ -532,7 +537,7 @@ private pageMainCoREPiston() {
             }
         }
 
-		if (settings.mode != "Latching") {
+		if (!(settings.mode in ["Basic", "Latching"])) {
             section() {
                 def actions = listActions(-2)
                 def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
@@ -1152,6 +1157,7 @@ def pageActionGroup(params) {
     def block = conditionId > 0 ? "WHEN TRUE, DO ..." : "IF"
     if (conditionId < 0) {
     	switch (settings.mode) {
+        	case "Basic":
         	case "Simple":
         	case "Follow-Up":
             	block = ""
@@ -1583,13 +1589,12 @@ def pageSimulate() {
         def error
         def perf = now()
         try {
-        	broadcastEvent([name: "time", date: new Date(), deviceId: "time", conditionId: null], true, false)
+        	broadcastEvent([name: "simulate", date: new Date(), deviceId: "time", conditionId: null], true, false)
         	processTasks()
         } catch(all) {
         	error = all
         }
         perf = now() - perf
-        
         def evals = state.sim.evals
         def cmds = state.sim.cmds
         state.sim = null
@@ -1624,7 +1629,7 @@ def pageSimulate() {
         	def time = getVariable("\$nextScheduledTime")
             paragraph time ? formatLocalTime(time) : "No ST job has been scheduled.", state: time ? "complete" : null
         }
-
+return
 		def tasks = atomicState.tasks
         tasks = tasks ? tasks : [:]
 		section("Pending tasks") {
@@ -1991,8 +1996,10 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
     def parentResult = null
     if (listLocal) {
         for (variable in state.stateStore) {
-        	if (!dataType || testDataType(variable.value, dataType)) {
-	            result.push(variable.key)
+        	if (!variable.key.contains(":::")) {
+        		if (!dataType || testDataType(variable.value, dataType)) {
+		            result.push(variable.key)
+	            }
             }
         }
     }
@@ -3024,7 +3031,7 @@ def executeHandler() {
 	//starting primary IF block evaluation
     def perf = now()
     debug "Received an execute request", 1
-    broadcastEvent([name: "time", date: new Date(), deviceId: "time", conditionId: null], true, false)
+    broadcastEvent([name: "execute", date: new Date(), deviceId: "time", conditionId: null], true, false)
     processTasks()
     perf = now() - perf
     debug "Done in ${perf}ms", -1
@@ -3210,13 +3217,14 @@ private broadcastEvent(evt, primary, secondary) {
                         }
                     }
                     break
+                case "Basic":
                 case "Simple":
                 case "Follow-Up":
                 	result2 = !result1
                     if (currentState != result1) {
                         state.currentState = result1
                         state.currentStateSince = now()
-                        stateMsg = "♦ Simple Piston changed state to $result1 ♦"
+                        stateMsg = "♦ $mode Piston changed state to $result1 ♦"
                     }
                     break
                 case "And-If":
@@ -3274,7 +3282,7 @@ private broadcastEvent(evt, primary, secondary) {
             //execute the DO EVERY TIME actions
             if (result1) scheduleActions(0, stateChanged)
             if (result2) scheduleActions(-1, stateChanged)
-            if ((mode != "Latching") && (!currentState)) {
+            if (!(mode in ["Basic", "Latching"]) && (!currentState)) {
             	//execute the else branch
             	scheduleActions(-2, stateChanged)
             }
@@ -3357,7 +3365,7 @@ private evaluateConditionSet(evt, primary, force = false) {
     //this check ensures that an event that is used in both blocks, but as different types, one as a trigger
     //and one as a condition do not interfere with each other
     def app = state.run == "config" ? state.config.app : state.app
-    def eligibilityStatus = force || !!(state.sim) ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
+    def eligibilityStatus = force || app.mode == "Follow-Up" || !!(state.sim) ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
     def evaluation = null
     if (!force) {
     	debug "Event eligibility for the ${primary ? "primary" : "secondary"} IF block is $eligibilityStatus  - ${eligibilityStatus > 0 ? "ELIGIBLE" : "INELIGIBLE"} (" + (eligibilityStatus == 2 ? "triggers required, event is a trigger" : (eligibilityStatus == 1 ? "triggers not required, event is a condition" : (eligibilityStatus == -2 ? "triggers required, but event is a condition" : "something is messed up"))) + ")"
@@ -4814,8 +4822,7 @@ private processTasks() {
     state.rerunSchedule = false
     def tasks = null
     def perf = now()
-    debug "Processing tasks (${version()})", 1, "trace"
-    
+    debug "Processing tasks (${version()})", 1, "trace"   
     try {
 
         def safetyNet = false
@@ -4831,7 +4838,7 @@ private processTasks() {
             //we always need to work with a fresh list.
             tasks = tasks ? tasks : atomicState.tasks
             tasks = tasks ? tasks : [:]
-            for (item in tasks.findAll{it.value.type == "evt"}.sort{ it.value.time }) {
+            for (item in tasks.findAll{it.value?.type == "evt"}.sort{ it.value?.time }) {
                 def task = item.value
                 if (task.time <= now() + threshold) {
                     //remove from tasks
@@ -4872,18 +4879,17 @@ private processTasks() {
 	        scheduleTimeTriggers()
         }
 
-        //read the tasks
+		//read the tasks
         tasks = atomicState.tasks
         tasks = tasks ? tasks : [:]
         def idx = 1
         //find the last index
         for(task in tasks) {
-            if ((task.value.idx) && (task.value.idx >= idx)) {
-                idx = task.value.idx + 1
+            if ((task.value?.idx) && (task.value?.idx >= idx)) {
+                idx = task.value?.idx + 1
             }
         }
-        
-        
+              
         def repeatCount = 0
         
         while (repeatCount < 2) {
@@ -4903,7 +4909,7 @@ private processTasks() {
                         while (dirty) {
                             dirty = false
                             for (it in tasks) {
-                                if ((it.value.type == task.del) && (!task.ownerId || (it.value.ownerId == task.ownerId)) && (!task.deviceId || (task.deviceId == it.value.deviceId)) && (!task.taskId || (task.taskId == it.value.taskId))) {
+                                if ((it.value?.type == task.del) && (!task.ownerId || (it.value?.ownerId == task.ownerId)) && (!task.deviceId || (task.deviceId == it.value?.deviceId)) && (!task.taskId || (task.taskId == it.value?.taskId))) {
                                     tasks.remove(it.key)
                                     dirty = true
                                     break
@@ -4983,7 +4989,7 @@ private processTasks() {
                             tasks = null
                             //do some work
                             
-                            
+
                             def enabled = (state.app && (state.app.enabled != null) ? !!state.app.enabled : true)
                             
                             if (enabled && (task.type == "cmd")) {
@@ -5013,6 +5019,7 @@ private processTasks() {
 	//end of processTasks
 	perf = now() - perf
     debug "Task processing took ${perf}ms", -1, "trace"
+    return true
 }
 
 private cancelTasks(state) {
@@ -5064,6 +5071,7 @@ private processCommandTask(task) {
     def custom = (cmd && cmd.startsWith(customCommandPrefix()))
     cmd = cleanUpCommand(cmd)
     def command = null
+      
     if (virtual) {
         //dealing with a virtual command
         command = getVirtualCommandByDisplay(cmd)
@@ -5450,13 +5458,17 @@ private task_vcmd_loadState(device, action, task, simulate = false) {
     }
 	def attributes = params[0].d
     def variable = params[1].d
-    def value = getStateVariable(variable)
+    def values = getStateVariable(variable)
     def allowTranslations = !!params[2].d
     def negateTranslations = !!params[3].d   
     //work, work, work
     //get the real value
-    for(attribute in attributes.sort{ it }) {   	
-		setAttributeValue(device, cleanUpAttribute(attribute), value, allowTranslations, negateTranslations)
+    for(attribute in attributes.sort{ it }) {
+    	def cleanAttribute = cleanUpAttribute(attribute)
+		def value = values[cleanAttribute]
+        if (value != null) {
+			setAttributeValue(device, cleanAttribute, value, allowTranslations, negateTranslations)
+        }
     }
     return true
 }
@@ -5472,8 +5484,9 @@ private task_vcmd_loadStateLocally(device, action, task, simulate = false, globa
     if (values instanceof Map) {
     	for(attribute in attributes.sort { it }) {
         	def cleanAttribute = cleanUpAttribute(attribute)
-            if (values[cleanAttribute] != null) {
-				setAttributeValue(device, cleanAttribute, values[cleanAttribute], false, false)
+			def value = values[cleanAttribute]
+            if (value != null) {
+				setAttributeValue(device, cleanAttribute, value, false, false)
             }
 	    }
     }
@@ -6704,7 +6717,7 @@ private getConditionConditionCount(condition) {
 }
 
 private getConditionCount(app) {
-	return getConditionConditionCount(app.conditions) + (!(settings.mode in ["Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0)
+	return getConditionConditionCount(app.conditions) + (!(settings.mode in ["Basic", "Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0)
 }
 
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
@@ -7705,7 +7718,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["attribute", "attributes", "variable", "variables", "routine", "piston", "aggregation", "dataType"]) {
+    if (dataType in ["attribute", "attributes", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -8022,25 +8035,25 @@ private virtualCommands() {
     	[ name: "flash#7",				requires: ["on7", "off7"], 			display: "Flash #7",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #7 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#8",				requires: ["on8", "off8"], 			display: "Flash #8",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #8 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,																	aggregated: true,	],
-    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable {{3}}",			aggregated: true,	],
-    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable {{3}}",	aggregated: true,	],
+    	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable '{3}'",			aggregated: true,	],
+    	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable '{3}'",	aggregated: true,	],
         [ name: "saveStateLocally",		requires: [],			 			display: "Save state to local store",		parameters: ["Attributes:attributes"],																															description: "Save state of attributes {0} to local store",							],
     	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state to global store",		parameters: ["Attributes:attributes"],																															description: "Save state of attributes {0} to global store",						],
-    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable {{1}}",	],
-    	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable {{1}}"														],
+    	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable '{1}'",	],
+    	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable '{1}'"														],
     	[ name: "loadStateLocally",		requires: [],			 			display: "Load state from local store",		parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from local store",													],
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state from global store",	parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from global store",													],
-    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to \"{0}\"",		aggregated: true,	],
-    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to \"{0}\"",			aggregated: true,	],
-    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification \"{0}\"",			aggregated: true,	],
+    	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
+    	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to '{0}'",			aggregated: true,	],
+    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}'",			aggregated: true,	],
     	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
-    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification \"{0}\"",		aggregated: true,	],
-    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification \"{0}\" to {1}",aggregated: true,	],
-    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine \"{0}\"",				aggregated: true,	],
+    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
+    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
+    	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
         [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
         [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
-        [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston \"{2}\" after {0} {1}",	aggregated: true],
-        [ name: "executePiston",		requires: [],						display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston \"{0}\"",	aggregated: true],
+        [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
+        [ name: "executePiston",		requires: [],						display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
     ]
 }
 
@@ -8111,7 +8124,7 @@ private attributes() {
     	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],																		],
     	[ name: "routineExecuted",			type: "routine",			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],															],
     	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true) : [],												],
-    	[ name: "stateVariable",			type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listStateVariables(true) : [],												],
+//    	[ name: "stateVariable",			type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listStateVariables(true) : [],												],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
     ]
     return state.temp.attributes
