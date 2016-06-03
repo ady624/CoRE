@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/03/2016 >>> v0.0.065.20160603 - Alpha test version - Introducing trigger interaction method (any, physical, programmatic) for some attributes (door, lock, switch). Various other fixes.
  *	 6/03/2016 >>> v0.0.064.20160603 - Alpha test version - Introducing the Basic piston. It's... umm... basic. IF (conditions) THEN (actions). Minor bug fixes.
  *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
  *	 6/02/2016 >>> v0.0.062.20160602 - Alpha test version - Updated Follow Up and added Execute. Not fully tested yet.
@@ -138,7 +139,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.064.20160603"
+	return "v0.0.065.20160603"
 }
 
 
@@ -865,6 +866,7 @@ def pageCondition(params) {
                                     if ((attribute != capability.attribute) || state.config.expertMode) {
                                         input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
                                     }
+
                                     if (capability.count) {
                                         def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
                                         if (subDevices.size()) {
@@ -879,6 +881,7 @@ def pageCondition(params) {
                                         if (comparison) {                                	
                                             //Value
                                             showParameters = true
+                                                                                       
                                             /*
                                             def comp = getComparisonOption(attribute, comparison)
                                             if (attr && comp) {
@@ -989,7 +992,20 @@ def pageCondition(params) {
                                         input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
                                     }
                                 }
-
+                                
+								if (trigger) {                                
+                                    //Interaction
+                                    def interaction = settings["condInteraction$id"]
+                                    def defaultInteraction = "Any"
+                                    if (interaction == null) {
+                                        interaction = defaultInteraction
+                                    }
+                                    //display the Interaction only in expert mode or in basic mode if it differs from the default capability attribute
+                                    if ((interaction != defaultInteraction) || state.config.expertMode) {
+                                        input "condInteraction$id", "enum", title: "Interaction", options: ["Any", "Physical", "Programmatic"], required: true, multiple: false, defaultValue: defaultInteraction, submitOnChange: true
+                                    }
+								}                                
+                                
                             }
                         }
                     }
@@ -1539,10 +1555,10 @@ private pageSetVariable(params) {
                     def var = settings["actParam$aid#$tid-$a2"]
                     if (val || (val == 0) || !var) {
                     	def inputType = secondaryDataType == "boolean" ? "enum" : secondaryDataType
-                        input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: true, submitOnChange: true, capitalization: "none"
+                        input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: dataType != "string", submitOnChange: true, capitalization: "none"
                     }
                     if (var || !val) {
-                        input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: true, submitOnChange: true
+                        input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: dataType != "string", submitOnChange: true
                     }
                     if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
                         input "actParam$aid#$tid-$a3", "enum", options: ["seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
@@ -2529,6 +2545,7 @@ private updateCondition(condition) {
 	condition.dev = []
     condition.sdev = settings["condSubDev${condition.id}"]
     condition.attr = cleanUpAttribute(settings["condAttr${condition.id}"])
+    condition.iact = settings["condInteraction${condition.id}"]
     switch (condition.cap) {
     	case "Date & Time":
         	condition.attr = "time"
@@ -2747,9 +2764,12 @@ private updateAction(action) {
                         def i = 4
                         while (true) {
                         	//value
-	                        task.p.push([i: i, t: dataType, d: settings["actParam$id#$tid-$i"]])
+                            def val = settings["actParam$id#$tid-$i"]
+                            def var = settings["actParam$id#$tid-${i + 1}"]
+                            if ((dataType == "string") && (val == null) && (var == null)) val = ""
+	                        task.p.push([i: i, t: dataType, d: val])
                             //variable name
-	                        task.p.push([i: i + 1, t: "text", d: settings["actParam$id#$tid-${i + 1}"]])
+	                        task.p.push([i: i + 1, t: "text", d: var])
                             //variable name
 	                        task.p.push([i: i + 2, t: "text", d: settings["actParam$id#$tid-${i + 2}"]])
                             //next operation
@@ -2900,7 +2920,9 @@ private getTaskDescription(task) {
             def groupingUnit = ""
             while (true) {
             	def value = task.p[i].d
-               	def variable = value ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
+                //null strings are really blanks
+                if ((dataType == "string") && (value == null)) value = ""
+               	def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
                 def unit = (dataType == "time" ? task.p[i + 2].d : null)
                 def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null                
                 def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
@@ -3597,10 +3619,17 @@ private evaluateDeviceCondition(condition, evt) {
                 }
             }
             */
-            if (condition.trg && !ownsEvent) {
+            def interactionMatched = true
+            if (evt && condition.trg && attr.interactive) {
+                interactionMatched = (evt.physical && (condition.iact != "Programmatic")) || (!evt.physical && (condition.iact != "Physical"))
+                if (!interactionMatched) {
+                	debug "Condition evaluation interrupted due to interaction method mismatch. Event is ${evt.physical ? "physical" : "programmatic"}, expecting ${condition.iact}."
+                }
+            }
+            if ((condition.trg && !ownsEvent) || !interactionMatched) {
                 //all triggers should own the event, otherwise be false
                 deviceResult = false
-            } else {          
+            } else {       
                 def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
                 //if we have a momentary capability and the event is not owned, there's no need to evaluate the function
                 //also, if there are subdevices and the one we're looking for does not match, no need to evaluate the function either
@@ -4178,7 +4207,8 @@ private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, o
 
 /* triggers */
 private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return momentary || (oldValue != currentValue)
+	return true
+	//return momentary || (oldValue != currentValue)
 }
 
 private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -7238,7 +7268,7 @@ private formatMessage(message, params = null) {
         }
     }
     for(var in varMap) {
-    	if (var.value) {
+    	if (var.value != null) {
 			message = message.replace(var.key, "${var.value}")
         }
     }
@@ -7564,7 +7594,7 @@ private getAttributeByName(name) {
 private listCommandCategories() {
 	def categories = []
 	for(def command in commands()) {
-    	if (command.category && !(command.category in categories)) {
+    	if (command.category && command.group && !(command.category in categories)) {
         	categories.push(command.category)
         }
     }
@@ -7575,7 +7605,7 @@ private listCommandCategories() {
 private listCategoryCommands(category) {
 	def result = []
     for(def command in commands()) {
-    	if ((command.category == category) && !(command.name in result)) {
+    	if ((command.category == category) && command.group && !(command.name in result)) {
         	result.push(command)
         }
     }
@@ -7879,23 +7909,23 @@ private commands() {
         [ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set location mode",			parameters: [], ],
         [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set Smart Home Monitor status",parameters: [], ],
     	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], 	attribute: "switch",	value: "on",	],
-        [ name: "on1",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #1", 					parameters: [], 	attribute: "switch1",	value: "on",	],
-    	[ name: "on2",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #2", 					parameters: [], 	attribute: "switch2",	value: "on",	],
-    	[ name: "on3",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #3", 					parameters: [], 	attribute: "switch3",	value: "on",	],
-    	[ name: "on4",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #4", 					parameters: [], 	attribute: "switch4",	value: "on",	],
-    	[ name: "on5",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #5", 					parameters: [], 	attribute: "switch5",	value: "on",	],
-    	[ name: "on6",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #6", 					parameters: [], 	attribute: "switch6",	value: "on",	],
-    	[ name: "on7",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #7", 					parameters: [], 	attribute: "switch7",	value: "on",	],
-    	[ name: "on8",										category: "Convenience",				group: "Control [devices]",			display: "Turn on #8", 					parameters: [], 	attribute: "switch8",	value: "on",	],
+        [ name: "on1",										category: "Convenience",				group: null,						display: "Turn on #1", 					parameters: [], 	attribute: "switch1",	value: "on",	],
+    	[ name: "on2",										category: "Convenience",				group: null,						display: "Turn on #2", 					parameters: [], 	attribute: "switch2",	value: "on",	],
+    	[ name: "on3",										category: "Convenience",				group: null,						display: "Turn on #3", 					parameters: [], 	attribute: "switch3",	value: "on",	],
+    	[ name: "on4",										category: "Convenience",				group: null,						display: "Turn on #4", 					parameters: [], 	attribute: "switch4",	value: "on",	],
+    	[ name: "on5",										category: "Convenience",				group: null,						display: "Turn on #5", 					parameters: [], 	attribute: "switch5",	value: "on",	],
+    	[ name: "on6",										category: "Convenience",				group: null,						display: "Turn on #6", 					parameters: [], 	attribute: "switch6",	value: "on",	],
+    	[ name: "on7",										category: "Convenience",				group: null,						display: "Turn on #7", 					parameters: [], 	attribute: "switch7",	value: "on",	],
+    	[ name: "on8",										category: "Convenience",				group: null,						display: "Turn on #8", 					parameters: [], 	attribute: "switch8",	value: "on",	],
     	[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",					parameters: [], 	attribute: "switch",	value: "off",	],
-    	[ name: "off1",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #1",					parameters: [], 	attribute: "switch1",	value: "off",	],
-    	[ name: "off2",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #2",					parameters: [], 	attribute: "switch2",	value: "off",	],
-    	[ name: "off3",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #3",					parameters: [], 	attribute: "switch3",	value: "off",	],
-    	[ name: "off4",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #4",					parameters: [], 	attribute: "switch4",	value: "off",	],
-    	[ name: "off5",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #5",					parameters: [], 	attribute: "switch5",	value: "off",	],
-    	[ name: "off6",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #6",					parameters: [], 	attribute: "switch6",	value: "off",	],
-    	[ name: "off7",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #7",					parameters: [], 	attribute: "switch7",	value: "off",	],
-    	[ name: "off8",										category: "Convenience",				group: "Control [devices]",			display: "Turn off #8",					parameters: [], 	attribute: "switch8",	value: "off",	],
+    	[ name: "off1",										category: "Convenience",				group: null,						display: "Turn off #1",					parameters: [], 	attribute: "switch1",	value: "off",	],
+    	[ name: "off2",										category: "Convenience",				group: null,						display: "Turn off #2",					parameters: [], 	attribute: "switch2",	value: "off",	],
+    	[ name: "off3",										category: "Convenience",				group: null,						display: "Turn off #3",					parameters: [], 	attribute: "switch3",	value: "off",	],
+    	[ name: "off4",										category: "Convenience",				group: null,						display: "Turn off #4",					parameters: [], 	attribute: "switch4",	value: "off",	],
+    	[ name: "off5",										category: "Convenience",				group: null,						display: "Turn off #5",					parameters: [], 	attribute: "switch5",	value: "off",	],
+    	[ name: "off6",										category: "Convenience",				group: null,						display: "Turn off #6",					parameters: [], 	attribute: "switch6",	value: "off",	],
+    	[ name: "off7",										category: "Convenience",				group: null,						display: "Turn off #7",					parameters: [], 	attribute: "switch7",	value: "off",	],
+    	[ name: "off8",										category: "Convenience",				group: null,						display: "Turn off #8",					parameters: [], 	attribute: "switch8",	value: "off",	],
     	[ name: "toggle",									category: "Convenience",				group: null,						display: "Toggle",						parameters: [], 	],
     	[ name: "toggle1",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
     	[ name: "toggle2",									category: "Convenience",				group: null,						display: "Toggle #1",						parameters: [], ],
@@ -8075,17 +8105,17 @@ private attributes() {
     	[ name: "hex",						type: "hexcolor",			range: null,			unit: null,		options: null,																								],
     	[ name: "saturation",				type: "number",				range: "0..100",		unit: "%",		options: null,																								],
     	[ name: "level",					type: "number",				range: "0..100",		unit: "%",		options: null,																								],
-    	[ name: "switch",					type: "enum",				range: null,			unit: null,		options: ["on", "off"],																						],
-    	[ name: "switch*",					type: "enum",				range: null,			unit: null,		options: ["on", "off"],																						],
+    	[ name: "switch",					type: "enum",				range: null,			unit: null,		options: ["on", "off"],																						interactive: true,	],
+    	[ name: "switch*",					type: "enum",				range: null,			unit: null,		options: ["on", "off"],																						interactive: true,	],
     	[ name: "colorTemperature",			type: "number",				range: "2000..7000",	unit: "°K",		options: null,																								],
     	[ name: "consumable",				type: "enum",				range: null,			unit: null,		options: ["missing", "good", "replace", "maintenance_required", "order"],									],
     	[ name: "contact",					type: "enum",				range: null,			unit: null,		options: ["open", "closed"],																				],
-    	[ name: "door",						type: "enum",				range: null,			unit: null,		options: ["unknown", "closed", "open", "closing", "opening"],												],
+    	[ name: "door",						type: "enum",				range: null,			unit: null,		options: ["unknown", "closed", "open", "closing", "opening"],												interactive: true,	],
     	[ name: "energy",					type: "decimal",			range: "0..*",			unit: "kWh",	options: null,																								],
     	[ name: "energy*",					type: "decimal",			range: "0..*",			unit: "kWh",	options: null,																								],
     	[ name: "illuminance",				type: "number",				range: "0..*",			unit: "lux",	options: null,																								],
     	[ name: "image",					type: "image",				range: null,			unit: null,		options: null,																								],
-    	[ name: "lock",						type: "enum",				range: null,			unit: null,		options: ["locked", "unlocked"],																			],
+    	[ name: "lock",						type: "enum",				range: null,			unit: null,		options: ["locked", "unlocked"],																			interactive: true,	],
     	[ name: "activities",				type: "string",				range: null,			unit: null,		options: null,																								],
     	[ name: "currentActivity",			type: "string",				range: null,			unit: null,		options: null,																								],
     	[ name: "motion",					type: "enum",				range: null,			unit: null,		options: ["active", "inactive"],																			],
