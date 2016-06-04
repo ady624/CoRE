@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 6/03/2016 >>> v0.0.066.20160603 - Alpha test version - Fixed some bugs involving the "changes away from" - still keeping an eye on this though
+ *	 6/04/2016 >>> v0.0.067.20160604 - Alpha test version - Fixed some name of null object errors - a log trace was causing it. Added fadeLevel which only works for certain DTHs...
  *	 6/03/2016 >>> v0.0.065.20160603 - Alpha test version - Introducing trigger interaction method (any, physical, programmatic) for some attributes (door, lock, switch). Various other fixes.
  *	 6/03/2016 >>> v0.0.064.20160603 - Alpha test version - Introducing the Basic piston. It's... umm... basic. IF (conditions) THEN (actions). Minor bug fixes.
  *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
@@ -140,7 +140,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.066.20160603"
+	return "v0.0.067.20160604"
 }
 
 
@@ -3419,7 +3419,6 @@ private evaluateCondition(condition, evt = null) {
         //evaluates a condition
         def perf = now()  
         def result = false
-
         if (condition.children == null) {
             //we evaluate a real condition here
             //several types of conditions, device, mode, SMH, time, etc.
@@ -3428,7 +3427,6 @@ private evaluateCondition(condition, evt = null) {
             } else {
                 result = evaluateDeviceCondition(condition, evt)
             }       
-
 		} else {
             //we evaluate a group
             result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
@@ -3449,7 +3447,6 @@ private evaluateCondition(condition, evt = null) {
                 }
             }
         }
-        
         //result = postEvaluateCondition(condition, evt, result)
         //apply the NOT, if needed
         result = condition.not ? !result : result
@@ -3468,7 +3465,6 @@ private evaluateCondition(condition, evt = null) {
                 scheduleActions(condition.id)
             }
         }        
-        
         perf = now() - perf
         return result
     } catch(e) {
@@ -3509,7 +3505,6 @@ private evaluateDeviceCondition(condition, evt) {
     def devices = settings["condDevices${condition.id}"]
     def eventDeviceId = evt ? evt.deviceId : null
     def virtualCurrentValue = null
-    log.trace "Event ID is $eventDeviceId, $evt.name, $evt.device, $evt.value"
     if (eventDeviceId == null) {
         switch (condition.cap) {
             case "Mode":
@@ -3727,8 +3722,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                 //we have a time event returning as a result of a trigger, assume true
                 return true
             } else {
-
-
                 if (comparison.contains("stay")) {
                     //we have a stay condition
                 }
@@ -3738,6 +3731,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
     }
 
 	def time = adjustTime(unixTime)
+    log.here "d"
 
 	//check comparison
     def result = true
@@ -5325,6 +5319,23 @@ private task_vcmd_delayedOff(device, action, task, suffix = "") {
     }
     def delay = params[0].d
    	device."off$suffix"([delay: delay])
+    return true
+}
+
+private task_vcmd_fadeLevel(device, action, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 2)) {
+    	return false
+    }
+    def level = cast(params[0].d, params[1].t)
+    def duration = cast(params[1].d, params[1].t)
+    //we're trying with a delay, not all devices support this
+    try {
+    	device."setLevel$suffix"(level, duration)
+    } catch(all) {
+    	//if not supported, we fallback onto the normal setLevel
+		device."setLevel$suffix"(level)
+    }
     return true
 }
 
@@ -8077,7 +8088,8 @@ private virtualCommands() {
     	[ name: "delayedToggle#6",		requires: ["on6", "off6"], 			display: "Toggle #6 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #6 after {0}ms",	],
     	[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
     	[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
-    	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",	],
+    	[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
+    	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",		],
     	[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#2",				requires: ["on2", "off2"], 			display: "Flash #2",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #2 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#3",				requires: ["on3", "off3"], 			display: "Flash #3",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #3 {0}ms/{1}ms for {2} time(s)",	],
