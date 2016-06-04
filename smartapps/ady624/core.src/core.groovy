@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/03/2016 >>> v0.0.066.20160603 - Alpha test version - Fixed some bugs involving the "changes away from" - still keeping an eye on this though
  *	 6/03/2016 >>> v0.0.065.20160603 - Alpha test version - Introducing trigger interaction method (any, physical, programmatic) for some attributes (door, lock, switch). Various other fixes.
  *	 6/03/2016 >>> v0.0.064.20160603 - Alpha test version - Introducing the Basic piston. It's... umm... basic. IF (conditions) THEN (actions). Minor bug fixes.
  *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
@@ -139,7 +140,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.065.20160603"
+	return "v0.0.066.20160603"
 }
 
 
@@ -993,7 +994,7 @@ def pageCondition(params) {
                                     }
                                 }
                                 
-								if (trigger) {                                
+								if (trigger && attr.interactive) {                                
                                     //Interaction
                                     def interaction = settings["condInteraction$id"]
                                     def defaultInteraction = "Any"
@@ -3427,7 +3428,8 @@ private evaluateCondition(condition, evt = null) {
             } else {
                 result = evaluateDeviceCondition(condition, evt)
             }       
-        } else {
+
+		} else {
             //we evaluate a group
             result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
             for (child in condition.children.sort { it.id }) {
@@ -3447,7 +3449,8 @@ private evaluateCondition(condition, evt = null) {
                 }
             }
         }
-
+        
+        //result = postEvaluateCondition(condition, evt, result)
         //apply the NOT, if needed
         result = condition.not ? !result : result
         condition.eval = result
@@ -3465,13 +3468,34 @@ private evaluateCondition(condition, evt = null) {
                 scheduleActions(condition.id)
             }
         }        
-
+        
         perf = now() - perf
         return result
     } catch(e) {
     	debug "ERROR: Error evaluating condition: $e", null, "error"
     }
     return false
+}
+
+private postEvaluateCondition(condition, evt, result) {
+    //apply the NOT, if needed
+    result = condition.not ? !result : result
+    condition.eval = result
+
+    //store variables (only if evt is available, i.e. not simulating)
+    if (evt) {
+        if (condition.vd) setVariable(condition.vd, now())
+        if (condition.vs) setVariable(condition.vs, result)
+        if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
+        if (condition.vv && result) setVariable(condition.vv, evt.value)
+        if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
+        if (condition.vw && !result) setVariable(condition.vw, evt.value)
+
+        if (result) {
+            scheduleActions(condition.id)
+        }
+    }        
+	return result
 }
 
 private evaluateDeviceCondition(condition, evt) {
@@ -3485,30 +3509,32 @@ private evaluateDeviceCondition(condition, evt) {
     def devices = settings["condDevices${condition.id}"]
     def eventDeviceId = evt ? evt.deviceId : null
     def virtualCurrentValue = null
-    switch (condition.cap) {
-    	case "Mode":
-    	case "Location Mode":
-        	devices = [location]
-            virtualCurrentValue = location.mode
-            eventDeviceId = location.id
-            break
-        case "Smart Home Monitor":
-        	devices = [location]
-            virtualCurrentValue = getAlarmSystemStatus()
-            eventDeviceId = location.id
-        	break    	
-        case "Routine":
-        	devices = [location]
-            virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
-            eventDeviceId = location.id
-        	break    	
-        case "Variable":
-        	devices = [location]
-            virtualCurrentValue = getVariable(condition.var)
-            eventDeviceId = location.id
-        	break    	
-    }
-    
+    log.trace "Event ID is $eventDeviceId, $evt.name, $evt.device, $evt.value"
+    if (eventDeviceId == null) {
+        switch (condition.cap) {
+            case "Mode":
+            case "Location Mode":
+                devices = [location]
+                virtualCurrentValue = location.mode
+                eventDeviceId = location.id
+                break
+            case "Smart Home Monitor":
+                devices = [location]
+                virtualCurrentValue = getAlarmSystemStatus()
+                eventDeviceId = location.id
+                break    	
+            case "Routine":
+                devices = [location]
+                virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
+                eventDeviceId = location.id
+                break    	
+            case "Variable":
+                devices = [location]
+                virtualCurrentValue = getVariable(condition.var)
+                eventDeviceId = location.id
+                break    	
+        }
+	}    
     if (!devices) {
         //something went wrong
         return false    	
@@ -3570,7 +3596,7 @@ private evaluateDeviceCondition(condition, evt) {
 			def type = attr.name == "variable" ? (condition.dt ? condition.dt : attr.type) : attr.type
             //if we're dealing with an owned event, use that event's value
             //if we're dealing with a virtual device, get the virtual value
-            currentValue = cast(evt && ownsEvent ? evt.value : (virtualCurrentValue ? virtualCurrentValue : device.currentValue(condition.attr)), type)
+            currentValue = cast(virtualCurrentValue ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(condition.attr)), type)
 			def value1
             def offset1
 			def value2
@@ -4212,23 +4238,19 @@ private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, 
 }
 
 private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return (momentary || !eval_cond_is_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
-    		eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return (momentary || !eval_cond_is_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
-    		eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return (momentary || !eval_cond_is_not_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
-    		eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return (momentary || !eval_cond_is_not_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)) &&
-    		eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -7214,8 +7236,8 @@ private getDeviceLabel(device) {
 	return device instanceof String ? device : (device ? ( device.label ? device.label : (device.name ? device.name : "$device")) : "Unknown device")
 }
 
-private getAlarmSystemStatus() {
-	switch (location.currentState("alarmSystemStatus")?.value) {
+private getAlarmSystemStatus(value) {
+	switch (value ? value : location.currentState("alarmSystemStatus")?.value) {
     	case "off":
         	return getAlarmSystemStatusOptions()[0]
     	case "stay":
