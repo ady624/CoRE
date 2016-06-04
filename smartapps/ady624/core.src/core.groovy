@@ -17,8 +17,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 6/04/2016 >>> v0.0.06a.20160604 - Alpha test version - Finally found out the Cast error and why location changes away from did not work... fixed.
- *	 6/04/2016 >>> v0.0.069.20160604 - Alpha test version - Fixed a bug where converting a task from a standard command to a custom command may stop the action from displaying.
+ *	 6/04/2016 >>> v0.0.06b.20160604 - Alpha test version - Screwed up the location events - fixed them now...
+ *	 6/04/2016 >>> v0.0.06a.20160604 - Alpha test version - Finally found out the Cast error and why location changes away from did not work... fixed. *	 6/04/2016 >>> v0.0.069.20160604 - Alpha test version - Fixed a bug where converting a task from a standard command to a custom command may stop the action from displaying.
  *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Apparently, log.here does not exist.
  *	 6/04/2016 >>> v0.0.067.20160604 - Alpha test version - Fixed some name of null object errors - a log trace was causing it. Added fadeLevel which only works for certain DTHs...
  *	 6/03/2016 >>> v0.0.066.20160603 - Alpha test version - Fixed some bugs involving the "changes away from" - still keeping an eye on this though
@@ -144,7 +144,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.06a.20160604"
+	return "v0.0.06b.20160604"
 }
 
 
@@ -3390,8 +3390,6 @@ private checkEventEligibility(condition, evt) {
 private evaluateConditionSet(evt, primary, force = false) {
 	//executes whenever a device in the primary or secondary if block has an event
     def perf = now()
-    def pushNote = null
-    
     //debug "Event received by the ${primary ? "primary" : "secondary"} IF block evaluation for device ${evt.device}, attribute ${evt.name}='${evt.value}', isStateChange=${evt.isStateChange()}, currentValue=${evt.device.currentValue(evt.name)}, determining eligibility"
     //check for triggers - if the primary IF block has triggers and the event is not related to any trigger
     //then we don't want to evaluate anything, as only triggers should be executed
@@ -3405,15 +3403,10 @@ private evaluateConditionSet(evt, primary, force = false) {
     }
     if (eligibilityStatus > 0) {
         evaluation = evaluateCondition(primary ? app.conditions: app.otherConditions, evt)
-        //log.info "${primary ? "PRIMARY" : "SECONDARY"} EVALUATION IS $evaluation\n${getConditionDescription(primary ? 0 : -1)}\n"
-        //pushNote = "${evt.device}.${evt.name} >>> ${evt.value}\n${primary ? "primary" : "secondary"} evaluation result: $evaluation\n\n${getConditionDescription(primary ? 0 : -1)}\n\nEvent received after ${perf - evt.date.getTime()}ms\n"
     } else {
     	//ignore the event
     }
     perf = now() - perf
-	//if (pushNote) {
-    	//sendPush(pushNote + "Event processed in ${perf}ms")
-    //}
     if (evaluation != null) {
     	if (primary) {
         	app.conditions.eval = evaluation
@@ -3513,33 +3506,28 @@ private evaluateDeviceCondition(condition, evt) {
     
     //get list of devices
     def devices = settings["condDevices${condition.id}"]
-    def eventDeviceId = evt ? evt.deviceId : null
+    def eventDeviceId = evt && evt.deviceId ? evt.deviceId : location.id
     def virtualCurrentValue = null
-    if (eventDeviceId == null) {
-        switch (condition.cap) {
-            case "Mode":
-            case "Location Mode":
-                devices = [location]
-                virtualCurrentValue = location.mode
-                eventDeviceId = location.id
-                break
-            case "Smart Home Monitor":
-                devices = [location]
-                virtualCurrentValue = getAlarmSystemStatus()
-                eventDeviceId = location.id
-                break    	
-            case "Routine":
-                devices = [location]
-                virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
-                eventDeviceId = location.id
-                break    	
-            case "Variable":
-                devices = [location]
-                virtualCurrentValue = getVariable(condition.var)
-                eventDeviceId = location.id
-                break    	
-        }
-	}    
+    log.trace "Event device id is $eventDeviceId"
+    switch (condition.cap) {
+        case "Mode":
+        case "Location Mode":
+        devices = [location]
+        virtualCurrentValue = location.mode
+        break
+        case "Smart Home Monitor":
+        devices = [location]
+        virtualCurrentValue = getAlarmSystemStatus()
+        break    	
+        case "Routine":
+        devices = [location]
+        virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
+        break    	
+        case "Variable":
+        devices = [location]
+        virtualCurrentValue = getVariable(condition.var)
+        break    	
+    }
     if (!devices) {
         //something went wrong
         return false    	
