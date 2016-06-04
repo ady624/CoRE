@@ -17,7 +17,9 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Aparently, log.here does not exist. Try log.trace "here" :)
  *	 6/04/2016 >>> v0.0.067.20160604 - Alpha test version - Fixed some name of null object errors - a log trace was causing it. Added fadeLevel which only works for certain DTHs...
+ *	 6/03/2016 >>> v0.0.066.20160603 - Alpha test version - Fixed some bugs involving the "changes away from" - still keeping an eye on this though
  *	 6/03/2016 >>> v0.0.065.20160603 - Alpha test version - Introducing trigger interaction method (any, physical, programmatic) for some attributes (door, lock, switch). Various other fixes.
  *	 6/03/2016 >>> v0.0.064.20160603 - Alpha test version - Introducing the Basic piston. It's... umm... basic. IF (conditions) THEN (actions). Minor bug fixes.
  *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
@@ -140,7 +142,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.067.20160604"
+	return "v0.0.068.20160604"
 }
 
 
@@ -3642,7 +3644,12 @@ private evaluateDeviceCondition(condition, evt) {
             */
             def interactionMatched = true
             if (evt && condition.trg && attr.interactive) {
-                interactionMatched = (evt.physical && (condition.iact != "Programmatic")) || (!evt.physical && (condition.iact != "Physical"))
+            	def physical = false
+            	try {
+	            	physical = !!evt.physical
+                } catch (all) {
+                }
+                interactionMatched = (physical && (condition.iact != "Programmatic")) || (!physical && (condition.iact != "Physical"))
                 if (!interactionMatched) {
                 	debug "Condition evaluation interrupted due to interaction method mismatch. Event is ${evt.physical ? "physical" : "programmatic"}, expecting ${condition.iact}."
                 }
@@ -3731,7 +3738,6 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
     }
 
 	def time = adjustTime(unixTime)
-    log.here "d"
 
 	//check comparison
     def result = true
