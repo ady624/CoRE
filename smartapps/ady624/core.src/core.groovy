@@ -17,7 +17,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Aparently, log.here does not exist. Try log.trace "here" :)
+ *	 6/04/2016 >>> v0.0.069.20160604 - Alpha test version - Fixed a bug where converting a task from a standard command to a custom command may stop the action from displaying.
+ *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Apparently, log.here does not exist.
  *	 6/04/2016 >>> v0.0.067.20160604 - Alpha test version - Fixed some name of null object errors - a log trace was causing it. Added fadeLevel which only works for certain DTHs...
  *	 6/03/2016 >>> v0.0.066.20160603 - Alpha test version - Fixed some bugs involving the "changes away from" - still keeping an eye on this though
  *	 6/03/2016 >>> v0.0.065.20160603 - Alpha test version - Introducing trigger interaction method (any, physical, programmatic) for some attributes (door, lock, switch). Various other fixes.
@@ -142,7 +143,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.068.20160604"
+	return "v0.0.069.20160604"
 }
 
 
@@ -1425,6 +1426,9 @@ def pageAction(params) {
                                     def i = (int) 1
                                     while (true) {
                                     	def type = settings["actParam$id#$tid-$i"]
+                                        if (type && (!(type instanceof String) || !(type in ["boolean", "decimal", "number", "string"]))) {
+                                        	type = "string"
+                                        }
                                         def j = (int) Math.floor((i - 1)/2) + 1
                                         input "actParam$id#$tid-$i", "enum", options: ["boolean", "decimal", "number", "string"], title: type ? "Parameter #$j type" : "Add a parameter", required: false, submitOnChange: true, multiple: false
                                         if (!type) break
