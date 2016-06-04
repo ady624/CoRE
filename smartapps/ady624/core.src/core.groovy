@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/04/2016 >>> v0.0.06a.20160604 - Alpha test version - Finally found out the Cast error and why location changes away from did not work... fixed.
  *	 6/04/2016 >>> v0.0.069.20160604 - Alpha test version - Fixed a bug where converting a task from a standard command to a custom command may stop the action from displaying.
  *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Apparently, log.here does not exist.
  *	 6/04/2016 >>> v0.0.067.20160604 - Alpha test version - Fixed some name of null object errors - a log trace was causing it. Added fadeLevel which only works for certain DTHs...
@@ -143,7 +144,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.069.20160604"
+	return "v0.0.06a.20160604"
 }
 
 
@@ -1388,6 +1389,8 @@ def pageAction(params) {
                                                     input "actParam$id#$tid-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "attributes") {
                                                     input "actParam$id#$tid-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else if (param.type == "contacts") {
+                                                    input "actParam$id#$tid-$i", "contact",  title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "variable") {
                                                     input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "variables") {
@@ -3163,9 +3166,10 @@ private broadcastEvent(evt, primary, secondary) {
     if (evt.deviceId != "time") {
     	def cache = atomicState.cache
         cache = cache ? cache : [:]
-    	def cachedValue = cache[evt.deviceId + '-' + evt.name]
+        def deviceId = evt.deviceId ? evt.deviceId : location.id
+    	def cachedValue = cache[deviceId + '-' + evt.name]
     	def eventTime = evt.date.getTime()
-		cache[evt.deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, t: eventTime ]
+		cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, t: eventTime ]
     	atomicState.cache = cache
         state.cache = cache
 		if (cachedValue) {
@@ -3597,12 +3601,13 @@ private evaluateDeviceCondition(condition, evt) {
 			def type = attr.name == "variable" ? (condition.dt ? condition.dt : attr.type) : attr.type
             //if we're dealing with an owned event, use that event's value
             //if we're dealing with a virtual device, get the virtual value
+
+        	oldValue = cast(oldValue, type)
             currentValue = cast(virtualCurrentValue ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(condition.attr)), type)
 			def value1
             def offset1
 			def value2
             def offset2
-            
 			if (comp.parameters > 0) {
             	value1 = cast(condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr1 ? condition.attr1 : condition.attr) : condition.val1), type)
             	offset1 = cast(condition.var1 || condition.dev1 ? condition.o1 : 0, type)
@@ -3611,7 +3616,6 @@ private evaluateDeviceCondition(condition, evt) {
                     offset2 = cast(condition.var1 || condition.dev1 ? condition.o2 : 0, type)
                 }
             }
-            
             switch (type) {
             	case "number":
                 case "decimal":
@@ -4242,19 +4246,23 @@ private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, 
 }
 
 private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return	eval_cond_is_not_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+			eval_cond_is_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return 	eval_cond_is_not_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+			eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return	eval_cond_is_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+			eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
-	return eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	return	eval_cond_is_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
+			eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -5977,7 +5985,7 @@ private cast(value, dataType) {
             	if (value.isInteger())
                 	return value.toInteger()
             	if (value.isFloat())
-                	return (int) Math.round(value.toFloat())
+                	return (int) Math.floor(value.toFloat())
                 if (value in trueStrings)
                 	return (int) 1
             }
@@ -5985,6 +5993,7 @@ private cast(value, dataType) {
             try {
             	result = (int) value
             } catch(all) {
+            	result = (int) 0
             }
             return result ? result : (int) 0
         case "long":
@@ -6901,7 +6910,7 @@ private getConditionDescription(id, level = 0) {
                         break
                     case 1:
                     	def o1 = condition.o1 ? (condition.o1 < 0 ? " - " : " + ") + condition.o1.abs() : ""
-                    	values = " ${(condition.var1 ? "{" + condition.var1 + o1 + "}$unit" : (condition.dev1 ? "{[" + condition.dev1 + "'s ${condition.attr1 ? condition.attr1 : attr.name}]" + o1 + "}$unit" : condition.val1 + unit))}"
+                    	values = " ${(condition.var1 ? "{" + condition.var1 + o1 + "}$unit" : (condition.dev1 ? "{[" + condition.dev1 + "'s ${condition.attr1 ? condition.attr1 : attr.name}]" + o1 + "}$unit" : (comparison.contains("one of") ? '[ ' + buildNameList(condition.val1, "or") + " ]" : condition.val1) + unit))}"
                         break
                     case 2:
                     	def o1 = condition.o1 ? (condition.o1 < 0 ? " - " : " + ") + condition.o1.abs() : ""
@@ -7791,7 +7800,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["attribute", "attributes", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
+    if (dataType in ["attribute", "attributes", "contacts", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -8119,10 +8128,10 @@ private virtualCommands() {
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state from global store",	parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from global store",													],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to '{0}'",			aggregated: true,	],
-    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}'",			aggregated: true,	],
-    	//[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contact","Save notification:bool"],																		location: true,	],
-    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Save notification:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
-    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Save notification:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
+    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Show notification '{0}' in notifications page",			aggregated: true,	],
+//    	[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,																aggregated: true,	],
+    	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Show in notifications page:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
+    	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Show in notifications page:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
     	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
         [ name: "cancelPendingTasks",	requires: [],			 			display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
         [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
