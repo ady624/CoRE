@@ -17,6 +17,8 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/05/2016 >>> v0.0.06d.20160605 - Alpha test version - Variable triggers should now work - you can trigger on a global variable change (other pistons can change the global variable too, you'll get a trigger)
+ *	 6/04/2016 >>> v0.0.06c.20160604 - Alpha test version - Added more multimedia commands like playTextAndRestore, playTextAndResume, etc.
  *	 6/04/2016 >>> v0.0.06b.20160604 - Alpha test version - Screwed up the location events - fixed them now...
  *	 6/04/2016 >>> v0.0.06a.20160604 - Alpha test version - Finally found out the Cast error and why location changes away from did not work... fixed. *	 6/04/2016 >>> v0.0.069.20160604 - Alpha test version - Fixed a bug where converting a task from a standard command to a custom command may stop the action from displaying.
  *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Apparently, log.here does not exist.
@@ -144,7 +146,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.06b.20160604"
+	return "v0.0.06d.20160605"
 }
 
 
@@ -1896,7 +1898,15 @@ def setVariable(name, value, system = false) {
             }
         } else {
 	    	debug "Storing variable $name with value $value"
-			state.store[name] = value
+            if (!parent) {
+            	def oldValue = state.store[name]
+				state.store[name] = value
+                if (oldValue != value) {
+                	sendLocationEvent(name: "variable", value: name, displayed: true, isStateChange: true, descriptionText: "CoRE variable $name changed from '$oldValue' to '$value'", data: [oldValue: oldValue, value: value])
+                }                
+            } else {
+				state.store[name] = value
+            }
     	}
     }
     //TODO: date&time triggers based on variables being changed need to be reevaluated
@@ -1955,7 +1965,7 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
             }
         }
     }
-    if (listSystem) {
+    if (parent && listSystem) {
         for (variable in state.systemStore) {
         	if (!dataType || testDataType(variable.value, dataType)) {
 	            systemResult.push(variable.key)
@@ -2594,7 +2604,7 @@ private updateCondition(condition) {
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
     condition.var = settings["condVar${condition.id}"]
     condition.dt = settings["condDataType${condition.id}"]
-    condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp)
+    condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp, condition.attr == "variable" ? condition.dt : null)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
     condition.var1 = settings["condVar${condition.id}#1"]
     condition.dev1 = condition.var1 ? null : settings["condDev${condition.id}#1"] ? getDeviceLabel(settings["condDev${condition.id}#1"]) : null
@@ -3080,6 +3090,9 @@ private entryPoint() {
 }
 
 private exitPoint(milliseconds) {
+
+    def appData = state.run == "config" ? state.config.app : state.app
+
 	def runStats = atomicState.runStats
 	if (runStats == null) {
     	runStats = [:]
@@ -3103,8 +3116,6 @@ private exitPoint(milliseconds) {
 	parent.updateChart("exec", milliseconds)
     atomicState.runStats = runStats
    
-
-
 	//save all atomic states to state
     //to avoid race conditions
 	state.cache = atomicState.cache
@@ -3112,6 +3123,9 @@ private exitPoint(milliseconds) {
     state.runStats = atomicState.runStats   
     state.temp = null
     state.sim = null
+    
+    sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, isStateChange: true, descriptionText: "CoRE ${appData.mode} Piston '${app.label}' has executed in ${milliseconds}ms", data: [state: state, executionTime: milliseconds, event: lastEvent])
+    
 }
 
 
@@ -3508,32 +3522,36 @@ private evaluateDeviceCondition(condition, evt) {
     def devices = settings["condDevices${condition.id}"]
     def eventDeviceId = evt && evt.deviceId ? evt.deviceId : location.id
     def virtualCurrentValue = null
-    log.trace "Event device id is $eventDeviceId"
+    def attribute = condition.attr
     switch (condition.cap) {
         case "Mode":
         case "Location Mode":
-        devices = [location]
-        virtualCurrentValue = location.mode
-        break
+	        devices = [location]
+    	    virtualCurrentValue = location.mode
+            attribute = "mode"
+        	break
         case "Smart Home Monitor":
-        devices = [location]
-        virtualCurrentValue = getAlarmSystemStatus()
-        break    	
+        	devices = [location]
+        	virtualCurrentValue = getAlarmSystemStatus()
+	        virtualCapability = true
+        	attribute = "alarmSystemStatus"
+        	break    	
         case "Routine":
-        devices = [location]
-        virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
-        break    	
+        	devices = [location]
+        	virtualCurrentValue = evt ? evt.displayName : "<<<unknown routine>>>"
+        	attribute = "routine"
+        	break    	
         case "Variable":
-        devices = [location]
-        virtualCurrentValue = getVariable(condition.var)
-        break    	
+        	devices = [location]
+        	virtualCurrentValue = getVariable(condition.var)
+        	attribute = "variable"
+        	break    	
     }
     if (!devices) {
         //something went wrong
         return false    	
     }
-    
-	def attr = getAttributeByName(condition.attr)
+	def attr = getAttributeByName(attribute)
     //get capability if the attribute suggests one
     def capability = attr && attr.capability ? getCapabilityByName(attr.capability) : null
     
@@ -3570,17 +3588,17 @@ private evaluateDeviceCondition(condition, evt) {
     def vn = []
     //the real deal goes here
     for (device in devices) {
-        def comp = getComparisonOption(condition.attr, condition.comp, (condition.attr == "variable" ? condition.dt : null))
+        def comp = getComparisonOption(attribute, condition.comp, (attribute == "variable" ? condition.dt : null))
         if (comp) {
             //if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
             def deviceResult = false
-            def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == condition.attr)
+            def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == attribute)
             def oldValue = null
             def oldValueSince = null
-            if (evt) {
+            if (evt && !(attribute in ["variable", "piston", "routine"])) {
                 def cache = atomicState.cache
                 cache = cache ? cache : [:]
-                def cachedValue = cache[device.id + "-" + condition.attr]
+                def cachedValue = cache[device.id + "-" + attribute]
                 if (cachedValue) {
                     oldValue = cachedValue.o
                     oldValueSince = cachedValue.t
@@ -3591,16 +3609,16 @@ private evaluateDeviceCondition(condition, evt) {
             //if we're dealing with a virtual device, get the virtual value
 
         	oldValue = cast(oldValue, type)
-            currentValue = cast(virtualCurrentValue ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(condition.attr)), type)
+            currentValue = cast(virtualCurrentValue != null ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(attribute)), type)
 			def value1
             def offset1
 			def value2
             def offset2
 			if (comp.parameters > 0) {
-            	value1 = cast(condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr1 ? condition.attr1 : condition.attr) : condition.val1), type)
+            	value1 = cast(condition.var1 ? getVariable(condition.var1) : (condition.dev1 && settings["condDev${condition.id}#1"] ? settings["condDev${condition.id}#1"].currentValue(condition.attr1 ? condition.attr1 : attribute) : condition.val1), type)
             	offset1 = cast(condition.var1 || condition.dev1 ? condition.o1 : 0, type)
                 if (comp.parameters > 1) {
-                    value2 = cast(condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr2 ? condition.attr2 : condition.attr) : condition.val2), type)
+                    value2 = cast(condition.var2 ? getVariable(condition.var2) : (condition.dev2 && settings["condDev${condition.id}#2"] ? settings["condDev${condition.id}#2"].currentValue(condition.attr2 ? condition.attr2 : attribute) : condition.val2), type)
                     offset2 = cast(condition.var1 || condition.dev1 ? condition.o2 : 0, type)
                 }
             }
@@ -3659,12 +3677,12 @@ private evaluateDeviceCondition(condition, evt) {
                 //also, if there are subdevices and the one we're looking for does not match, no need to evaluate the function either
                 if ((momentary && !ownsEvent) || (hasSubDevices && !matchesSubDevice)) {
                     deviceResult = false
-                    def msg = "${deviceResult ? "♣" : "♠"} Evaluation for ${momentary ? "momentary " : ""}$device's ${condition.attr} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
+                    def msg = "${deviceResult ? "♣" : "♠"} Evaluation for ${momentary ? "momentary " : ""}$device's ${attribute} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
                     if (state.sim) state.sim.evals.push(msg)
 					debug msg
                 } else {
-                    deviceResult = "$function"(condition, device, condition.attr, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt, momentary, type)
-                    def msg = "${deviceResult ? "♣" : "♠"} Function $function for $device's ${condition.attr} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
+                    deviceResult = "$function"(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, ownsEvent ? evt : null, evt, momentary, type)
+                    def msg = "${deviceResult ? "♣" : "♠"} Function $function for $device's ${attribute} [$currentValue] ${condition.comp} '$value1${comp.parameters == 2 ? " - $value2" : ""}' returned $deviceResult"
                     if (state.sim) state.sim.evals.push(msg)
                     debug msg
                 }
@@ -6878,15 +6896,18 @@ private getConditionDescription(id, level = 0) {
         if (virtualDevice || (devices && devices.size())) {
             def evaluation = (virtualDevice ? "" : (devices.size() > 1 ? (condition.mode == "All" ? "Each of " : "Any of ") : ""))
             def deviceList = (virtualDevice ? (capability.virtualDeviceName ? capability.virtualDeviceName : virtualDevice.name) : buildDeviceNameList(devices, "or")) + " "
-            if (condition.attr == "variable") {
+            def attr
+            if (virtualDevice) {
             	deviceList = "Variable ${condition.var ? "{${condition.var}} " : ""} (as ${condition.dt}) "
+	            attr = getAttributeByName(capability.attribute)
+            } else {
+	            attr = getAttributeByName(condition.attr)
             }
-	        def attribute = condition.attr + " "
-            def attr = getAttributeByName(condition.attr)
+	        def attribute = attr.name + " "
             def unit = (attr && attr.unit ? attr.unit : "")
             def comparison = cleanUpComparison(condition.comp)
             //override comparison option type if we're dealing with a variable - take the variable's data type
-            def comp = getComparisonOption(condition.attr, comparison, condition.attr == "variable" ? condition.dt : null)
+            def comp = getComparisonOption(condition.attr, comparison, attr.name == "variable" ? condition.dt : null)
             def subDevices = capability.count && attr && (attr.name == capability.attribute) ? buildNameList(condition.sdev, "or") + " " : ""
             def values = " [ERROR]"
             def time = ""
@@ -7389,10 +7410,10 @@ private getComparisonOption(attributeName, comparisonOption, overrideAttributeTy
 }
 
 //returns true if the comparisonOption selected for the given attribute is a trigger-type condition
-private isComparisonOptionTrigger(attributeName, comparisonOption) {
+private isComparisonOptionTrigger(attributeName, comparisonOption, overrideAttributeType = null) {
     def attribute = getAttributeByName(attributeName)
     if (attribute) {
-		def attributeType = attribute.type
+		def attributeType = overrideAttributeType ? overrideAttributeType : (attributeName == "variable" ? "variable" : attribute.type)
         for (comparison in comparisons()) {
             if (comparison.type == attributeType) {
                 for (option in comparison.options) {
@@ -7996,8 +8017,8 @@ private commands() {
     	[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					parameters: [], attribute: "thermostatMode",	value: "cool",	],
     	[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					parameters: [], attribute: "thermostatMode",	value: "auto",	],
     	[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		parameters: [], attribute: "thermostatMode",	value: "emergencyHeat",	],
-    	[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
-    	[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
+    	[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
+    	[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
     	[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "thermostatHeatingSetpoint",	value: "*|decimal",	],
     	[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	attribute: "thermostatCoolingSetpoint",	value: "*|decimal",	],
     	[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	attribute: "thermostatMode",	value: "*|string",	],
@@ -8014,8 +8035,14 @@ private commands() {
     	[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",						parameters: [], ],
 		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], description: "Set volume to {0}%",	],
     	[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], description: "Speak text \"{0}\"", ],
-    	[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: [], ],
+    	[ name: "playTextAndRestore",						category: "Entertainment",				group: "Control [devices]",			display: "Speak text and restore",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and restore", ],
+    	[ name: "playTextAndResume",						category: "Entertainment",				group: "Control [devices]",			display: "Speak text and resume",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and resume", ],
+    	[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: ["Track URI:string"],				description: "Play track \"{0}\"",	],
+    	[ name: "playTrackAtVolume",						category: "Entertainment",				group: "Control [devices]",			display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
+    	[ name: "playTrackAndRestore",						category: "Entertainment",				group: "Control [devices]",			display: "Play track and restore",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
+    	[ name: "playTrackAndResume",						category: "Entertainment",				group: "Control [devices]",			display: "Play track and resume",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
     	[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			display: "Set track",					parameters: [], ],
+    	[ name: "setLocalLevel",							category: "Entertainment",				group: "Control [devices]",			display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
     	[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				parameters: [], ],
     	[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				parameters: [], ],
     	[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], description: "Speak \"{0}\"", ],
