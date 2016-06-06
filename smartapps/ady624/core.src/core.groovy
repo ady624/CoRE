@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 6/06/2016 >>> v0.0.06f.20160606 - Alpha test version - Stays triggers, take one. Renamed Load/Save state to/from local/global store with Capture/Restore. Users may need to revisit and save tasks that use the capture/restore...
+ *	 6/06/2016 >>> v0.0.070.20160606 - Alpha test version - Date & Time gets comparisons against variables. Time of variable picks up the time from the variable and compares it just like any ther options (sunset, sunrise, etc.). Date and time of variable works completely different. It actually uses the date of the variable in the comparison, so one can delay things any number of days/months etc. and have the trigger happen then.
  *	 6/06/2016 >>> v0.0.06e.20160606 - Alpha test version - Added "Ask Alexa Macro" and "Piston" capabilities. Minor fixes for condition descriptions and event authorization/eligibility.
  *	 6/05/2016 >>> v0.0.06d.20160605 - Alpha test version - Variable triggers should now work - you can trigger on a global variable change (other pistons can change the global variable too, you'll get a trigger)
  *	 6/04/2016 >>> v0.0.06c.20160604 - Alpha test version - Added more multimedia commands like playTextAndRestore, playTextAndResume, etc.
@@ -148,7 +148,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.06f.20160606"
+	return "v0.0.070.20160606"
 }
 
 
@@ -795,7 +795,7 @@ def pageCondition(params) {
                                             showDateTimeFilter = comp.parameters == 0
                                             for (def i = 1; i <= comp.parameters; i++) {
                                                 input "condValue$id#$i", "enum", title: (comp.parameters == 1 ? "Value" : (i == 1 ? "Time" : "And")), options: timeComparisonOptionValues(trigger), required: true, multiple: false, submitOnChange: true
-                                                def value = settings["condValue$id#$i"]
+                                                def value = settings["condValue$id#$i"] ? "${settings["condValue$id#$i"]}" : ""
                                                 if (value) {
                                                     showDateTimeFilter = true
                                                     if (value.contains("custom")) {
@@ -807,12 +807,16 @@ def pageCondition(params) {
                                                         def var = settings["condVar$id#$i"]
                                                         input "condVar$id#$i", "enum", options: varList, title: "Variable${ var ? " [${getVariable(var, true)}]" : ""}", required: true, multiple: false, submitOnChange: true
                                                     }
-                                                    if (comparison.contains("around") || !(value.contains('every') || value.contains('custom'))) {
+                                                    if (comparison && value && ((comparison.contains("around") || !(value.contains('every') || value.contains('custom'))))) {
                                                         //using a time offset
                                                         input "condOffset$id#$i", "number", title: (comparison.contains("around") ? "Give or take minutes" : "Offset (+/- minutes)"), range: (comparison.contains("around") ? "1..360" : "-360..360"), required: true, multiple: false, defaultValue: (comparison.contains("around") ?  5 : 0), submitOnChange: true
                                                     }
 
                                                     if (value.contains("minute")) {
+                                                        recurring = true
+                                                    }
+
+                                                    if (value.contains("date and time")) {
                                                         recurring = true
                                                     }
 
@@ -1010,14 +1014,20 @@ def pageCondition(params) {
                     if (condition.attr == "time") {
                         def v = ""
                         def nextTime = null
+                        def lastTime = null
                         for (def i = 0; i < (condition.trg ? 3 : 1); i++) {
                             nextTime = condition.trg ? getNextTimeTriggerTime(condition, nextTime) : getNextTimeConditionTime(condition, nextTime)
                             if (nextTime) {
+                            	if (lastTime && nextTime && (nextTime - lastTime < 5000)) {
+                                	break
+                                }
+                                lastTime = nextTime
                                 v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
                             } else {
                                 break
                             }
                         }
+
                         paragraph v ? v : "(not happening any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
                     }
                 }
@@ -2565,11 +2575,11 @@ private updateCondition(condition) {
     condition.var1 = settings["condVar${condition.id}#1"]
     condition.dev1 = condition.var1 ? null : settings["condDev${condition.id}#1"] ? getDeviceLabel(settings["condDev${condition.id}#1"]) : null
     condition.attr1 = condition.var1 ? null : settings["condAttr${condition.id}#1"] ? getDeviceLabel(settings["condAttr${condition.id}#1"]) : null
-    condition.val1 = condition.var1  || condition.dev1 ? null : settings["condValue${condition.id}#1"]
+    condition.val1 = (condition.attr != "time") && (condition.var1 || condition.dev1) ? null : settings["condValue${condition.id}#1"]
     condition.var2 = settings["condVar${condition.id}#2"]
     condition.dev2 = condition.var2 ? null : settings["condDev${condition.id}#2"] ? getDeviceLabel(settings["condDev${condition.id}#2"]) : null
     condition.attr2 = condition.var2 ? null : settings["condAttr${condition.id}#2"] ? getDeviceLabel(settings["condAttr${condition.id}#2"]) : null
-    condition.val2 = condition.var2 || condition.dev2 ? null : settings["condValue${condition.id}#2"]
+    condition.val2 = (condition.attr != "time") && (condition.var2 || condition.dev2) ? null : settings["condValue${condition.id}#2"]
     condition.for = settings["condFor${condition.id}"]
     condition.fort = settings["condTime${condition.id}"]
     condition.t1 = settings["condTime${condition.id}#1"]
@@ -3766,14 +3776,19 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
        	//go through each parameter
         def o1 = condition.o1 ? condition.o1 : 0
         def o2 = condition.o2 ? condition.o2 : 0
+        def useDate1 = false
+        def useDate2 = false
         for (def i = 1; i <= comp.parameters; i++) {
         	def val = i == 1 ? condition.val1 : condition.val2
             def t = null
             def v = 0
+            def useDate = false
             switch (val) {
             	case "custom time":
                 	t = (i == 1 ? (condition.t1 ? adjustTime(condition.t1) : null) : (condition.t2 ? adjustTime(condition.t2) : null))
-                    v = t ? t.getHours() * 60 + t.getMinutes() : null
+                    if (t) {
+                    	v = t ? t.getHours() * 60 + t.getMinutes() : null
+                    }
                     if (!comparison.contains("around")) {
                         switch (i) {
                         	case 1:
@@ -3799,99 +3814,104 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                 	t = getSunset()
                     v = t ? t.hours * 60 + t.minutes : null
                 	break
+                case "time of variable":
+                	t = adjustTime(getVariable(i == 1 ? condition.var1 : condition.var2))
+                    v = t ? t.hours * 60 + t.minutes : null
+                	break
+                case "date and time of variable":
+                	t = adjustTime(getVariable(i == 1 ? condition.var1 : condition.var2))
+                    v = t ? t.hours * 60 + t.minutes : null
+                    useDate = true
+                	break
             }
             if (i == 1) {
-            	m1 = v
+            	useDate1 = useDate
+            	m1 = useDate ? (t ? t.time - t.time.mod(60000) : 0) : v
             } else {
-            	m2 = v
+            	useDate2 = useDate
+            	m2 = useDate ? (t ? t.time - t.time.mod(60000) : 0) : v
             }
         }
         
-        def rightNow = time.time
+        
+        def rightNow = time.time - time.time.mod(60000)
         def lastMidnight =  rightNow - rightNow.mod(86400000)
         def nextMidnight =  lastMidnight + 86400000
-        
+
         //we need to ensure we have a full condition
         if (getNextEventTime) {
         	if ((m1 == null) || ((comp.parameters == 2) && (m2 == null))) {
             	return null
             }
         }
-        
         switch (comparison) {
         	case { comparison.contains("before") }:
-                if ((m1 == null) || (m >= addOffsetToMinutes(m1, o1))) {
+                if ((m1 == null) || (useDate1 ? rightNow > m1 + o1 * 60000 : m >= addOffsetToMinutes(m1, o1))) {
                     //m before m1?
                     result = false
                 }
                 if (getNextEventTime) {
                 	if (result) {
                     	//we're looking for the next time when time is not before given amount, that's exactly the time we're looking at
-                        return convertDateToUnixTime(lastMidnight + addOffsetToMinutes(m1, o1) * 60000)
+                        return convertDateToUnixTime(useDate1 ? m1 + o1 * 60000 : lastMidnight + addOffsetToMinutes(m1, o1) * 60000)
                     } else {
                     	//the next time time is before a certain time is... next midnight...
-                        return convertDateToUnixTime(nextMidnight)
+                        return useDate1 ? null : convertDateToUnixTime(nextMidnight)
                     }
                 }
                 if (!result) return false
                 break
         	case { comparison.contains("after") }:
-        		if ((m1 == null) || (m < addOffsetToMinutes(m1, o1))) {
+        		if ((m1 == null) || (useDate1 ? rightNow < m1 + o1 * 60000 : m < addOffsetToMinutes(m1, o1))) {
         			//m after m1?
 	        		result = false
 	            }
                 if (getNextEventTime) {
                 	if (result) {
                     	//we're looking for the next time when time is not after given amount, next midnight
-                        return convertDateToUnixTime(nextMidnight)
+                        return useDate1 ? null : convertDateToUnixTime(nextMidnight)
                     } else {
                     	//the next time time is before a certain time is... next midnight...
-                        return convertDateToUnixTime(lastMidnight + addOffsetToMinutes(m1, o1) * 60000)
+                        return convertDateToUnixTime(useDate1 ? m1 + o1 * 60000 : lastMidnight + addOffsetToMinutes(m1, o1) * 60000)
                     }
                 }
                 if (!result) return result               
                 break
             case { comparison.contains("around") }:
                 //if no offset, we can't really match anything
-                def a1 = addOffsetToMinutes(m1, -o1)
-                def a2 = addOffsetToMinutes(m1, +o1)
-                if (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1)) {                
+                def a1 = useDate1 ? m1 - o1 * 60000 : addOffsetToMinutes(m1, -o1)
+                def a2 = useDate1 ? m1 + o1 * 60000 : addOffsetToMinutes(m1, +o1)
+                def mm = useDate1 ? rightNow : m
+                if (a1 < a2 ? (mm < a1) || (mm >= a2) : (mm >= a2) && (mm < a1)) {                
                     result = false
                 }
                 if (getNextEventTime) {
                 	if (result) {
                     	//we're in between the +/- time, the a2 is the next time we are looking for
-                        return convertDateToUnixTime(lastMidnight + a2 * 60000)
+                        return useDate1 ? null : convertDateToUnixTime(lastMidnight + a2 * 60000)
                     } else {
                     	//return a1 time either today or tomorrow
-                    	return convertDateToUnixTime((a1 < m ? nextMidnight : lastMidnight) + a1 * 60000)
+                    	return convertDateToUnixTime(useDate1 ? (a1 > time.time ? a1 : null)  : (a1 < mm ? nextMidnight : lastMidnight) + a1 * 60000)
                     }
                 }
                 if (!result) return result               
                 break
             case { comparison.contains("between") }:
-                def a1 = addOffsetToMinutes(m1, o1)
-                def a2 = addOffsetToMinutes(m2, o2)
-                def eval = (a1 < a2 ? (m < a1) || (m >= a2) : (m >= a2) && (m < a1))
+                def a1 = useDate1 ? m1 + o1 * 60000 : (useDate2 ? m2 - m2.mod(86400000) : lastMidnight) + addOffsetToMinutes(m1, o1) * 60000
+                def a2 = useDate2 ? m2 + o2 * 60000 : (useDate1 ? m1 - m1.mod(86400000) : lastMidnight) + addOffsetToMinutes(m2, o2) * 60000
+                def mm = rightNow
+                if ((a1 > a2) && (!useDate1 || !useDate2)) {
+                	//if a1 is after a2, and we haven't specified dates for both, increment a2 with 1 day to bring it after a1
+                	a2 = a2 + 86400000
+                }
+                def eval = (mm < a1) || (mm >= a2)
                 if (getNextEventTime) {
                 	if (!eval) {
                     	//we're in between the a1 and a2
-                        if (a1 < a2) {
-                        	//normal range, a2 is our time
-                            return convertDateToUnixTime(lastMidnight + a2 * 60000)
-                        } else {
-                        	//reverse range, we exit the interval at every a2, today or tomorrow
-                            return convertDateToUnixTime((a2 < m ? nextMidnight : lastMidnight) + a2 * 60000)
-                        }
+                        return convertDateToUnixTime(a2)
                     } else {
                     	//we're not in between the a1 and a2
-                        if (a1 < a2) {
-                        	//normal range, a1 is our time, either today or tomorrow
-	                    	return convertDateToUnixTime((a1 < m ? nextMidnight : lastMidnight) + a1 * 60000)
-                        } else {
-                        	//reverse range, a1 is our time
-                            return convertDateToUnixTime(lastMidnight + a1 * 60000)
-                        }
+                    	return convertDateToUnixTime(a1 < mm ? (a2 < mm ? null : a2) : a1)
                     }
                 }                
                 if (comparison.contains("not")) {
@@ -4666,12 +4686,12 @@ private getNextTimeTriggerTime(condition, startTime = null) {
     	return null
     }
     
-    
-    def repeat = (condition.val1 && condition.val1.contains("every") ? condition.val1 : condition.r)
+    def val1 = "${condition.val1}"
+    def repeat = (condition.val1 && val1.contains("every") ? val1 : "${condition.r}")
     if (!repeat) {
     	return null
 	}
-    def interval = (repeat.contains("number") ? (condition.val1 && condition.val1.contains("every") ? condition.e : condition.re) : 1)
+    def interval = cast((repeat.contains("number") ? (condition.val1 && "${condition.val1}".contains("every") ? condition.e : condition.re) : 1), "number")
     if (!interval) {
     	return null
 	}
@@ -4680,7 +4700,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 	//do the work
     def maxCycles = null
 	while ((maxCycles == null) || (maxCycles > 0)) {
-        def cycles = null
+        def cycles = 1
 	    def repeatCycle = false
         if (repeat == "minute") {
             //increment minutes
@@ -4709,7 +4729,8 @@ private getNextTimeTriggerTime(condition, startTime = null) {
             def m = 0
             def offset = 0
             def customTime = null
-            switch (condition.val1) {
+            def useDate = false
+            switch (val1) {
                 case "custom time":
                     if (!condition.t1) {
                         return null
@@ -4731,6 +4752,16 @@ private getNextTimeTriggerTime(condition, startTime = null) {
                 case "midnight":
                     offset = condition.o1 ? condition.o1 : 0
                     break
+                case "time of variable":
+                	customTime = adjustTime(getVariable(condition.var1))
+                    offset = condition.o1 ? condition.o1 : 0
+                    break
+                case "date and time of variable":
+                	customTime = adjustTime(getVariable(condition.var1))
+                    offset = condition.o1 ? condition.o1 : 0
+                    useDate = true
+                    repeat = "none"
+                    break
             }
             
             if (customTime) {
@@ -4743,11 +4774,16 @@ private getNextTimeTriggerTime(condition, startTime = null) {
             //we need a - one day offset if now is before the required time
             //since today could still be a candidate
             now = (now.hours * 60 - h * 60 + now.minutes - m - offset < 0) ? now - 1 : now
-            now = new Date(now.year, now.month, now.date, h, m, 0)
+            now = useDate ? customTime : new Date(now.year, now.month, now.date, h, m, 0)
             
             //apply the offset
             if (offset) {
             	now = new Date(now.time + offset * 60000)
+            }
+
+			if (useDate && (now < currentTime)) {
+            	//using date and that date is past...
+            	return null
             }
 
             switch (repeat) {
@@ -4940,6 +4976,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
                     break
             }
         }
+        
 		//check if we have to repeat or exit
 		if ((!repeatCycle) && testDateTimeFilters(condition, now)) {
             //make it UTC Unix Time
@@ -4950,7 +4987,6 @@ private getNextTimeTriggerTime(condition, startTime = null) {
             	return result
             }
         }       
-
         maxCycles = (maxCycles == null ? cycles : maxCycles) - 1
 	}
 }
@@ -7063,7 +7099,7 @@ private getTimeConditionDescription(condition) {
     	def trigger = (comp.trigger == comparison)
         def repeating = trigger
     	for (def i = 1; i <= comp.parameters; i++) {
-        	def val = (i == 1 ? val1 : val2)
+        	def val = "${i == 1 ? val1 : val2}"
             def recurring = false
             def preciseTime = false
             
@@ -7071,6 +7107,12 @@ private getTimeConditionDescription(condition) {
                 //custom time
                 val = formatTime(i == 1 ? condition.t1 : condition.t2)
                 preciseTime = true
+                //def hour = condition.t1.getHour()
+                //def minute = condition.t2.getMinute()
+            } else if (val.contains("time of variable")) {
+                //custom time
+                val = "$val {${condition.var1}}"
+                repeating = !val.contains("date and time")
                 //def hour = condition.t1.getHour()
                 //def minute = condition.t2.getMinute()
             } else if (val.contains("every")) {
