@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/06/2016 >>> v0.0.06f.20160606 - Alpha test version - Stays triggers, take one. Renamed Load/Save state to/from local/global store with Capture/Restore. Users may need to revisit and save tasks that use the capture/restore...
  *	 6/06/2016 >>> v0.0.06e.20160606 - Alpha test version - Added "Ask Alexa Macro" and "Piston" capabilities. Minor fixes for condition descriptions and event authorization/eligibility.
  *	 6/05/2016 >>> v0.0.06d.20160605 - Alpha test version - Variable triggers should now work - you can trigger on a global variable change (other pistons can change the global variable too, you'll get a trigger)
  *	 6/04/2016 >>> v0.0.06c.20160604 - Alpha test version - Added more multimedia commands like playTextAndRestore, playTextAndResume, etc.
@@ -147,7 +148,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.06e.20160606"
+	return "v0.0.06f.20160606"
 }
 
 
@@ -486,7 +487,7 @@ private pageMainCoREPiston() {
         	//input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
         	href "pageToggleEnabled", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete"
             input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Basic", submitOnChange: true
-            switch (settings.mode) {
+            switch (state.config.app.mode) {
                 case "Latching":
                 paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
                 break
@@ -546,7 +547,7 @@ private pageMainCoREPiston() {
             }
         }
 
-		if (!(settings.mode in ["Basic", "Latching"])) {
+		if (!(state.config.app.mode in ["Basic", "Latching"])) {
             section() {
                 def actions = listActions(-2)
                 def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
@@ -937,7 +938,9 @@ def pageCondition(params) {
 
                                 if (comp.timed) {
                                     if (comparison.contains("change")) {
-                                        input "condTime$id", "enum", title: "In the last (minutes)", options: timeOptions(true), required: true, multiple: false, submitOnChange: true
+                                        input "condTime$id", "enum", title: "In the last", options: timeOptions(true), required: true, multiple: false, submitOnChange: true
+                                    } else if (comparison.contains("stays")) {
+                                        input "condTime$id", "enum", title: "For", options: timeOptions(true), required: true, multiple: false, submitOnChange: true
                                     } else {
                                         input "condFor$id", "enum", title: "Time restriction", options: ["for at least", "for less than"], required: true, multiple: false, submitOnChange: true
                                         input "condTime$id", "enum", title: "Interval", options: timeOptions(), required: true, multiple: false, submitOnChange: true
@@ -2358,7 +2361,7 @@ private configApp() {
     }
     //get expert savvy
     state.config.expertMode = parent.expertMode()
-	state.config.app.mode = settings.mode
+	state.config.app.mode = settings.mode ? settings.mode : "Basic"
 	state.config.app.description = settings.description
     state.config.app.enabled = !!state.config.app.enabled
 }
@@ -3057,7 +3060,7 @@ private preAuthorizeEvent(evt) {
     	withEachTrigger(state.app.otherConditions, "preAuthorizeTrigger", evt)
     }
     if (state.filterEvent) {
-    	debug "Received a '${evt.name}' event, but no triggers matches it, so we're not going to execute at this time."
+    	debug "Received a '${evt.name}' event, but no trigger matches it, so we're not going to execute at this time."
     }
     return !state.filterEvent
 }
@@ -3178,7 +3181,7 @@ private broadcastEvent(evt, primary, secondary) {
     } catch(e) {
     	debug "ERROR: Could not update delay chart: $e", null, "error"
     }
-    if (evt.deviceId != "time") {
+    if (!(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
     	def cache = atomicState.cache
         cache = cache ? cache : [:]
         def deviceId = evt.deviceId ? evt.deviceId : location.id
@@ -3188,7 +3191,7 @@ private broadcastEvent(evt, primary, secondary) {
     	atomicState.cache = cache
         state.cache = cache
 		if (cachedValue) {
-	    	if ((cachedValue.v == evt.value) && (!evt.data) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
+	    	if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
 	        	//duplicate event
 	    		debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
 	            evt = null
@@ -3209,7 +3212,7 @@ private broadcastEvent(evt, primary, secondary) {
                 force = true
             }
             //override eligibility concerns when dealing with Follow-Up pistons, or when dealing with "execute" and "simulate" events
- 			force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate"])
+ 			force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
             if (primary) {
                 result1 = evaluateConditionSet(evt, true, force)
                 state.lastPrimaryEvaluationResult = result1
@@ -3605,10 +3608,14 @@ private evaluateDeviceCondition(condition, evt) {
         if (comp) {
             //if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
             def deviceResult = false
-            def ownsEvent = evt && (eventDeviceId == device.id) && (evt.name == attribute)
+            def ownsEvent = evt && (eventDeviceId == device.id) && ((evt.name == attribute) || ((evt.name == "time") && (condition.id == evt.conditionId)))
+            if (ownsEvent && (evt.name == "time") && (condition.id == evt.conditionId)) {
+                //stays trigger, we need to use the current device value
+                virtualCurrentValue = device.currentValue(attribute)
+            }
             def oldValue = null
             def oldValueSince = null
-            if (evt && !(attribute in ["askAlexaMacro", "piston", "routineExecuted", "variable"])) {
+            if (evt && !(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
                 def cache = atomicState.cache
                 cache = cache ? cache : [:]
                 def cachedValue = cache[device.id + "-" + attribute]
@@ -3617,11 +3624,15 @@ private evaluateDeviceCondition(condition, evt) {
                     oldValueSince = cachedValue.t
                 }
             }
+            //if we have a variable event and we're at a variable condition, let's get the old value
+			if (evt && (evt.name == "variable") && (attr.name == "variable") && (evt.jsonData)) {
+            	oldValue = evt.jsonData.oldValue
+            }
 			def type = attr.name == "variable" ? (condition.dt ? condition.dt : attr.type) : attr.type
             //if we're dealing with an owned event, use that event's value
             //if we're dealing with a virtual device, get the virtual value
-
         	oldValue = cast(oldValue, type)
+
             currentValue = cast(virtualCurrentValue != null ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(attribute)), type)
 			def value1
             def offset1
@@ -4304,6 +4315,80 @@ private eval_trg_executed(condition, device, attribute, oldValue, oldValueSince,
 	return (currentValue == value1)
 }
 
+private eval_trg_stays(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_not", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_equal_to", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_not_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_not_equal_to", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_less_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_less_than", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_less_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_less_than_or_equal_to", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_greater_than(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_greater_than", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_greater_than_or_equal_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_greater_than_or_equal_to", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_in_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_in_range", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_outside_of_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_outside_of_range", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_even", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return eval_trg_stays_common("is_odd", condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_stays_common(func, condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	def result = "eval_cond_$func"(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+	if (evt.name == attribute) {
+    	//initial event
+        if (result) {
+        	//true, let's schedule time...
+            //if there is no event task currently scheduled for this, so we need to schedule one, but wait...
+            //was the old value not matching? because if it was, then we need to inhibit this...
+           	def oldResult = "eval_cond_$func"(condition, device, attribute, oldValue, oldValueSince, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)
+            if (oldResult != result) {
+	            def tasks = state.tasks
+    	        if (!tasks || !tasks.find{ (it.value?.type == "evt") && (it.value?.ownerId == condition.id) && (it.value?.deviceId == device.id) }) {
+                	def time = now() + timeToMinutes(condition.fort) * 60000
+                	scheduleTask("evt", condition.id, device.id, null, time)
+                }
+            }
+        } else {
+        	unscheduleTask("evt", condition.id, device.id)
+		}        
+        return false
+    }    
+    //timed event
+	return result
+}
+
+
 /*
 private eval_trg_changed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	if (!oldValueSince) return false
@@ -4328,7 +4413,7 @@ private eval_trg_did_not_change(condition, device, attribute, oldValue, oldValue
 private scheduleTimeTriggers() {
 	debug "Rescheduling time triggers", null, "trace"
     //remove all pending events
-    unscheduleTask("evt", null, null)
+    unscheduleTask("evt", null, "time")
     def app = state.run == "config" ? state.config.app : state.app
     if (getTriggerCount(app) > 0) {
         withEachTrigger(app.conditions, "scheduleTimeTrigger")
@@ -4351,7 +4436,7 @@ private scheduleTimeTrigger(condition, data = null) {
     def time = condition.trg ? getNextTimeTriggerTime(condition, condition.lt) : getNextTimeConditionTime(condition, condition.lt)
     condition.nt = time
     if (time) {
-    	scheduleTask("evt", condition.id, null, null, time)
+    	scheduleTask("evt", condition.id, "time", null, time)
     }
 }
 
@@ -4917,7 +5002,7 @@ private processTasks() {
                     if (getCondition(task.ownerId, true)) {
                         //look for condition in primary block
                         debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task", null, "trace"
-                        broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], true, false)
+                        broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], true, false)
                     } else if (getCondition(task.ownerId, false)) {
                         //look for condition in secondary block
                         debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
@@ -6920,6 +7005,8 @@ private getConditionDescription(id, level = 0) {
                    	time = " for [ERROR]"
                 	if (comparison.contains("change")) {
                     	time = " in the last " + (condition.fort ? condition.fort : "[ERROR]")
+                    } else if (comparison.contains("stays")) {
+                    	time = " for " + (condition.fort ? condition.fort : "[ERROR]")
                     } else if (condition.for && condition.fort) {
                 		time = " " + condition.for + " " + condition.fort
                     }
@@ -8141,12 +8228,12 @@ private virtualCommands() {
     	[ name: "setVariable",			requires: [],			 			display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,																	aggregated: true,	],
     	[ name: "saveAttribute",		requires: [],			 			display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable '{3}'",			aggregated: true,	],
     	[ name: "saveState",			requires: [],			 			display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable '{3}'",	aggregated: true,	],
-        [ name: "saveStateLocally",		requires: [],			 			display: "Save state to local store",		parameters: ["Attributes:attributes"],																															description: "Save state of attributes {0} to local store",							],
-    	[ name: "saveStateGlobally",	requires: [],			 			display: "Save state to global store",		parameters: ["Attributes:attributes"],																															description: "Save state of attributes {0} to global store",						],
+        [ name: "saveStateLocally",		requires: [],			 			display: "Capture state to local store",	parameters: ["Attributes:attributes"],																															description: "Capture state of attributes {0} to local store",							],
+    	[ name: "saveStateGlobally",	requires: [],			 			display: "Capture state to global store",	parameters: ["Attributes:attributes"],																															description: "Capture state of attributes {0} to global store",						],
     	[ name: "loadAttribute",		requires: [],			 			display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable '{1}'",	],
     	[ name: "loadState",			requires: [],			 			display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable '{1}'"														],
-    	[ name: "loadStateLocally",		requires: [],			 			display: "Load state from local store",		parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from local store",													],
-    	[ name: "loadStateGlobally",	requires: [],			 			display: "Load state from global store",	parameters: ["Attributes:attributes"],																															description: "Load state of attributes {0} from global store",													],
+    	[ name: "loadStateLocally",		requires: [],			 			display: "Restore state from local store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from local store",													],
+    	[ name: "loadStateGlobally",	requires: [],			 			display: "Restore state from global store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from global store",													],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to '{0}'",			aggregated: true,	],
     	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Show notification '{0}' in notifications page",			aggregated: true,	],
@@ -8280,7 +8367,7 @@ private comparisons() {
         [ condition: "was greater than", trigger: "stays greater than", parameters: 1, timed: true],
         [ condition: "was greater than or equal to", trigger: "stays greater than or equal to", parameters: 1, timed: true],
         [ condition: "was inside range",trigger: "stays inside range",  parameters: 2, timed: true],
-        [ condition: "was outside range", trigger: "stays outside range", parameters: 2, timed: true],
+        [ condition: "was outside of range", trigger: "stays outside of range", parameters: 2, timed: true],
         [ condition: "was even", trigger: "stays even", parameters: 0, timed: true],
         [ condition: "was odd", trigger: "stays odd", parameters: 0, timed: true],
         [ trigger: "changes", parameters: 0, timed: false],
