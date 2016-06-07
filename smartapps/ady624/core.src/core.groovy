@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/07/2016 >>> v0.0.076.20160607 - Alpha test version - Minor bug fixes. SHM conditions now working again.
  *	 6/07/2016 >>> v0.0.075.20160607 - Alpha test version - Added support for D-Link Camera Manager (thanks to @blebson)
  *	 6/07/2016 >>> v0.0.074.20160607 - Alpha test version - AskAlexa integration (thanks to @MichaelS) and better custom attributes support (thanks to @RBoy)
  *	 6/06/2016 >>> v0.0.073.20160606 - Alpha test version - Attempt #1 to fix sorting order of actions and tasks in dashboard.
@@ -152,7 +153,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.075.20160607"
+	return "v0.0.076.20160607"
 }
 
 
@@ -3611,7 +3612,6 @@ private evaluateDeviceCondition(condition, evt) {
         case "Smart Home Monitor":
         	devices = [location]
         	virtualCurrentValue = getAlarmSystemStatus()
-	        virtualCapability = true
         	attribute = "alarmSystemStatus"
         	break    	
         case "CoRE Piston":
@@ -3638,7 +3638,6 @@ private evaluateDeviceCondition(condition, evt) {
 	def attr = getAttributeByName(attribute)
     //get capability if the attribute suggests one
     def capability = attr && attr.capability ? getCapabilityByName(attr.capability) : null
-    
     def hasSubDevices = false
     def matchesSubDevice = false
     if (evt && evt.jsonData && capability && capability.count && capability.data) {
