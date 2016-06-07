@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/07/2016 >>> v0.0.074.20160607 - Alpha test version - AskAlexa integration (thanks to @MichaelS) and better custom attributes support (thanks to @RBoy)
  *	 6/06/2016 >>> v0.0.073.20160606 - Alpha test version - Attempt #1 to fix sorting order of actions and tasks in dashboard.
  *	 6/06/2016 >>> v0.0.072.20160606 - Alpha test version - Reallowing piston execution of same piston at @krlaframboise's request
  *	 6/06/2016 >>> v0.0.070.20160606 - Alpha test version - Date & Time gets comparisons against variables. Time of variable picks up the time from the variable and compares it just like any ther options (sunset, sunrise, etc.). Date and time of variable works completely different. It actually uses the date of the variable in the comparison, so one can delay things any number of days/months etc. and have the trigger happen then.
@@ -150,7 +151,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.073.20160606"
+	return "v0.0.074.20160607"
 }
 
 
@@ -253,6 +254,7 @@ def pageMain() {
 /*** CoRE PAGES																***/
 /******************************************************************************/
 private pageMainCoRE() {
+	initializeCoREStore()
     //CoRE main page
     dynamicPage(name: "pageMain", title: "", install: true, uninstall: true) {
     	section() {
@@ -466,7 +468,7 @@ def pageChart(params) {
 
 private pageMainCoREPiston() {
     //CoRE Piston main page
-    //dev()
+    //dev()   
     state.run = "config"
     configApp()
     cleanUpConditions(true)
@@ -891,9 +893,9 @@ def pageCondition(params) {
                                     }
                                     if (attribute) {                              
                                         //Condition
-                                        attr = getAttributeByName(attribute)
+                                        attr = getAttributeByName(attribute, devices && devices.size() ? devices[0] : null)
                                         comparison = cleanUpComparison(settings["condComp$id"])
-                                        input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, attr.momentary ? "momentary" : null), required: true, multiple: false, submitOnChange: true                                
+                                        input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, attr.momentary ? "momentary" : null, devices && devices.size() ? devices[0] : null), required: true, multiple: false, submitOnChange: true                                
                                         if (comparison) {                                	
                                             //Value
                                             showParameters = true
@@ -905,7 +907,7 @@ def pageCondition(params) {
 
                         if (showParameters) {
                         	//build the parameters inputs for all physical capabilities and variables
-                            def comp = getComparisonOption(attribute, comparison, overrideAttributeType)
+                            def comp = getComparisonOption(attribute, comparison, overrideAttributeType, devices && devices.size() ? devices[0] : null)                            
                             if (attr && comp) {
                                 trigger = (comp.trigger == comparison)
                                 def extraComparisons = !comparison.contains("one of")
@@ -1746,7 +1748,7 @@ def initialize() {
     	initializeCoREPiston()
     } else {
     	initializeCoRE()
-    }
+    }        
 }
 
 
@@ -2054,12 +2056,46 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
 /******************************************************************************/
 
 def initializeCoRE() {
-    state.store = state.store ? state.store : [:]
-    state.stateStore = state.stateStore ? state.stateStore : [:]
-    state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
+	initializeCoREStore()
+    refreshPistons()
+    subscribe(location, "CoRE", coreHandler)
+    subscribe(location, "askAlexa", askAlexaHandler)
 }
 
-def childUninstalled() {}
+def initializeCoREStore() {
+    state.store = state.store ? state.store : [:]
+    state.stateStore = state.stateStore ? state.stateStore : [:]
+    state.askAlexaMacros = state.askAlexaMacros ? state.askAlexaMacros : []
+}
+
+
+def coreHandler(evt) {
+	if (!evt) return
+    switch (evt.name) {
+    	case "execute":
+        	if (evt.jsonData && evt.jsonData?.pistonName) {
+    			execute(evt.jsonData.pistonName)
+            }
+            break
+    }
+}
+
+def askAlexaHandler(evt) {
+	if (!evt) return
+    switch (evt.name) {
+    	case "refresh":
+        	if (evt.jsonData && evt.jsonData?.macros) {
+    			state.askAlexaMacros = evt.jsonData.macros
+            }
+            break
+    }
+}
+
+
+def childUninstalled() {
+	refreshPistons()
+}
+
 
 private initializeCoREEndpoint() {
 	if (!state.endpoint) {
@@ -2096,7 +2132,12 @@ def api_getDashboardData() {
     	result.pistons.push app.getSummary()
     }
     //sort the pistons
-    result.pistons = result.pistons.sort { it.l }    
+    result.pistons = result.pistons.sort { it.l }
+    result.variables = [:]
+    for(variable in state.store) {
+    	result.variables[variable.key] = getVariable(variable.value, true)
+    }
+    result.variables = result.variables.sort{ it.key }
 	return result
 }
 
@@ -2274,9 +2315,19 @@ def generatePistonName() {
     }
 }
 
+def refreshPistons() {
+	def data = [
+    	pistons: listPistons()
+    ]
+    sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, descriptionText: "CoRE has an updated list of pistons", data: data])
+}
 
-
-
+def listAskAlexaMacros() {
+	if (parent) {
+    	return parent.listAskAlexaMacros()        
+    }
+    return state.askAlexaMacros ? state.askAlexaMacros : []
+}
 
 
 
@@ -2306,7 +2357,35 @@ def initializeCoREPiston() {
     state.app.description = settings.description
     
 	state.run = "app"
+      
+	initializeCoREPistonStore()    
+    if (state.app.mode != "Follow-Up") {
+    	//follow-up pistons don't subscribe to anything
+    	subscribeToAll(state.app)
+    }
+  
+    state.remove("config")
+    //uncomment next line to clear system store
+    setVariable("\$lastInitialized", now(), true)
+    setVariable("\$now", null, true)
+    setVariable("\$currentStateDuration", null, true)
+    setVariable("\$currentState", state.currentState, true)
+    setVariable("\$currentStateSince", state.currentStateSince, true)
+    processTasks()
+	debug "Done", -1
+
+	parent.refreshPistons()
     
+	//we need to finalize to write atomic state
+	//save all atomic states to state
+    //to avoid race conditions
+	//state.cache = atomicState.cache
+    //state.tasks = atomicState.tasks
+}
+
+
+def initializeCoREPistonStore() {
+    state.temp = [:]
     state.cache = [:]
     state.tasks = state.tasks ? state.tasks : [:]
     state.store = state.store ? state.store : [:]
@@ -2317,43 +2396,14 @@ def initializeCoREPiston() {
         	state.systemStore[var.key] = null
         }
     }
-    
-    if (state.app.mode != "Follow-Up") {
-    	//follow-up pistons don't subscribe to anything
-    	subscribeToAll(state.app)
-    }
-  
-    state.remove("config")
-    //uncomment next line to clear system store
-    //state.systemStore = [:]
-    setVariable("\$lastInitialized", now(), true)
-    setVariable("\$now", null, true)
-    setVariable("\$currentStateDuration", null, true)
-    setVariable("\$currentState", state.currentState, true)
-    setVariable("\$currentStateSince", state.currentStateSince, true)
-    processTasks()
-	debug "Done", -1
-
-	//we need to finalize to write atomic state
-	//save all atomic states to state
-    //to avoid race conditions
-	//state.cache = atomicState.cache
-    //state.tasks = atomicState.tasks
 }
+
 
 /* prepare configuration version of app */
 private configApp() {
 	//TODO: rebuild (object-oriented) app object from settings
 	//prepare stores
-    state.temp = [:]
-    state.store = state.store ? state.store : [:]
-    state.stateStore = state.stateStore ? state.stateStore : [:]
-    state.systemStore = state.systemStore ? state.systemStore : initialSystemStore()
-    for (var in initialSystemStore()) {
-    	if (!state.containsKey(var.key)) {
-        	state.systemStore[var.key] = null
-        }
-    }
+    initializeCoREPistonStore()
     if (!state.app) {
     	state.app = [:]
     }
@@ -2567,15 +2617,17 @@ private updateCondition(condition) {
             if (cap.virtualDevice) condition.dev.push(cap.virtualDevice)
         }
     }
+    def dev
     for (device in settings["condDevices${condition.id}"])
     {
         //save the list of device IDs - we can't have the actual device objects in the state
+        dev = device
         condition.dev.push(device.id)
     }
     condition.comp = cleanUpComparison(settings["condComp${condition.id}"])
     condition.var = settings["condVar${condition.id}"]
     condition.dt = settings["condDataType${condition.id}"]
-    condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp, condition.attr == "variable" ? condition.dt : null)
+    condition.trg = !!isComparisonOptionTrigger(condition.attr, condition.comp, condition.attr == "variable" ? condition.dt : null, dev)
 	condition.mode = condition.trg ? "Any" : (settings["condMode${condition.id}"] ? settings["condMode${condition.id}"] : "Any")
     condition.var1 = settings["condVar${condition.id}#1"]
     condition.dev1 = condition.var1 ? null : settings["condDev${condition.id}#1"] ? getDeviceLabel(settings["condDev${condition.id}#1"]) : null
@@ -3619,7 +3671,7 @@ private evaluateDeviceCondition(condition, evt) {
     def vn = []
     //the real deal goes here
     for (device in devices) {
-        def comp = getComparisonOption(attribute, condition.comp, (attribute == "variable" ? condition.dt : null))
+        def comp = getComparisonOption(attribute, condition.comp, (attribute == "variable" ? condition.dt : null), device)
         if (comp) {
             //if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
             def deviceResult = false
@@ -3703,11 +3755,12 @@ private evaluateDeviceCondition(condition, evt) {
                     debug msg
                 }
 
-                if (deviceResult) {
-                    if (condition.vm) vm.push "$device"
-                } else {
-                    if (condition.vn) vn.push "$device"
-                }
+            }
+            
+            if (deviceResult) {
+                if (condition.vm) vm.push "$device"
+            } else {
+                if (condition.vn) vn.push "$device"
             }
 
             //compound the result, depending on mode
@@ -5094,7 +5147,13 @@ private processTasks() {
                         while (dirty) {
                             dirty = false
                             for (it in tasks) {
-                                if ((it.value?.type == task.del) && (!task.ownerId || (it.value?.ownerId == task.ownerId)) && (!task.deviceId || (task.deviceId == it.value?.deviceId)) && (!task.taskId || (task.taskId == it.value?.taskId))) {
+                                if (
+                                		(it.value?.type == task.del) &&
+                                    	(!task.ownerId || (it.value?.ownerId == task.ownerId)) &&
+                                		//(task.ownerId || (task.deviceId != "location")) && //do not unschedule location commands unless an action Id is provided
+                                    	(!task.deviceId || (task.deviceId == it.value?.deviceId)) &&
+                                    	(!task.taskId || (task.taskId == it.value?.taskId))
+								) {
                                     tasks.remove(it.key)
                                     dirty = true
                                     break
@@ -7023,7 +7082,7 @@ private getConditionDescription(id, level = 0) {
             def unit = (attr && attr.unit ? attr.unit : "")
             def comparison = cleanUpComparison(condition.comp)
             //override comparison option type if we're dealing with a variable - take the variable's data type
-            def comp = getComparisonOption(condition.attr, comparison, attr.name == "variable" ? condition.dt : null)
+            def comp = getComparisonOption(condition.attr, comparison, attr.name == "variable" ? condition.dt : null, devices && devices.size() ? devices[0] : null)
             def subDevices = capability.count && attr && (attr.name == capability.attribute) ? buildNameList(condition.sdev, "or") + " " : ""
             def values = " [ERROR]"
             def time = ""
@@ -7502,10 +7561,10 @@ private listAttributes() {
 }
 
 //returns a list of possible comparison options for a selected attribute
-private listComparisonOptions(attributeName, allowTriggers, overrideAttributeType = null) {
+private listComparisonOptions(attributeName, allowTriggers, overrideAttributeType = null, device = null) {
     def conditions = []
     def triggers = []
-    def attribute = getAttributeByName(attributeName)
+    def attribute = getAttributeByName(attributeName, device)
     def allowTimedComparisons = !(attributeName in ["askAlexaMacro", "mode", "alarmSystemStatus", "piston", "routineExecuted", "variable"])
     if (attribute) {
     	def optionCount = attribute.options ? attribute.options.size() : 0
@@ -7527,8 +7586,8 @@ private listComparisonOptions(attributeName, allowTriggers, overrideAttributeTyp
 }
 
 //returns the comparison option object for the given attribute and selected comparison
-private getComparisonOption(attributeName, comparisonOption, overrideAttributeType = null) {	
-    def attribute = getAttributeByName(attributeName)
+private getComparisonOption(attributeName, comparisonOption, overrideAttributeType = null, device = null) {	
+    def attribute = getAttributeByName(attributeName, device)
     if (attribute && comparisonOption) {
 		def attributeType = overrideAttributeType ? overrideAttributeType : (attributeName == "variable" ? "variable" : attribute.type)
         for (comparison in comparisons()) {
@@ -7548,8 +7607,8 @@ private getComparisonOption(attributeName, comparisonOption, overrideAttributeTy
 }
 
 //returns true if the comparisonOption selected for the given attribute is a trigger-type condition
-private isComparisonOptionTrigger(attributeName, comparisonOption, overrideAttributeType = null) {
-    def attribute = getAttributeByName(attributeName)
+private isComparisonOptionTrigger(attributeName, comparisonOption, overrideAttributeType = null, device = null) {
+    def attribute = getAttributeByName(attributeName, device)
     if (attribute) {
 		def attributeType = overrideAttributeType ? overrideAttributeType : (attributeName == "variable" ? "variable" : attribute.type)
         for (comparison in comparisons()) {
@@ -7769,7 +7828,7 @@ private getCapabilityByDisplay(display) {
     return null
 }
 
-private getAttributeByName(name) {
+private getAttributeByName(name, device = null) {
 	def name2 = name instanceof String ? name.replaceAll("[\\d]", "").trim() + "*" : null
     def attribute = attributes().find{ (it.name == name) || (name2 && (it.name == name2)) }
     if (attribute) return attribute
@@ -7785,6 +7844,12 @@ private getAttributeByName(name) {
     }
     */
     //give up, return whatever...
+    if (device) {
+    	def attr = device.supportedAttributes.find{ it.name == name }
+        if (attr) {
+            return [ name: attr.name, type: attr.dataType.toLowerCase(), range: null, unit: null, options: attr.values ]
+        }
+    }
     return [ name: name, type: "text", range: null, unit: null, options: null]
 }
 
@@ -8107,8 +8172,8 @@ private capabilities() {
 private commands() {
 	def tempUnit = "°" + location.temperatureScale
 	return [
-        [ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set location mode",			parameters: [], ],
-        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor and more",		display: "Set Smart Home Monitor status",parameters: [], ],
+        [ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set location mode",			parameters: [], ],
+        [ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set Smart Home Monitor status",parameters: [], ],
     	[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 					parameters: [], 	attribute: "switch",	value: "on",	],
         [ name: "on1",										category: "Convenience",				group: null,						display: "Turn on #1", 					parameters: [], 	attribute: "switch1",	value: "on",	],
     	[ name: "on2",										category: "Convenience",				group: null,						display: "Turn on #2", 					parameters: [], 	attribute: "switch2",	value: "on",	],
@@ -8291,7 +8356,7 @@ private virtualCommands() {
     	[ name: "loadStateGlobally",	requires: [],			 			display: "Restore state from global store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from global store",													],
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to '{0}'",			aggregated: true,	],
-    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Show notification '{0}' in notifications page",			aggregated: true,	],
+    	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}' in notifications page",			aggregated: true,	],
 //    	[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,																aggregated: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Show in notifications page:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Show in notifications page:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
@@ -8373,7 +8438,7 @@ private attributes() {
     	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true) : [],													valueType: "enum",	],
 //    	[ name: "stateVariable",			type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listStateVariables(true) : [],												],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
-    	[ name: "askAlexaMacro",			type: "askAlexaMacro",		range: null,			unit: null,		options: null,																								],
+    	[ name: "askAlexaMacro",			type: "askAlexaMacro",		range: null,			unit: null,		options: state.run == "config" ? listAskAlexaMacros() : [],													valueType: "enum"],
     ]
     return state.temp.attributes
 }
