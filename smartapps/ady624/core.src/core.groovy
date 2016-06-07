@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/06/2016 >>> v0.0.071.20160606 - Alpha test version - Added custom commands for the Blink camera integration
  *	 6/06/2016 >>> v0.0.070.20160606 - Alpha test version - Date & Time gets comparisons against variables. Time of variable picks up the time from the variable and compares it just like any ther options (sunset, sunrise, etc.). Date and time of variable works completely different. It actually uses the date of the variable in the comparison, so one can delay things any number of days/months etc. and have the trigger happen then.
  *	 6/06/2016 >>> v0.0.06e.20160606 - Alpha test version - Added "Ask Alexa Macro" and "Piston" capabilities. Minor fixes for condition descriptions and event authorization/eligibility.
  *	 6/05/2016 >>> v0.0.06d.20160605 - Alpha test version - Variable triggers should now work - you can trigger on a global variable change (other pistons can change the global variable too, you'll get a trigger)
@@ -148,7 +149,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.070.20160606"
+	return "v0.0.071.20160606"
 }
 
 
@@ -162,6 +163,7 @@ definition(
     author: "Adrian Caramaliu",
     description: "CoRE - Community's own Rule Engine",
     singleInstance: true,
+    parent: parent ? "ady624.CoRE" : null,
     category: "Convenience",
     iconUrl: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/app-CoRE.png",
     iconX2Url: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/app-CoRE@2x.png",
@@ -8211,7 +8213,15 @@ private commands() {
     	[ name: "allOff",									category: null,							group: null,						display: "Turn all off",				parameters: [], ],
     	[ name: "hubOn",									category: null,							group: null,						display: "Turn hub on",					parameters: [], ],
     	[ name: "hubOff",									category: null,							group: null,						display: "Turn hub off",				parameters: [], ],
-        
+        //blink camera
+    	[ name: "enableCamera",								category: null,							group: null,						display: "Enable camera",				parameters: [], ],
+    	[ name: "disableCamera",							category: null,							group: null,						display: "Disable camera",				parameters: [], ],
+    	[ name: "monitorOn",								category: null,							group: null,						display: "Turn monitor on",				parameters: [], ],
+    	[ name: "monitorOff",								category: null,							group: null,						display: "Turn monitor off",			parameters: [], ],
+    	[ name: "ledOn",									category: null,							group: null,						display: "Turn LED on",					parameters: [], ],
+    	[ name: "ledOff",									category: null,							group: null,						display: "Turn LED off",				parameters: [], ],
+    	[ name: "ledAuto",									category: null,							group: null,						display: "Set LED to Auto",				parameters: [], ],
+    	[ name: "setVideoLength",							category: null,							group: null,						display: "Set video length",			parameters: ["Seconds:number[1..10]"],	description: "Set video length to {0}s", ],        
     ]
 }
 
