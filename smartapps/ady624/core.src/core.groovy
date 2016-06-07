@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/07/2016 >>> v0.0.075.20160607 - Alpha test version - Added support for D-Link Camera Manager (thanks to @blebson)
  *	 6/07/2016 >>> v0.0.074.20160607 - Alpha test version - AskAlexa integration (thanks to @MichaelS) and better custom attributes support (thanks to @RBoy)
  *	 6/06/2016 >>> v0.0.073.20160606 - Alpha test version - Attempt #1 to fix sorting order of actions and tasks in dashboard.
  *	 6/06/2016 >>> v0.0.072.20160606 - Alpha test version - Reallowing piston execution of same piston at @krlaframboise's request
@@ -151,7 +152,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.074.20160607"
+	return "v0.0.075.20160607"
 }
 
 
@@ -8290,6 +8291,29 @@ private commands() {
     	[ name: "ledOff",									category: null,							group: null,						display: "Turn LED off",				parameters: [], ],
     	[ name: "ledAuto",									category: null,							group: null,						display: "Set LED to Auto",				parameters: [], ],
     	[ name: "setVideoLength",							category: null,							group: null,						display: "Set video length",			parameters: ["Seconds:number[1..10]"],	description: "Set video length to {0}s", ],        
+        //dlink camera
+    	[ name: "pirOn",									category: null,							group: null,						display: "Enable PIR motion detection",	parameters: [], ],
+    	[ name: "pirOff",									category: null,							group: null,						display: "Disable PIR motion detection",parameters: [], ],
+    	[ name: "nvOn",										category: null,							group: null,						display: "Set Night Vision to On",		parameters: [], ],
+    	[ name: "nvOff",									category: null,							group: null,						display: "Set Night Vision to Off",		parameters: [], ],
+    	[ name: "nvAuto",									category: null,							group: null,						display: "Set Night Vision to Auto",	parameters: [], ],
+    	[ name: "vrOn",										category: null,							group: null,						display: "Enable local video recording",parameters: [], ],
+    	[ name: "vrOff",									category: null,							group: null,						display: "Disable local video recording",parameters: [], ],
+    	[ name: "left",										category: null,							group: null,						display: "Pan camera left",				parameters: [], ],
+    	[ name: "right",									category: null,							group: null,						display: "Pan camera right",			parameters: [], ],
+    	[ name: "up",										category: null,							group: null,						display: "Pan camera up",				parameters: [], ],
+    	[ name: "down",										category: null,							group: null,						display: "Pan camera down",				parameters: [], ],
+    	[ name: "home",										category: null,							group: null,						display: "Pan camera to the Home",		parameters: [], ],
+    	[ name: "presetOne",								category: null,							group: null,						display: "Pan camera to preset #1",		parameters: [], ],
+    	[ name: "presetTwo",								category: null,							group: null,						display: "Pan camera to preset #2",		parameters: [], ],
+    	[ name: "presetThree",								category: null,							group: null,						display: "Pan camera to preset #3",		parameters: [], ],
+    	[ name: "presetFour",								category: null,							group: null,						display: "Pan camera to preset #4",		parameters: [], ],
+    	[ name: "presetFive",								category: null,							group: null,						display: "Pan camera to preset #5",		parameters: [], ],
+    	[ name: "presetSix",								category: null,							group: null,						display: "Pan camera to preset #6",		parameters: [], ],
+    	[ name: "presetSeven",								category: null,							group: null,						display: "Pan camera to preset #7",		parameters: [], ],
+    	[ name: "presetEight",								category: null,							group: null,						display: "Pan camera to preset #8",		parameters: [], ],
+    	[ name: "presetCommand",							category: null,							group: null,						display: "Pan camera to custom preset",	parameters: ["Preset #:number[1..99]"], description: "Pan camera to preset #{0}",	],
+        
     ]
 }
 
