@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 6/06/2016 >>> v0.0.071.20160606 - Alpha test version - Added custom commands for the Blink camera integration
+ *	 6/06/2016 >>> v0.0.072.20160606 - Alpha test version - Reallowing piston execution of same piston at @krlaframboise's request
  *	 6/06/2016 >>> v0.0.070.20160606 - Alpha test version - Date & Time gets comparisons against variables. Time of variable picks up the time from the variable and compares it just like any ther options (sunset, sunrise, etc.). Date and time of variable works completely different. It actually uses the date of the variable in the comparison, so one can delay things any number of days/months etc. and have the trigger happen then.
  *	 6/06/2016 >>> v0.0.06e.20160606 - Alpha test version - Added "Ask Alexa Macro" and "Piston" capabilities. Minor fixes for condition descriptions and event authorization/eligibility.
  *	 6/05/2016 >>> v0.0.06d.20160605 - Alpha test version - Variable triggers should now work - you can trigger on a global variable change (other pistons can change the global variable too, you'll get a trigger)
@@ -149,7 +149,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.071.20160606"
+	return "v0.0.072.20160606"
 }
 
 
@@ -1361,7 +1361,7 @@ def pageAction(params) {
                                                 } else if (param.type == "stateVariables") {
                                                     input "actParam$id#$tid-$i", "enum", options:  listStateVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "piston") {
-                                                	def pistons = parent.listPistons(app.label)
+                                                	def pistons = parent.listPistons(state.config.expertMode ? null : app.label)
                                                     input "actParam$id#$tid-$i", "enum", options: pistons, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "routine") {
                                                 	def routines = location.helloHome?.getPhrases()*.label
@@ -8366,7 +8366,7 @@ private attributes() {
     	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? getLocationModeOptions() : [],												],
     	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],										],
     	[ name: "routineExecuted",			type: "routine", 			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],								valueType: "enum",	],
-    	[ name: "piston",					type: "piston",				range: null,			unit: null,		options: state.run == "config" ? parent.listPistons(app.label) : [],													valueType: "enum",	],
+    	[ name: "piston",					type: "piston",				range: null,			unit: null,		options: state.run == "config" ? parent.listPistons(state.config.expertMode ? null : app.label) : [],													valueType: "enum",	],
     	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true) : [],													valueType: "enum",	],
 //    	[ name: "stateVariable",			type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listStateVariables(true) : [],												],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
