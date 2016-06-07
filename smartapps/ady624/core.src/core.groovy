@@ -17,7 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
- *	 6/07/2016 >>> v0.0.076.20160607 - Alpha test version - Minor bug fixes. SHM conditions now working again.
+ *	 6/07/2016 >>> v0.0.077.20160607 - Alpha test version - Variables galore in dashboard.
  *	 6/07/2016 >>> v0.0.075.20160607 - Alpha test version - Added support for D-Link Camera Manager (thanks to @blebson)
  *	 6/07/2016 >>> v0.0.074.20160607 - Alpha test version - AskAlexa integration (thanks to @MichaelS) and better custom attributes support (thanks to @RBoy)
  *	 6/06/2016 >>> v0.0.073.20160606 - Alpha test version - Attempt #1 to fix sorting order of actions and tasks in dashboard.
@@ -153,7 +153,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.076.20160607"
+	return "v0.0.077.20160607"
 }
 
 
@@ -2137,7 +2137,7 @@ def api_getDashboardData() {
     result.pistons = result.pistons.sort { it.l }
     result.variables = [:]
     for(variable in state.store) {
-    	result.variables[variable.key] = getVariable(variable.value, true)
+    	result.variables[variable.key] = getVariable(variable.key, true)
     }
     result.variables = result.variables.sort{ it.key }
 	return result
@@ -2188,6 +2188,11 @@ def api_piston() {
                 action.t = action.t.sort{ it.i }
             }
             result.app.actions = result.app.actions.sort{ it.id }
+		    result.variables = [:]
+    		for(variable in child.listVariables()) {
+    			result.variables[variable] = child.getVariable(variable, true)
+    		}
+    		//result.variables = result.variables.sort{ it.key }
             return result
         }        
     }
