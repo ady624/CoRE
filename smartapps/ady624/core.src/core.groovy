@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/06/2016 >>> v0.0.073.20160606 - Alpha test version - Attempt #1 to fix sorting order of actions and tasks in dashboard.
  *	 6/06/2016 >>> v0.0.072.20160606 - Alpha test version - Reallowing piston execution of same piston at @krlaframboise's request
  *	 6/06/2016 >>> v0.0.070.20160606 - Alpha test version - Date & Time gets comparisons against variables. Time of variable picks up the time from the variable and compares it just like any ther options (sunset, sunrise, etc.). Date and time of variable works completely different. It actually uses the date of the variable in the comparison, so one can delay things any number of days/months etc. and have the trigger happen then.
  *	 6/06/2016 >>> v0.0.06e.20160606 - Alpha test version - Added "Ask Alexa Macro" and "Piston" capabilities. Minor fixes for condition descriptions and event authorization/eligibility.
@@ -149,7 +150,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.072.20160606"
+	return "v0.0.073.20160606"
 }
 
 
@@ -2141,7 +2142,9 @@ def api_piston() {
             	for(def task in action.t) {
                 	task.desc = getTaskDescription(task)
                 }
+                action.t = action.t.sort{ it.i }
             }
+            result.app.actions = result.app.actions.sort{ it.id }
             return result
         }        
     }
