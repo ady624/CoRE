@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/07/2016 >>> v0.0.078.20160607 - Alpha test version - Minor bug fixes for Ask Alexa integration.
  *	 6/07/2016 >>> v0.0.077.20160607 - Alpha test version - Variables galore in dashboard.
  *	 6/07/2016 >>> v0.0.075.20160607 - Alpha test version - Added support for D-Link Camera Manager (thanks to @blebson)
  *	 6/07/2016 >>> v0.0.074.20160607 - Alpha test version - AskAlexa integration (thanks to @MichaelS) and better custom attributes support (thanks to @RBoy)
@@ -153,7 +154,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.077.20160607"
+	return "v0.0.078.20160607"
 }
 
 
@@ -2073,7 +2074,7 @@ def initializeCoREStore() {
 
 def coreHandler(evt) {
 	if (!evt) return
-    switch (evt.name) {
+    switch (evt.value) {
     	case "execute":
         	if (evt.jsonData && evt.jsonData?.pistonName) {
     			execute(evt.jsonData.pistonName)
@@ -2084,7 +2085,7 @@ def coreHandler(evt) {
 
 def askAlexaHandler(evt) {
 	if (!evt) return
-    switch (evt.name) {
+    switch (evt.value) {
     	case "refresh":
         	if (evt.jsonData && evt.jsonData?.macros) {
     			state.askAlexaMacros = evt.jsonData.macros
