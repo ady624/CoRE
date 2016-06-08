@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/08/2016 >>> v0.0.07a.20160608 - Alpha test version - Fixed a problem with "is between" introduced in v0.0.070
  *	 6/08/2016 >>> v0.0.079.20160608 - Alpha test version - Introducing the "THEN IF", "ELSE IF" and "FOLLWED BY" grouping methods. Out of ideas for unique names :)
  *	 6/07/2016 >>> v0.0.078.20160607 - Alpha test version - Minor bug fixes for Ask Alexa integration.
  *	 6/07/2016 >>> v0.0.077.20160607 - Alpha test version - Variables galore in dashboard.
@@ -155,7 +156,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.079.20160608"
+	return "v0.0.07a.20160608"
 }
 
 
@@ -768,6 +769,8 @@ def pageCondition(params) {
             def showParameters = false
             def recurring = false
             def trigger = false
+            def validCondition = false
+            def capability
 
             def branchId = getConditionMasterId(condition.id)
             def supportsTriggers = (settings.mode != "Follow-Up") && ((branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"]))
@@ -785,7 +788,7 @@ def pageCondition(params) {
                         def comparison
                         def allowDeviceComparisons = true
                         
-                        def capability = getCapabilityByDisplay(settings["condCap$id"])
+                        capability = getCapabilityByDisplay(settings["condCap$id"])
                         if (capability) {
                             if (capability.virtualDevice) {
                                 attribute = capability.attribute
@@ -797,6 +800,7 @@ def pageCondition(params) {
                                     if (comparison) {
                                         def comp = getComparisonOption(attribute, comparison)
                                         if (attr && comp) {
+                                        	validCondition = true
                                             //we have a valid comparison object
                                             trigger = (comp.trigger == comparison)
                                             //if no parameters, show the filters
@@ -851,6 +855,7 @@ def pageCondition(params) {
 
                                 } else {
                                     //Location Mode, Smart Home Monitor support
+                                    validCondition = false
                                     comparison = cleanUpComparison(settings["condComp$id"])
                                     if (attribute == "variable") {
                                         def dataType = settings["condDataType$id"]
@@ -863,14 +868,21 @@ def pageCondition(params) {
                                     	//do not allow device comparisons for location related capabilities, except variables
                                     	allowDeviceComparisons = false
                                     }
-                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, overrideAttributeType), required: true, multiple: false, submitOnChange: true
-                                    if (comparison) { 
-                                        //Value
-                                        showParameters = true
+                                    if ((capability.name == "askAlexaMacro") && (!listAskAlexaMacros().size())) {
+                                    	paragraph "It looks like you don't have the Ask Alexa SmartApp installed, or you haven't created any macros yet. To use this capability, please install Ask Alexa or, if already installed, create some macros first, then try again.", title: "Oh-oh!"
+                                    	href "", title: "Ask Alexa", description: "Tap here for more information on Ask Alexa", style: "external", url: "https://community.smartthings.com/t/release-ask-alexa/46786"
+                                    	showParameters = false
+                                    } else {
+	                                    input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, overrideAttributeType), required: true, multiple: false, submitOnChange: true
+    	                                if (comparison) { 
+        	                                showParameters = true
+	                                        validCondition = true
+            	                        }
                                     }
                                 }
                             } else {                        
                                 //physical device support
+                                validCondition = false
                                 devices = settings["condDevices$id"]
                                 input "condDevices$id", "capability.${capability.name}", title: "${capability.display} list", required: false, state: (devices ? "complete" : null), multiple: capability.multiple, submitOnChange: true
                                 if (devices && devices.size()) {
@@ -903,6 +915,7 @@ def pageCondition(params) {
                                         if (comparison) {                                	
                                             //Value
                                             showParameters = true
+                                            validCondition = true
                                         }
                                     }
                                 }
@@ -1016,81 +1029,83 @@ def pageCondition(params) {
                     }
                 }
 
-                section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
-                    def value = evaluateCondition(condition)
-                    paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
-                    paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
-                    if (condition.attr == "time") {
-                        def v = ""
-                        def nextTime = null
-                        def lastTime = null
-                        for (def i = 0; i < (condition.trg ? 3 : 1); i++) {
-                            nextTime = condition.trg ? getNextTimeTriggerTime(condition, nextTime) : getNextTimeConditionTime(condition, nextTime)
-                            if (nextTime) {
-                            	if (lastTime && nextTime && (nextTime - lastTime < 5000)) {
-                                	break
-                                }
-                                lastTime = nextTime
-                                v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
-                            } else {
-                                break
-                            }
-                        }
 
-                        paragraph v ? v : "(not happening any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
-                    }
-                }
-
-                if (showDateTimeFilter) {
-                    section(title: "Date & Time Filters", hideable: !state.config.expertMode, hidden: !(state.config.expertMode || settings["condMOH$id"] || settings["condHOD$id"] || settings["condDOW$id"] || settings["condDOM$id"] || settings["condMOY$id"] || settings["condY$id"])) {
-                        paragraph "But only on these..."
-                        input "condMOH$id", "enum", title: "Minute of the hour", description: 'Any minute of the hour', options: timeMinuteOfHourOptions(), required: false, multiple: true, submitOnChange: true
-                        input "condHOD$id", "enum", title: "Hour of the day", description: 'Any hour of the day', options: timeHourOfDayOptions(), required: false, multiple: true, submitOnChange: true
-                        input "condDOW$id", "enum", title: "Day of the week", description: 'Any day of the week', options: timeDayOfWeekOptions(), required: false, multiple: true, submitOnChange: true
-                        input "condDOM$id", "enum", title: "Day of the month", description: 'Any day of the month', options: timeDayOfMonthOptions2(), required: false, multiple: true, submitOnChange: true
-                        input "condWOM$id", "enum", title: "Week of the month", description: 'Any week of the month', options: timeWeekOfMonthOptions(), required: false, multiple: true, submitOnChange: true
-                        input "condMOY$id", "enum", title: "Month of the year", description: 'Any month of the year', options: timeMonthOfYearOptions(), required: false, multiple: true, submitOnChange: true
-                        input "condY$id", "enum", title: "Year", description: 'Any year', options: timeYearOptions(), required: false, multiple: true, submitOnChange: true
-                    }
-                }
-
-                if (id > 0) {
-                    def actions = listActions(id)
-                    if (actions.size() || state.config.expertMode) {
-                        section(title: "Individual actions") {
-                            def desc = actions.size() ? "" : "Tap to select actions"
-                            href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
-                            if (actions.size()) {
-                                for (action in actions) {
-                                    href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+				if (validCondition) {
+                    section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
+                        def value = evaluateCondition(condition)
+                        paragraph getConditionDescription(id), required: true, state: ( value ? "complete" : null )
+                        paragraph "Current evaluation: $value", required: true, state: ( value ? "complete" : null )
+                        if (condition.attr == "time") {
+                            def v = ""
+                            def nextTime = null
+                            def lastTime = null
+                            for (def i = 0; i < (condition.trg ? 3 : 1); i++) {
+                                nextTime = condition.trg ? getNextTimeTriggerTime(condition, nextTime) : getNextTimeConditionTime(condition, nextTime)
+                                if (nextTime) {
+                                    if (lastTime && nextTime && (nextTime - lastTime < 5000)) {
+                                        break
+                                    }
+                                    lastTime = nextTime
+                                    v = v + ( v ? "\n" : "") + formatLocalTime(nextTime)
+                                } else {
+                                    break
                                 }
                             }
+
+                            paragraph v ? v : "(not happening any time soon)", title: "Next scheduled event${i ? "s" : ""}", required: true, state: ( v ? "complete" : null )
+                        }
+                    }
+
+                    if (showDateTimeFilter) {
+                        section(title: "Date & Time Filters", hideable: !state.config.expertMode, hidden: !(state.config.expertMode || settings["condMOH$id"] || settings["condHOD$id"] || settings["condDOW$id"] || settings["condDOM$id"] || settings["condMOY$id"] || settings["condY$id"])) {
+                            paragraph "But only on these..."
+                            input "condMOH$id", "enum", title: "Minute of the hour", description: 'Any minute of the hour', options: timeMinuteOfHourOptions(), required: false, multiple: true, submitOnChange: true
+                            input "condHOD$id", "enum", title: "Hour of the day", description: 'Any hour of the day', options: timeHourOfDayOptions(), required: false, multiple: true, submitOnChange: true
+                            input "condDOW$id", "enum", title: "Day of the week", description: 'Any day of the week', options: timeDayOfWeekOptions(), required: false, multiple: true, submitOnChange: true
+                            input "condDOM$id", "enum", title: "Day of the month", description: 'Any day of the month', options: timeDayOfMonthOptions2(), required: false, multiple: true, submitOnChange: true
+                            input "condWOM$id", "enum", title: "Week of the month", description: 'Any week of the month', options: timeWeekOfMonthOptions(), required: false, multiple: true, submitOnChange: true
+                            input "condMOY$id", "enum", title: "Month of the year", description: 'Any month of the year', options: timeMonthOfYearOptions(), required: false, multiple: true, submitOnChange: true
+                            input "condY$id", "enum", title: "Year", description: 'Any year', options: timeYearOptions(), required: false, multiple: true, submitOnChange: true
+                        }
+                    }
+
+                    if (id > 0) {
+                        def actions = listActions(id)
+                        if (actions.size() || state.config.expertMode) {
+                            section(title: "Individual actions") {
+                                def desc = actions.size() ? "" : "Tap to select actions"
+                                href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                                if (actions.size()) {
+                                    for (action in actions) {
+                                        href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    section(title: "Advanced options") {
+                        input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, state: null, submitOnChange: true
+                    }
+                    if (state.config.expertMode) {
+                        section("Set variables") {
+                            input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                            input "condVarS$id", "string", title: "Save last evaluation result", description: "Enter a variable name to store the truth result in", required: false, capitalization: "none"
+                            input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
+                            input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
+                        }
+                        section("Set variables on true") {
+                            input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                            input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                        }
+                        section("Set variables on false") {
+                            input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
+                            input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
                         }
                     }
                 }
-
-                section(title: "Advanced options") {
-                    input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, state: null, submitOnChange: true
-                }
-                if (state.config.expertMode) {
-                    section("Set variables") {
-                        input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                        input "condVarS$id", "string", title: "Save last evaluation result", description: "Enter a variable name to store the truth result in", required: false, capitalization: "none"
-                        input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
-                        input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
-                    }
-                    section("Set variables on true") {
-                        input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                        input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                    }
-                    section("Set variables on false") {
-                        input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
-                        input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                    }
-                }
-
                 section() {
-                    paragraph "NOTE: To delete this condition, simply remove all devices from the list above and tap Done"
+                    paragraph (capability && capability.virtualDevice ? "NOTE: To delete this condition, unselect the ${capability.display} option from the Capability input above and tap Done" : "NOTE: To delete this condition, simply remove all the devices from the Device list above and tap Done")
                 }
 
                 section(title: "Required data - do not change", hideable: true, hidden: true) {            
@@ -2088,9 +2103,7 @@ def askAlexaHandler(evt) {
 	if (!evt) return
     switch (evt.value) {
     	case "refresh":
-        	if (evt.jsonData && evt.jsonData?.macros) {
-    			state.askAlexaMacros = evt.jsonData.macros
-            }
+   			state.askAlexaMacros = evt.jsonData && evt.jsonData?.macros ? evt.jsonData.macros : []
             break
     }
 }
@@ -3189,7 +3202,12 @@ private exitPoint(milliseconds) {
     }
     setVariable("\$previousEventExecutionTime", milliseconds, true)
     state.lastExecutionTime = milliseconds
-	parent.updateChart("exec", milliseconds)
+    try {
+	    parent.updateChart("delay", lastEvent.delay)
+		parent.updateChart("exec", milliseconds)
+    } catch(e) {
+    	debug "ERROR: Could not update charts: $e", null, "error"
+    }    
     atomicState.runStats = runStats
    
 	//save all atomic states to state
@@ -3252,11 +3270,6 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventValue", lastEvent.event.value, true)
     setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
     setVariable("\$currentEventDelay", lastEvent.delay, true)    
-    try {
-	    parent.updateChart("delay", delay)
-    } catch(e) {
-    	debug "ERROR: Could not update delay chart: $e", null, "error"
-    }
     if (!(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
     	def cache = atomicState.cache
         cache = cache ? cache : [:]
@@ -3995,7 +4008,11 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                 def mm = rightNow
                 if ((a1 > a2) && (!useDate1 || !useDate2)) {
                 	//if a1 is after a2, and we haven't specified dates for both, increment a2 with 1 day to bring it after a1
-                	a2 = a2 + 86400000
+                    if ((mm < a2) || (useDate2)) {
+                		a1 = a1 - 86400000
+                    } else {
+                		a2 = a2 + 86400000
+                    }
                 }
                 def eval = (mm < a1) || (mm >= a2)
                 if (getNextEventTime) {
