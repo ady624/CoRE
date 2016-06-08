@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/08/2016 >>> v0.0.079.20160608 - Alpha test version - Introducing the "THEN IF", "ELSE IF" and "FOLLWED BY" grouping methods. Out of ideas for unique names :)
  *	 6/07/2016 >>> v0.0.078.20160607 - Alpha test version - Minor bug fixes for Ask Alexa integration.
  *	 6/07/2016 >>> v0.0.077.20160607 - Alpha test version - Variables galore in dashboard.
  *	 6/07/2016 >>> v0.0.075.20160607 - Alpha test version - Added support for D-Link Camera Manager (thanks to @blebson)
@@ -154,7 +155,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.078.20160607"
+	return "v0.0.079.20160608"
 }
 
 
@@ -657,7 +658,7 @@ private getConditionGroupPageContent(params, condition) {
                 for (c in condition.children) {
                     if (cnt > 0) {
                         if (cnt == 1) {
-                            input "condGrouping$id", "enum", title: "", description: "Choose the logical operation to be applied between all conditions in this group", options: ["AND", "OR", "XOR"], defaultValue: "AND", required: true, submitOnChange: true
+                            input "condGrouping$id", "enum", title: "", description: "Choose the logical operation to be applied between all conditions in this group", options: groupOptions(), defaultValue: "AND", required: true, submitOnChange: true
                         } else {
                             paragraph settings["condGrouping$id"], state: "complete"
                         }
@@ -3526,22 +3527,51 @@ private evaluateCondition(condition, evt = null) {
             }       
 		} else {
             //we evaluate a group
-            result = (condition.grp == "AND") && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
+            result = (condition.grp in ["AND", "THEN IF", "ELSE IF", "FOLLOWED BY"]) && (condition.children.size()) //we need to start with a true when doing AND or with a false when doing OR/XOR
+            def i = 0
+            def lastChild = condition.children.size() - 1
+            def followedBy = (condition.grp == "FOLLOWED BY")
+            def resetLadder = true
             for (child in condition.children.sort { it.id }) {
+                def interrupt = false
                 //evaluate the child
-                def subResult = evaluateCondition(child, evt)
-                //apply it to the composite result
-                switch (condition.grp) {
-                    case "AND":
-                    result = result && subResult
-                    break
-                    case "OR":
-                    result = result || subResult
-                    break
-                    case "XOR":
-                    result = result ^ subResult
-                    break
+                //if we have a follwed by, we skip all conditions that are already true, step ladder...
+                if (!followedBy || !child.eval) {
+                    def subResult = evaluateCondition(child, evt)
+                    //apply it to the composite result
+                    switch (condition.grp) {
+                        case "AND":
+                        	result = result && subResult
+                        	break
+                        case "OR":
+                        	result = result || subResult
+                        	break
+                        case "XOR":
+                        	result = result ^ subResult
+                        	break
+                        case "THEN IF":
+                        	result = result && subResult
+                        	interrupt = !result
+                        	break
+                        case "ELSE IF":
+                        	result = subResult
+                        	interrupt = result
+                        	break
+                        case "FOLLOWED BY":
+                        	//we're true when all children are true
+                        	result = subResult && (i ==  lastChild)
+                            resetLadder = !subResult
+                        	interrupt = true
+                        	break
+                    }
                 }
+				i += 1
+                if (interrupt) break
+            }
+            
+            if (followedBy && (result || resetLadder)) {
+            	//we either completed the ladder or failed miserably, so let's reset it
+                for (child in condition.children) child.eval = false
             }
         }
         //result = postEvaluateCondition(condition, evt, result)
@@ -3689,8 +3719,7 @@ private evaluateDeviceCondition(condition, evt) {
             def oldValue = null
             def oldValueSince = null
             if (evt && !(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
-                def cache = atomicState.cache
-                cache = cache ? cache : [:]
+                def cache = state.cache ? state.cache : [:]
                 def cachedValue = cache[device.id + "-" + attribute]
                 if (cachedValue) {
                     oldValue = cachedValue.o
@@ -6669,6 +6698,10 @@ private timeComparisonOptionValues(trigger) {
    	return ["custom time", "midnight", "sunrise", "noon", "sunset", "time of variable", "date and time of variable"] + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
 }
 
+private groupOptions() {
+	return ["AND", "OR", "XOR", "THEN IF", "ELSE IF", "FOLLOWED BY"]
+}
+
 private timeOptions(trigger = false) {
 	def result = ["1 minute"]
     for (def i =2; i <= (trigger ? 360 : 60); i++) {
@@ -8325,7 +8358,7 @@ private commands() {
 private virtualCommands() {
 	return [
     	[ name: "wait",					requires: [],			 			display: "Wait",							parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait {0} {1}",	],
-    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least (minutes):number[1..1440]","At most (minutes):number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
+    	[ name: "waitRandom",			requires: [],			 			display: "Wait (random)",					parameters: ["At least:number[1..1440]","At most:number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
     	[ name: "waitState",			requires: [],			 			display: "Wait for piston state change",	parameters: ["Change to:enum[any,false,true]"],															immediate: true,	location: true,						description: "Wait for {0} state"],
     	[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",																																															],
     	[ name: "toggle#1",				requires: ["on1", "off1"], 			display: "Toggle #1",																																															],
