@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/08/2016 >>> v0.0.07e.20160608 - Alpha test version - Attempt to fix a race condition with global variable events
  *	 6/08/2016 >>> v0.0.07d.20160608 - Alpha test version - Fixed a problem in "in between"
  *	 6/08/2016 >>> v0.0.07c.20160608 - Alpha test version - Modified time offsets to allow -1440..1440 minutes and fixed a problem with "in between"'s next time estimation
  *	 6/08/2016 >>> v0.0.07b.20160608 - Alpha test version - Introduced software-mode "Fade to level" and renamed the old one "Fade to level (hardware)"
@@ -159,7 +160,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.07d.20160608"
+	return "v0.0.07e.20160608"
 }
 
 
@@ -1885,6 +1886,8 @@ def setVariable(name, value, system = false) {
             if (!parent) {
             	def oldValue = state.store[name]
 				state.store[name] = value
+                //we need to save the store atomically so that if anyone is listening to this event gets the right info
+                atomicState.store = state.store
                 if (oldValue != value) {
                 	sendLocationEvent(name: "variable", value: name, displayed: true, isStateChange: true, descriptionText: "CoRE variable $name changed from '$oldValue' to '$value'", data: [oldValue: oldValue, value: value])
                 }                
@@ -2341,10 +2344,8 @@ def generatePistonName() {
 }
 
 def refreshPistons() {
-	def data = [
-    	pistons: listPistons()
-    ]
-    sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, descriptionText: "CoRE has an updated list of pistons", data: data])
+	def data = 
+    sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
 }
 
 def listAskAlexaMacros() {
@@ -3223,7 +3224,7 @@ private exitPoint(milliseconds) {
     
     if (lastEvent && lastEvent.event) {
     	if (lastEvent.event.name != "piston") {
-	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, isStateChange: true, descriptionText: "CoRE ${appData.mode} Piston '${app.label}' has executed in ${milliseconds}ms", data: [state: state, executionTime: milliseconds, event: lastEvent])
+	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, isStateChange: true, descriptionText: "CoRE ${appData.mode} Piston '${app.label}' has executed in ${milliseconds}ms", data: [state: state.currentState, executionTime: milliseconds, event: lastEvent])
     	}
     }
     
@@ -7605,7 +7606,7 @@ private formatMessage(message, params = null) {
             def idx = var.isInteger() ? var.toInteger() : null
             def value = ""
             if (params && (idx >= 0) && (idx < params.size())) {
-            	value = "${params[idx].d ? params[idx].d : params[idx]}"            	
+            	value = "${params[idx].d != null ? params[idx].d : "???"}"            	
             } else {
 	            value = getVariable(var, true)
             }
