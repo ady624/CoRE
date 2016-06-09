@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/08/2016 >>> v0.0.07d.20160608 - Alpha test version - Fixed a problem in "in between"
  *	 6/08/2016 >>> v0.0.07c.20160608 - Alpha test version - Modified time offsets to allow -1440..1440 minutes and fixed a problem with "in between"'s next time estimation
  *	 6/08/2016 >>> v0.0.07b.20160608 - Alpha test version - Introduced software-mode "Fade to level" and renamed the old one "Fade to level (hardware)"
  *	 6/08/2016 >>> v0.0.07a.20160608 - Alpha test version - Fixed a problem with "is between" introduced in v0.0.070
@@ -158,7 +159,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.07c.20160608"
+	return "v0.0.07d.20160608"
 }
 
 
@@ -4023,7 +4024,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                         return convertDateToUnixTime(a2)
                     } else {
                     	//we're not in between the a1 and a2
-                    	return convertDateToUnixTime(a1 < mm ? (a2 < mm ? (useDate1 ? null : a1 + 86400) : a2) : a1)
+                    	return convertDateToUnixTime(a1 < mm ? (a2 < mm ? (useDate1 ? null : a1 + 86400000) : a2) : a1)
                     }
                 }                
                 if (comparison.contains("not")) {
