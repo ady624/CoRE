@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/08/2016 >>> v0.0.07b.20160608 - Alpha test version - Introduced software-mode "Fade to level" and renamed the old one "Fade to level (hardware)"
  *	 6/08/2016 >>> v0.0.07a.20160608 - Alpha test version - Fixed a problem with "is between" introduced in v0.0.070
  *	 6/08/2016 >>> v0.0.079.20160608 - Alpha test version - Introducing the "THEN IF", "ELSE IF" and "FOLLWED BY" grouping methods. Out of ideas for unique names :)
  *	 6/07/2016 >>> v0.0.078.20160607 - Alpha test version - Minor bug fixes for Ask Alexa integration.
@@ -156,7 +157,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.07a.20160608"
+	return "v0.0.07b.20160608"
 }
 
 
@@ -5589,6 +5590,35 @@ private task_vcmd_fadeLevel(device, action, task, suffix = "") {
     return true
 }
 
+private task_vcmd_adjustLevel(device, action, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 2)) {
+    	return false
+    }
+    def level = cast(params[0].d, params[1].t)
+    def duration = cast(params[1].d, params[1].t)
+    def currentLevel = cast(device.currentValue('level'), "number")
+    def delta = level - currentLevel
+    if (delta == 0) return
+    //we try to achieve 10 steps
+    def interval = Math.round(duration * 10)
+    def minInterval = 1000 //min interval is 1s
+    interval = interval > minInterval ? interval : minInterval
+    def steps = Math.ceil(duration * 1000 / interval)
+    //we're trying with a delay, not all devices support this
+    if (steps > 1) {
+	    def oldLevel = currentLevel
+    	for(def i = 1; i <= steps; i++) {
+        	def newLevel = Math.round(currentLevel + delta * i / steps)
+            if (oldLevel != newLevel) {
+				device."setLevel$suffix"(newLevel, [delay: i * interval])
+            }
+            oldLevel = newLevel
+        }
+    }
+    return true
+}
+
 private task_vcmd_flash(device, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
     if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || (params.size() != 3)) {
@@ -8414,7 +8444,8 @@ private virtualCommands() {
     	[ name: "delayedToggle#6",		requires: ["on6", "off6"], 			display: "Toggle #6 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #6 after {0}ms",	],
     	[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
     	[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
-    	[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
+    	[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level (hardware)",		parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
+    	[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["Target level:level","Duration (seconds):number[1..600]"],																							description: "Fade to {0}% in {1}s",				],
     	[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",		],
     	[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
     	[ name: "flash#2",				requires: ["on2", "off2"], 			display: "Flash #2",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #2 {0}ms/{1}ms for {2} time(s)",	],
