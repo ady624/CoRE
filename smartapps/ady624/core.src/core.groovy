@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/09/2016 >>> v0.0.07f.20160609 - Alpha test version - Caching physical for conditions, updating atomic variables before executing pistons, loops...
  *	 6/08/2016 >>> v0.0.07e.20160608 - Alpha test version - Attempt to fix a race condition with global variable events
  *	 6/08/2016 >>> v0.0.07d.20160608 - Alpha test version - Fixed a problem in "in between"
  *	 6/08/2016 >>> v0.0.07c.20160608 - Alpha test version - Modified time offsets to allow -1440..1440 minutes and fixed a problem with "in between"'s next time estimation
@@ -160,7 +161,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.07e.20160608"
+	return "v0.0.07f.20160609"
 }
 
 
@@ -2247,12 +2248,18 @@ def listPistons(excludeApp = null, type = null) {
 }
 
 def execute(pistonName) {
-	def piston = getChildApps().find{ it.label == pistonName }
-    if (piston) {
-    	//fire up the piston
-    	return piston.executeHandler()
+	if (parent) {
+    	//if a child executes a piston, we need to save the variables to the atomic state to make them show in the new piston execution
+		atomicState.store = state.store
+        return parent.execute(pistonName)
+    } else {
+		def piston = getChildApps().find{ it.label == pistonName }
+    	if (piston) {
+    		//fire up the piston
+    		return piston.executeHandler()
+    	}
+    	return null
     }
-    return null
 }
 
 def updateChart(name, value) {
@@ -3280,7 +3287,7 @@ private broadcastEvent(evt, primary, secondary) {
         def deviceId = evt.deviceId ? evt.deviceId : location.id
     	def cachedValue = cache[deviceId + '-' + evt.name]
     	def eventTime = evt.date.getTime()
-		cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, t: eventTime ]
+		cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
     	atomicState.cache = cache
         state.cache = cache
 		if (cachedValue) {
@@ -3713,6 +3720,8 @@ private evaluateDeviceCondition(condition, evt) {
     
     //is this a momentary event?
     def momentary = attr ? !!attr.momentary : false
+    def physical = false
+    def oldPhysical = false
     //if we're dealing with a momentary capability, we can only expect one of the devices to be true at any time
     if (momentary) {
     	mode = "Any"
@@ -3733,18 +3742,26 @@ private evaluateDeviceCondition(condition, evt) {
                 //stays trigger, we need to use the current device value
                 virtualCurrentValue = device.currentValue(attribute)
             }
+                      
             def oldValue = null
             def oldValueSince = null
             if (evt && !(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
                 def cache = state.cache ? state.cache : [:]
                 def cachedValue = cache[device.id + "-" + attribute]
                 if (cachedValue) {
+                	physical = cachedValue.p
+                    oldPhysical = cachedValue.q
                     oldValue = cachedValue.o
                     oldValueSince = cachedValue.t
                 }
-            }
+                //get the physical from the event, if that's related to this trigger
+                if (ownsEvent) {
+                    physical = !!evt.physical                
+                }
+            }            
+            
             //if we have a variable event and we're at a variable condition, let's get the old value
-			if (evt && (evt.name == "variable") && (attr.name == "variable") && (evt.jsonData)) {
+			if (evt && (evt.name == "variable") && (attr.name == "variable") && (evt.jsonData) && (evt.value == condition.var)) {
             	oldValue = evt.jsonData.oldValue
             }
 			def type = attr.name == "variable" ? (condition.dt ? condition.dt : attr.type) : attr.type
@@ -3777,12 +3794,7 @@ private evaluateDeviceCondition(condition, evt) {
                     break
             }
             def interactionMatched = true
-            if (evt && condition.trg && attr.interactive) {
-            	def physical = false
-            	try {
-	            	physical = !!evt.physical
-                } catch (all) {
-                }
+            if (attr.interactive) {
                 interactionMatched = (physical && (condition.iact != "Programmatic")) || (!physical && (condition.iact != "Physical"))
                 if (!interactionMatched) {
                 	debug "Condition evaluation interrupted due to interaction method mismatch. Event is ${evt.physical ? "physical" : "programmatic"}, expecting ${condition.iact}."
@@ -4602,7 +4614,8 @@ private scheduleAction(action) {
         	debug "WARNING: Task override policy for Global is not yet implemented", null, "warn"
         }
     }
-    def time = now()
+    def rightNow = now()
+    def time = rightNow
     def waitFor = null
     def waitSince = null
     if (action.t && action.t.size() && deviceIds.size() ) {
@@ -4615,7 +4628,7 @@ private scheduleAction(action) {
             if (virtual) {
                 //dealing with a virtual command
                 command = getVirtualCommandByDisplay(cmd)
-                if (command && command.immediate) {
+				if (command && command.immediate) {
                		def function = "cmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
 					def result = "$function"(action, task, time)
                 	time = (result && result.time) ? result.time : time
@@ -5738,7 +5751,7 @@ private task_vcmd_followUp(devices, action, task, suffix = "") {
     	return false
     }
     def piston = params[2].d
-	def result = parent.execute(piston)
+	def result = execute(piston)
     if (params[3].d) {
     	setVariable(params[3].d, result)
     }
@@ -5750,8 +5763,8 @@ private task_vcmd_executePiston(devices, action, task, suffix = "") {
     if (params.size() != 2) {
     	return false
     }
-    def piston = params[0].d
-	def result = parent.execute(piston)
+    def piston = params[0].d    
+	def result = execute(piston)
     if (params[1].d) {
     	setVariable(params[1].d, result)
     }
@@ -8478,6 +8491,9 @@ private virtualCommands() {
         [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
         [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
         [ name: "executePiston",		requires: [],						display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
+        [ name: "beginLoop",			requires: [],						display: "Begin loop",						parameters: ["Number of cycles:number[1..100]"],																description: "Begin loop with {0} cycles",	],
+        [ name: "breakLoop",			requires: [],						display: "Break loop",						parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than, is less than or equal to,is greater than,is greater than or equal to]","Value:decimal"],																description: "Break loop if variable {0} {1} {2}",	],
+        [ name: "endLoop",				requires: [],						display: "End loop",						parameters: ["Delay (seconds):number[0..*]"],																description: "Repeat loop after a {0}s delay",	],
     ]
 }
 
