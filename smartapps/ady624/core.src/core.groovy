@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/08/2016 >>> v0.0.07c.20160608 - Alpha test version - Modified time offsets to allow -1440..1440 minutes and fixed a problem with "in between"'s next time estimation
  *	 6/08/2016 >>> v0.0.07b.20160608 - Alpha test version - Introduced software-mode "Fade to level" and renamed the old one "Fade to level (hardware)"
  *	 6/08/2016 >>> v0.0.07a.20160608 - Alpha test version - Fixed a problem with "is between" introduced in v0.0.070
  *	 6/08/2016 >>> v0.0.079.20160608 - Alpha test version - Introducing the "THEN IF", "ELSE IF" and "FOLLWED BY" grouping methods. Out of ideas for unique names :)
@@ -157,7 +158,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.07b.20160608"
+	return "v0.0.07c.20160608"
 }
 
 
@@ -823,7 +824,7 @@ def pageCondition(params) {
                                                     }
                                                     if (comparison && value && ((comparison.contains("around") || !(value.contains('every') || value.contains('custom'))))) {
                                                         //using a time offset
-                                                        input "condOffset$id#$i", "number", title: (comparison.contains("around") ? "Give or take minutes" : "Offset (+/- minutes)"), range: (comparison.contains("around") ? "1..360" : "-360..360"), required: true, multiple: false, defaultValue: (comparison.contains("around") ?  5 : 0), submitOnChange: true
+                                                        input "condOffset$id#$i", "number", title: (comparison.contains("around") ? "Give or take minutes" : "Offset (+/- minutes)"), range: (comparison.contains("around") ? "1..1440" : "-1440..1440"), required: true, multiple: false, defaultValue: (comparison.contains("around") ?  5 : 0), submitOnChange: true
                                                     }
 
                                                     if (value.contains("minute")) {
@@ -4022,7 +4023,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
                         return convertDateToUnixTime(a2)
                     } else {
                     	//we're not in between the a1 and a2
-                    	return convertDateToUnixTime(a1 < mm ? (a2 < mm ? null : a2) : a1)
+                    	return convertDateToUnixTime(a1 < mm ? (a2 < mm ? (useDate1 ? null : a1 + 86400) : a2) : a1)
                     }
                 }                
                 if (comparison.contains("not")) {
