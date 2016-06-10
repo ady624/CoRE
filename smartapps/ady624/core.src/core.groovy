@@ -1,7 +1,7 @@
 /**
  *  CoRE - Community's own Rule Engine
  *
- *  Copyright 2016 Adrian Caramaliu <adrian(a sign goes here)caramaliu.com>
+ *  Copyright 2016 Adrian Caramaliu <ady624("at" sign goes here)gmail.com>
  *
  *  This program is free software: you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/10/2016 >>> v0.0.082.20160610 - Alpha test version - Fixed an issue with saving variables to atomicState (when needed)
  *	 6/10/2016 >>> v0.0.081.20160610 - Alpha test version - Action flow commands fixes and improvements
  *	 6/10/2016 >>> v0.0.080.20160610 - Alpha test version - Welcome to CoRE++ - actions are now much smarter, with for, while (not enabled yet), switch and if-else-if blocks
  *	 6/09/2016 >>> v0.0.07f.20160609 - Alpha test version - Caching physical for conditions, updating atomic variables before executing pistons, loops...
@@ -163,7 +164,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.080.20160610"
+	return "v0.0.082.20160610"
 }
 
 
@@ -1902,9 +1903,11 @@ def setVariable(name, value, system = false) {
             if (!parent) {
             	def oldValue = state.store[name]
 				state.store[name] = value
-                //we need to save the store atomically so that if anyone is listening to this event gets the right info
-                atomicState.store = state.store
                 if (oldValue != value) {
+                    //we need to save the store atomically so that if anyone is listening to this event gets the right info
+                    def store = state.store
+                    state.store = store
+                    atomicState.store = store
                 	sendLocationEvent(name: "variable", value: name, displayed: true, isStateChange: true, descriptionText: "CoRE variable $name changed from '$oldValue' to '$value'", data: [app: "CoRE", oldValue: oldValue, value: value])
                 }                
             } else {
@@ -2266,7 +2269,9 @@ def listPistons(excludeApp = null, type = null) {
 def execute(pistonName) {
 	if (parent) {
     	//if a child executes a piston, we need to save the variables to the atomic state to make them show in the new piston execution
-		atomicState.store = state.store
+        def store = state.store
+        state.store = store
+        atomicState.store = store
         return parent.execute(pistonName)
     } else {
 		def piston = getChildApps().find{ it.label == pistonName }
