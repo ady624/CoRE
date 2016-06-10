@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/10/2016 >>> v0.0.081.20160610 - Alpha test version - Action flow commands fixes and improvements
  *	 6/10/2016 >>> v0.0.080.20160610 - Alpha test version - Welcome to CoRE++ - actions are now much smarter, with for, while (not enabled yet), switch and if-else-if blocks
  *	 6/09/2016 >>> v0.0.07f.20160609 - Alpha test version - Caching physical for conditions, updating atomic variables before executing pistons, loops...
  *	 6/08/2016 >>> v0.0.07e.20160608 - Alpha test version - Attempt to fix a race condition with global variable events
@@ -1316,6 +1317,7 @@ def pageAction(params) {
                     //sort the ids, we really want to have these in the proper order
                     ids = ids.sort()
                     def availableCommands = (deviceAction ? listCommonDeviceCommands(devices, usedCapabilities) : [])
+                    def flowCommands = []
                     for (vcmd in virtualCommands().sort { it.display }) {
                         if ((!(vcmd.display in availableCommands)) && (vcmd.location || deviceAction)) {
                             def ok = true
@@ -1333,9 +1335,16 @@ def pageAction(params) {
                             }
                             //single device support - some virtual commands require only one device, can't handle more at a time
                             if (ok && (!vcmd.singleDevice || (devices.size() == 1))) {
-                                availableCommands.push(virtualCommandPrefix() + vcmd.display)
+                            	if (vcmd.flow) {
+                                	flowCommands.push(virtualCommandPrefix() + vcmd.display)
+                                } else {
+                                	availableCommands.push(virtualCommandPrefix() + vcmd.display)
+                                }
                             }
                         }
+                    }
+                    if (state.config.expertMode) {
+                    	availableCommands = availableCommands + flowCommands
                     }
                     def idx = 0
                     if (ids.size()) {
@@ -3860,7 +3869,7 @@ private evaluateDeviceCondition(condition, evt) {
                 break
             }
             //optimize the loop to exit when we find a result that's going to be the final one (AND encountered a false, or OR encountered a true)
-            if (finalResult && !condition.vm && !condition.vn) break
+            if (finalResult && !(condition.vm || condition.vn)) break
         }
     }
 
@@ -4647,7 +4656,7 @@ private scheduleAction(action) {
         	//make sure x is within task list
         	if ((x == null) || (x < 0) || (x >= tasks.size())) break
             cnt += 1
-        	def task = tasks[x]
+            def task = tasks[x]
         	def cmd = task.c
             def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
             def custom = (cmd && cmd.startsWith(customCommandPrefix()))
@@ -4750,16 +4759,27 @@ private scheduleAction(action) {
                                         x = flow.endIdx + 1
                                         continue
                                     case "loop":
+                                    	if (flow.isWhile) {
+                                        	//while loops are simple :)
+                                        	flow.eval = checkFlowCondition(task)
+                                            if (flow.eval) {
+                                            	x += 1
+                                            } else {
+                                            	x = flow.endIdx + 1
+                                            }
+                                            continue
+                                        }
                                     	if (!flow.active) {
                                         	def start
                                             def end
                                             def step
                                         	if (flow.isSimple) {
                                             	//initialize the simple loop
+                                                flow.varName = null
                                                 flow.start = 0
-                                                flow.end = Math.abs(cast(task.p[0].d, "number")) - 1
-                                                if (end < start) {
-                                                    flow.active = true
+                                                flow.end = Math.abs(cast(formatMessage(task.p[0].d), "number")) - 1
+                                                if (flow.end < flow.start) {
+                                                    flow.active = false
                                                 	x = flow.endIdx + 1
                                                     continue
                                                 }
@@ -4778,7 +4798,10 @@ private scheduleAction(action) {
                                             continue
                                         } else {
                                         	//loop is already in progress
-                                            flow.pos = flow.pos + flow.start
+                                            //if we're using a variable, get its current value
+                                            if (flow.varName) flow.pos = getVariable(flow.varName)
+                                            //then increment int
+                                            flow.pos = flow.pos + flow.step
                                             //if we're using a variable, update it
                                             if (flow.varName) setVariable(flow.varName, flow.pos)
                                             if (flow.step > 0 ? (flow.pos > flow.end) : (flow.pos < flow.end)) {
@@ -4798,6 +4821,14 @@ private scheduleAction(action) {
                             	break
                             case "break":
                             	//we need to find the closest earlier loop or switch and get out of it
+                                if (flow.isIf) {
+                                	flow.eval = checkFlowCondition(task)
+                                    if (!flow.eval) {
+                                    	//if the break condition is not met, we skip that
+                                    	x += 1
+                                        continue
+                                    }
+                                }
 								for (def y = x - 1; y >= 0; y--) {                              
                                 	def startFlow = flowChart[y]
                                     if ((startFlow.action == "begin") && (startFlow.isLoop || (startFlow.isSwitch && !startFlow.isCase))) {
@@ -5547,13 +5578,13 @@ private processTasks() {
         
         while (repeatCount < 2) {
 			//we allow some tasks to rerun this code because they're altering our task list...
-
             //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
             if (state.tasker && state.tasker.size()) {
                 for (task in state.tasker.sort{ it.idx }) {
                     if (task.add) {
                         def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data])
-                        def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}"
+                        //def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}:${task.idx}:$idx"
+                        def n = "t$idx"
                         idx++
                         tasks[n] = t
                     } else if (task.del) {
@@ -8839,20 +8870,20 @@ private virtualCommands() {
         [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
         [ name: "executePiston",		requires: [],						display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
         //flow control commands
-        [ name: "beginSimpleForLoop",	requires: [],						display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:number[1..100]"],																																									description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
-        [ name: "beginForLoop",			requires: [],						display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:number","To value:number"],																													varEntry: 0,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
-//        [ name: "beginWhileLoop",		requires: [],						display: "Begin WHILE loop",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "WHILE (0} {1} {2}) DO",		flow: true,					indent: 1,	],
-        [ name: "breakLoop",			requires: [],						display: "Break loop",						parameters: [],																																																		description: "BREAK",						flow: true,								],
-        [ name: "breakLoopIf",			requires: [],						display: "Break loop (conditional)",		parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "BREAK IF ({0} {1} {2})",		flow: true,								],
-        [ name: "exitAction",			requires: [],						display: "Exit Action",						parameters: [],																																																		description: "EXIT",						flow: true,								],
-        [ name: "endLoop",				requires: [],						display: "End loop",						parameters: ["Delay (seconds):number[0..*]"],																																										description: "LOOP AFTER {0}s",				flow: true,	selfIndent: -1, indent: -1,	],
-        [ name: "beginIfBlock",			requires: [],						display: "Begin IF block",					parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "IF ({0} {1} {2}) THEN",		flow: true,					indent: 1,	],
-        [ name: "beginElseIfBlock",		requires: [],						display: "Begin ELSE IF block",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "ELSE IF ({0} {1} {2}) THEN",	flow: true,	selfIndent: -1,				],
-        [ name: "beginElseBlock",		requires: [],						display: "Begin ELSE block",				parameters: [],																																																		description: "ELSE",						flow: true,	selfIndent: -1,		 		],
-        [ name: "endIfBlock",			requires: [],						display: "End IF block",					parameters: [],																																																		description: "END IF",						flow: true,	selfIndent: -1, indent: -1,	],
-        [ name: "beginSwitchBlock",		requires: [],						display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																											description: "SWITCH ({0}) DO",				flow: true,					indent: 2,	],
-        [ name: "beginSwitchCase",		requires: [],						display: "Begin CASE block",				parameters: ["Value:string"],																																														description: "CASE {0}:",					flow: true,	selfIndent: -1, 			],
-        [ name: "endSwitchBlock",		requires: [],						display: "End SWITCH block",				parameters: [],																																																		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
+        [ name: "beginSimpleForLoop",	requires: [],						display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:string"],																																										location: true,		description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
+        [ name: "beginForLoop",			requires: [],						display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:string","To value:string"],																													varEntry: 0,	location: true,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
+        [ name: "beginWhileLoop",		requires: [],						display: "Begin WHILE loop",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "WHILE (0} {1} {2}) DO",		flow: true,					indent: 1,	],
+        [ name: "breakLoop",			requires: [],						display: "Break loop",						parameters: [],																																																	location: true,		description: "BREAK",						flow: true,								],
+        [ name: "breakLoopIf",			requires: [],						display: "Break loop (conditional)",		parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "BREAK IF ({0} {1} {2})",		flow: true,								],
+        [ name: "exitAction",			requires: [],						display: "Exit Action",						parameters: [],																																																	location: true,		description: "EXIT",						flow: true,								],
+        [ name: "endLoop",				requires: [],						display: "End loop",						parameters: ["Delay (seconds):number[0..*]"],																																									location: true,		description: "LOOP AFTER {0}s",				flow: true,	selfIndent: -1, indent: -1,	],
+        [ name: "beginIfBlock",			requires: [],						display: "Begin IF block",					parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "IF ({0} {1} {2}) THEN",		flow: true,					indent: 1,	],
+        [ name: "beginElseIfBlock",		requires: [],						display: "Begin ELSE IF block",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "ELSE IF ({0} {1} {2}) THEN",	flow: true,	selfIndent: -1,				],
+        [ name: "beginElseBlock",		requires: [],						display: "Begin ELSE block",				parameters: [],																																																	location: true,		description: "ELSE",						flow: true,	selfIndent: -1,		 		],
+        [ name: "endIfBlock",			requires: [],						display: "End IF block",					parameters: [],																																																	location: true,		description: "END IF",						flow: true,	selfIndent: -1, indent: -1,	],
+        [ name: "beginSwitchBlock",		requires: [],						display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH ({0}) DO",				flow: true,					indent: 2,	],
+        [ name: "beginSwitchCase",		requires: [],						display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE {0}:",					flow: true,	selfIndent: -1, 			],
+        [ name: "endSwitchBlock",		requires: [],						display: "End SWITCH block",				parameters: [],																																																	location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
     ]
 }
 
