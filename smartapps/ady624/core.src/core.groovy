@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/10/2016 >>> v0.0.084.20160610 - Alpha test version - Added piston day/time restrictions
  *	 6/10/2016 >>> v0.0.083.20160610 - Alpha test version - Action "variable" restriction (if <variable> <comparison> <value>)), piston restrictions
  *	 6/10/2016 >>> v0.0.082.20160610 - Alpha test version - Fixed an issue with saving variables to atomicState (when needed)
  *	 6/10/2016 >>> v0.0.081.20160610 - Alpha test version - Action flow commands fixes and improvements
@@ -165,7 +166,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.083.20160610"
+	return "v0.0.084.20160610"
 }
 
 
@@ -589,8 +590,21 @@ private pageMainCoREPiston() {
                 input "restrictionComparison", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
                 input "restrictionValue", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
             }
+            input "restrictionDOW", "enum", options: timeDayOfWeekOptions(), title: "Only execute on these days", description: "Any week day", required: false, multiple: true
+            def timeFrom = settings["restrictionTimeFrom"]
+            input "restrictionTimeFrom", "enum", title: (timeFrom ? "Only execute if time is between" : "Only execute during this time interval"), options: timeComparisonOptionValues(false, false), required: false, multiple: false, submitOnChange: true
+            if (timeFrom) {
+            	if (timeFrom.contains("custom")) {
+					input "restrictionTimeFromCustom", "time", title: "Custom time", required: true, multiple: false
+				}
+                def timeTo = settings["restrictionTimeTo"]
+	            input "restrictionTimeTo", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
+            	if (timeTo && (timeTo.contains("custom"))) {
+					input "restrictionTimeToCustom", "time", title: "Custom time", required: true, multiple: false
+				}
+            }
             input "restrictionSwitchOn", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
-            input "restrictionSwitchOff", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true
+            input "restrictionSwitchOff", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true            
         }
 
         section() {
@@ -2436,7 +2450,11 @@ def initializeCoREPiston() {
     	m: settings["restrictionMode"],
     	v: settings["restrictionVariable"],
     	vc: settings["restrictionComparison"],
-    	vv: settings["restrictionValue"] != null ? settings["restrictionValue"] : ""
+    	vv: settings["restrictionValue"] != null ? settings["restrictionValue"] : "",
+        tf: settings["restrictionTimeFrom"],
+        tfc: settings["restrictionTimeFromCustom"],
+        tt: settings["restrictionTimeTo"],
+        ttc: settings["restrictionTimeToCustom"],
     ]
     
 	state.run = "app"
@@ -3125,6 +3143,7 @@ private getTaskDescription(task) {
 /******************************************************************************/
 
 def deviceHandler(evt) {
+	//log.trace "${now() - evt.date.getTime()}ms"
 	entryPoint()    
 	if (!preAuthorizeEvent(evt)) {
     	return
@@ -3338,6 +3357,12 @@ private broadcastEvent(evt, primary, secondary) {
         	allowed = false
         } else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
             restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
+        	allowed = false
+        } else if (app.restrictions.dow && app.restrictions.dow.size() && !(getDayOfWeekName() in app.restrictions.dow)) {
+            restriction = "a day of week mismatch"
+        	allowed = false
+        } else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tt, app.restrictions.ttc))) {
+            restriction = "a time of day mismatch"
         	allowed = false
         } else {
         	if (settings["restrictionSwitchOn"]) {
@@ -5035,6 +5060,57 @@ private checkValueCondition(value1, comparison, value2) {
 
 private checkFlowCaseCondition(value, caseValue) {
 	return checkValueCondition(value, "is_equal_to", caseValue)
+}
+
+private checkTimeCondition(timeFrom, timeFromCustom, timeTo, timeToCustom) {
+	def time = adjustTime()
+    //convert to minutes since midnight
+    def tc = time.hours * 60 + time.minutes
+    def tf
+    def tt
+    def i = 0
+    while (i < 2) {
+    	def t = null
+        def h = null
+        def m = null
+    	switch(i == 0 ? timeFrom : timeTo) {
+        	case "custom time":
+	        	t = adjustTime(i == 0 ? timeFromCustom : timeToCustom)
+        		break
+        	case "sunrise":
+        		t = getSunrise()
+		        break
+			case "sunset":
+				t = getSunset()
+				break
+        	case "noon":
+        		h = 12
+		        break
+			case "midnight":
+        		h = (i == 0 ? 0 : 24)
+        	break
+        }
+        if (h != null) {
+        	m = 0
+        } else {
+        	h = t.hours
+            m = t.minutes
+        }
+        switch (i) {
+        	case 0:
+            	tf = h * 60 + m
+                break
+        	case 1:
+            	tt = h * 60 + m
+                break
+        }
+    	i += 1
+    }
+    if (tf < tt) {
+    	return (tc >= tf) && (tc < tt)
+    } else {
+    	return (tc < tt) || (tc >= tf)
+    }
 }
 
 private buildFlowChart(tasks) {
@@ -7212,8 +7288,8 @@ private addOffsetToMinutes(minutes, offset) {
     return minutes
 }
 
-private timeComparisonOptionValues(trigger) {
-   	return ["custom time", "midnight", "sunrise", "noon", "sunset", "time of variable", "date and time of variable"] + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
+private timeComparisonOptionValues(trigger, supportVariables = true) {
+   	return ["custom time", "midnight", "sunrise", "noon", "sunset"] + (supportVariables ? ["time of variable", "date and time of variable"] : []) + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
 }
 
 private groupOptions() {
