@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/10/2016 >>> v0.0.080.20160610 - Alpha test version - Welcome to CoRE++ - actions are now much smarter, with for, while (not enabled yet), switch and if-else-if blocks
  *	 6/09/2016 >>> v0.0.07f.20160609 - Alpha test version - Caching physical for conditions, updating atomic variables before executing pistons, loops...
  *	 6/08/2016 >>> v0.0.07e.20160608 - Alpha test version - Attempt to fix a race condition with global variable events
  *	 6/08/2016 >>> v0.0.07d.20160608 - Alpha test version - Fixed a problem in "in between"
@@ -161,7 +162,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.07f.20160609"
+	return "v0.0.080.20160610"
 }
 
 
@@ -1362,6 +1363,8 @@ def pageAction(params) {
                                             if (param) {
                                             	if ((command.parameters.size() == 1) && (param.type == "var")) {
                                                 	def task = getActionTask(action, tid)
+                                                    //we don't need any indents
+							                    	state.taskIndent = 0
                                                     def desc = getTaskDescription(task)
                                                     desc = "$desc".tokenize("=")
                                                     def title = desc.size() == 2 ? desc[0].trim() : "Set variable..."
@@ -1377,7 +1380,10 @@ def pageAction(params) {
                                                     input "actParam$id#$tid-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "attributes") {
                                                     input "actParam$id#$tid-$i", "enum", options: listCommonDeviceAttributes(devices), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+                                                } else if (param.type == "contact") {
+                                                    input "actParam$id#$tid-$i", "contact",  title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "contacts") {
+                                                	//log.trace "GOT HERE!!!"
                                                     input "actParam$id#$tid-$i", "contact",  title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "variable") {
                                                     input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
@@ -1890,7 +1896,7 @@ def setVariable(name, value, system = false) {
                 //we need to save the store atomically so that if anyone is listening to this event gets the right info
                 atomicState.store = state.store
                 if (oldValue != value) {
-                	sendLocationEvent(name: "variable", value: name, displayed: true, isStateChange: true, descriptionText: "CoRE variable $name changed from '$oldValue' to '$value'", data: [oldValue: oldValue, value: value])
+                	sendLocationEvent(name: "variable", value: name, displayed: true, isStateChange: true, descriptionText: "CoRE variable $name changed from '$oldValue' to '$value'", data: [app: "CoRE", oldValue: oldValue, value: value])
                 }                
             } else {
 				state.store[name] = value
@@ -2204,6 +2210,7 @@ def api_piston() {
             if (result.app.otherConditions) withEachCondition(result.app.otherConditions, "api_piston_prepare", child)
             for(def action in result.app.actions) {
             	action.desc = child.getActionDeviceList(action)
+                state.taskIndent = 0
             	for(def task in action.t) {
                 	task.desc = getTaskDescription(task)
                 }
@@ -2946,7 +2953,9 @@ private getActionDescription(action) {
     	result += "® If alarm is ${buildNameList(action.ra, "or")}...\n"
     }
     result += (result ? "\n" : "") + "Using " + buildDeviceNameList(devices, "and")+ "..."
-    for (task in action.t.sort{it.i}) {
+    state.taskIndent = 0
+    def tasks = action.t.sort{it.i}
+    for (task in tasks) {
     	def t = cleanUpCommand(task.c)
         if (task.p && task.p.size()) {
         	t += " ["
@@ -2970,71 +2979,82 @@ def getActionDeviceList(action) {
 
 private getTaskDescription(task) {
 	if (!task) return "[ERROR]"
+    state.taskIndent = state.taskIndent ? state.taskIndent : 0
     def virtual = (task.c && task.c.startsWith(virtualCommandPrefix()))
     def custom = (task.c && task.c.startsWith(customCommandPrefix()))
 	def command = cleanUpCommand(task.c)
     
+    def selfIndent = 0
+    def indent = 0
+    
+    def result = ""
     if (custom) {
-		return task.c
-    }
-    
-    def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))    
-    if (!cmd) return "[ERROR]"
-    
-    if (cmd.name == "setVariable") {
-    	if (task.p.size() < 7) return "[ERROR]"
-        def name = task.p[0].d
-        def dataType = task.p[1].d
-        def algebra = !!task.p[2].d
-        if (!name || !dataType) return "[ERROR]"
-        def result = "Set $dataType variable {$name} = "
-        if (algebra) {
-        	return result + "<complex algebra not ready yet>"
+		result = task.c
+    } else {
+
+        def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))    
+        if (!cmd) {
+        	result = "[ERROR]"
         } else {
-            def i = 4
-            def grouping = false
-            def groupingUnit = ""
-            while (true) {
-            	def value = task.p[i].d
-                //null strings are really blanks
-                if ((dataType == "string") && (value == null)) value = ""
-               	def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
-                def unit = (dataType == "time" ? task.p[i + 2].d : null)
-                def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null                
-                def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
-                if (needsGrouping) {
-                    //these operations require grouping i.e. (a * b * c) seconds
-                    if (!grouping) {
-                        grouping = true
-                        groupingUnit = unit
-                        result += "("
-                    }
-                }
-                //add the value/variable 
-                result += variable + (!grouping && unit ? " $unit" : "")
-                if (grouping && !needsGrouping) {
-                    //these operations do NOT require grouping
-                    //ungroup
-                    grouping = false
-                    result += ")${groupingUnit ? " $groupingUnit" : ""}"
-                }
-                if (!operation) break
-                result += " $operation "
-				i += 4                
-            }        	
-        }        
-        return result
-    	//special case for setVariable as the number of parameters is variable
-    
-    
-    } else if (cmd.name == "setColor") {
-    	def result = "Set color to "
-        if (task.p[0].d) return result + "\"${task.p[0].d}\""
-        if (task.p[1].d) return result + "RGB(${task.p[1].d})"
-        return result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
-	} else {
-    	return formatMessage(cmd.description ? cmd.description : cmd.display, task.p)
+        	indent = cmd.indent ? cmd.indent : 0
+        	selfIndent = cmd.selfIndent ? cmd.selfIndent : 0
+            if (cmd.name == "setVariable") {
+                if (task.p.size() < 7) return "[ERROR]"
+                def name = task.p[0].d
+                def dataType = task.p[1].d
+                def algebra = !!task.p[2].d
+                if (!name || !dataType) return "[ERROR]"
+                result = "Set $dataType variable {$name} = "
+                if (algebra) {
+                    return result + "<complex algebra not ready yet>"
+                } else {
+                    def i = 4
+                    def grouping = false
+                    def groupingUnit = ""
+                    while (true) {
+                        def value = task.p[i].d
+                        //null strings are really blanks
+                        if ((dataType == "string") && (value == null)) value = ""
+                        def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
+                        def unit = (dataType == "time" ? task.p[i + 2].d : null)
+                        def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null                
+                        def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+                        if (needsGrouping) {
+                            //these operations require grouping i.e. (a * b * c) seconds
+                            if (!grouping) {
+                                grouping = true
+                                groupingUnit = unit
+                                result += "("
+                            }
+                        }
+                        //add the value/variable 
+                        result += variable + (!grouping && unit ? " $unit" : "")
+                        if (grouping && !needsGrouping) {
+                            //these operations do NOT require grouping
+                            //ungroup
+                            grouping = false
+                            result += ")${groupingUnit ? " $groupingUnit" : ""}"
+                        }
+                        if (!operation) break
+                        result += " $operation "
+                        i += 4                
+                    }        	
+                }        
+            } else if (cmd.name == "setColor") {
+                result = "Set color to "
+                if (task.p[0].d) return result + "\"${task.p[0].d}\""
+                if (task.p[1].d) return result + "RGB(${task.p[1].d})"
+                result = result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
+            } else {
+                result = formatMessage(cmd.description ? cmd.description : cmd.display, task.p)
+            }
+        }
     }
+    
+    def currentIndent = state.taskIndent + selfIndent
+    def prefix = "".padLeft(currentIndent > 0 ? currentIndent * 3 : 0, " ")
+    state.taskIndent = state.taskIndent + indent
+    return prefix + result
 }
 
 
@@ -3231,7 +3251,7 @@ private exitPoint(milliseconds) {
     
     if (lastEvent && lastEvent.event) {
     	if (lastEvent.event.name != "piston") {
-	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, isStateChange: true, descriptionText: "CoRE ${appData.mode} Piston '${app.label}' has executed in ${milliseconds}ms", data: [state: state.currentState, executionTime: milliseconds, event: lastEvent])
+	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, isStateChange: true, descriptionText: "CoRE ${appData.mode} Piston '${app.label}' has executed in ${milliseconds}ms", data: [app: "CoRE", state: state.currentState, executionTime: milliseconds, event: lastEvent])
     	}
     }
     
@@ -3612,7 +3632,7 @@ private evaluateCondition(condition, evt = null) {
             if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
             if (condition.vw && !result) setVariable(condition.vw, evt.value)
 
-            if (result) {
+            if (result && (condition.id > 0)) {
                 scheduleActions(condition.id)
             }
         }        
@@ -4618,8 +4638,16 @@ private scheduleAction(action) {
     def time = rightNow
     def waitFor = null
     def waitSince = null
+    def flowChart
     if (action.t && action.t.size() && deviceIds.size() ) {
-    	for (task in action.t.sort{ it.i }) {
+    	def tasks = action.t.sort{ it.i }
+        def x = 0
+        def cnt = 0
+        while (true) {
+        	//make sure x is within task list
+        	if ((x == null) || (x < 0) || (x >= tasks.size())) break
+            cnt += 1
+        	def task = tasks[x]
         	def cmd = task.c
             def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
             def custom = (cmd && cmd.startsWith(customCommandPrefix()))
@@ -4628,7 +4656,184 @@ private scheduleAction(action) {
             if (virtual) {
                 //dealing with a virtual command
                 command = getVirtualCommandByDisplay(cmd)
-				if (command && command.immediate) {
+                if (command && command.flow) {
+                    //build the flowchart
+                	if (!flowChart) flowChart = buildFlowChart(tasks)
+                	//flow control logic
+                    /* possible commands
+                        beginSimpleForLoop
+                        beginForLoop
+                        beginWhileLoop
+                        breakLoop
+                        breakLoopIf
+                        endLoop
+                        beginIfBlock
+                        beginElseIfBlock
+                        beginElseBlock
+                        endIfBlock
+                        beginSwitchBlock
+                        beginSwitchCase
+                        endSwitchBlock                    
+                    */   
+                    /*
+                    	flow
+                        	action = begin/break/end
+                            mode = if/switch/loop
+                    */
+					def flow = flowChart[x]
+                    if (flow) {
+                    	switch (flow.action) {
+                        	case "begin":
+                            	switch (flow.mode) {
+                                	case "if":
+                                    case "else":
+	                                	//begin an if block
+                                    	if (flow.isElse) {
+                                        	//if we're dealing with an Else If, we need to figure out if the true side executed, or the else if can run
+		                                    def startFlow = (flow.startIdx != null ? flowChart[flow.startIdx] : null)
+											if (startFlow) {
+                                            	if (startFlow.eval) {
+                                                	//pretend we're true, so that if there's a next Else If it skips too
+                                                    flow.eval = true
+                                                	//the true side of the previous IF just finished, jump to end
+                                                	x = flow.endIdx
+                                                    continue
+                                                }
+                                            }
+                                        }
+                                        //if it's an else, we go through it, the previous IF was false
+                                        if (flow.mode == "else") {
+                                        	x += 1
+                                            continue
+                                        }
+                                    	//if (condition)
+	                                    flow.eval = checkFlowCondition(task)
+    	                                if (flow.eval) {
+        	                                //continue to next line
+            	                            x += 1
+                	                        continue
+                    	                } else {
+                        	                //move on to the else or move to the end, if no else is present
+                            	            def newX = flow.elseIdx ? flow.elseIdx : flow.endIdx
+                                	        if (newX) {
+                                    	        x = newX + 1
+                                        	    continue
+                                      	  }
+                                    	}
+                                    	break
+									case "switch":
+                                    	if (flow.caseIdxs) {
+                                        	def val = getVariable(task.p[0].d)
+                                            def found = false
+	                                    	for(def y = 0; y < flow.caseIdxs.size(); y++) {
+                                            	//get the index of the next case
+                                            	def xx = flow.caseIdxs[y]
+                                                //little Windex here
+                                            	def newFlow = flowChart[xx]
+                                                //check to see if the case matches
+                                                newFlow.eval = checkFlowCaseCondition(val, tasks[xx].p[0].d)
+                                                if (newFlow.eval) {
+                                                	//if it matches, go there
+                                                	x = xx + 1
+                                                    found = true
+                                                    break
+                                                }
+                                            }
+                                            if (found) continue
+                                        }
+                                        //no case found, skip
+                                        x = flow.endIdx + 1
+                                        continue
+									case "case":
+                                    	//if we got here, we need to skip to the end
+                                        //a matching case probably just finished
+                                        x = flow.endIdx + 1
+                                        continue
+                                    case "loop":
+                                    	if (!flow.active) {
+                                        	def start
+                                            def end
+                                            def step
+                                        	if (flow.isSimple) {
+                                            	//initialize the simple loop
+                                                flow.start = 0
+                                                flow.end = Math.abs(cast(task.p[0].d, "number")) - 1
+                                                if (end < start) {
+                                                    flow.active = true
+                                                	x = flow.endIdx + 1
+                                                    continue
+                                                }
+                                            } else {
+                                            	flow.varName = task.p[0].d
+                                                flow.start = cast(formatMessage(task.p[1].d), "number")
+                                                flow.end = cast(formatMessage(task.p[2].d), "number")
+                                                //set the variable
+                                                setVariable(flow.varName, flow.start)
+                                            }
+                                            flow.step = (flow.end >= flow.start ? 1 : -1)
+                                            flow.pos = flow.start
+                                            //start the loop
+                                            flow.active = true
+                                            x += 1
+                                            continue
+                                        } else {
+                                        	//loop is already in progress
+                                            flow.pos = flow.pos + flow.start
+                                            //if we're using a variable, update it
+                                            if (flow.varName) setVariable(flow.varName, flow.pos)
+                                            if (flow.step > 0 ? (flow.pos > flow.end) : (flow.pos < flow.end)) {
+                                            	//loop ended, jump over the end
+                                                //jmp endIdx + 0x0001 :D
+                                                flow.active = null
+                                                flow.varName = null
+                                                x = flow.endIdx + 1
+                                                continue
+                                            }
+                                            //another loop cycle, moving on...
+                                            x = x + 1
+                                            continue                                        
+                                        }
+                                    	break
+                                }
+                            	break
+                            case "break":
+                            	//we need to find the closest earlier loop or switch and get out of it
+								for (def y = x - 1; y >= 0; y--) {                              
+                                	def startFlow = flowChart[y]
+                                    if ((startFlow.action == "begin") && (startFlow.isLoop || (startFlow.isSwitch && !startFlow.isCase))) {
+                                    	startFlow.active = null
+                                        startFlow.varName = null
+                                        x = startFlow.endIdx + 1
+                                        continue
+                                    }
+                                }
+                            	break
+                            case "end":
+                            	if (flow.isLoop) {
+                                	if (task.p && (task.p.size() == 1)) {
+                                    	//delay the loop
+                                		time = time + cast(task.p[0].d, "number") * 1000
+                                    }
+                                	//if this is the end of a loop, we cycle back to the start
+                                   	//that loop start will automatically jump over the end if the loop is finished
+                                	x = flow.startIdx
+                                    continue
+                                }
+                                x = x + 1
+                                continue
+                            	break
+                            case "exit":
+                            	//we need to find the closest earlier loop or switch and get out of it
+								x = null
+                                continue
+                        }
+                    }
+                    
+					//ignore the command
+                    command = null
+					x += 1
+                    continue               
+                } else if (command && command.immediate) {
                		def function = "cmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
 					def result = "$function"(action, task, time)
                 	time = (result && result.time) ? result.time : time
@@ -4668,10 +4873,151 @@ private scheduleAction(action) {
                     //an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
                     if (command.aggregated) break
                 }
-            }           
+            }        
+            x += 1
+            //exit when we reached the end
+            if (x >= tasks.size()) break
         }
     }
 }
+
+private checkFlowCondition(task) {
+	def result = false
+    if (task.p && (task.p.size() == 3)) {
+	    def varValue = getVariable(task.p[0].d)
+    	def condition = task.p[1].d
+    	def value = formatMessage(task.p[2].d)
+		if (varValue instanceof String) {
+        	value = cast(value, "string")
+        } else if (varValue instanceof Boolean) {
+        	value = cast(value, "boolean")
+        } else if (varValue instanceof Integer) {
+        	value = cast(value, "number")
+        } else if (varValue instanceof Float) {
+        	value = cast(value, "decimal")
+        }
+        
+        def func = "eval_cond_$condition"
+		try {
+        	result = "$func"(null, null, null, null, null, varValue, value, null, null, null, null, null)
+        } catch (all) {
+        	result = false
+        }
+    }
+    return result
+}
+
+private checkFlowCaseCondition(value, caseValue) {
+	def result = false
+    caseValue = formatMessage(caseValue)
+    if (value instanceof String) {
+        caseValue = cast(caseValue, "string")
+    } else if (value instanceof Boolean) {
+        caseValue = cast(caseValue, "boolean")
+    } else if (value instanceof Integer) {
+        caseValue = cast(caseValue, "number")
+    } else if (value instanceof Float) {
+        caseValue = cast(caseValue, "decimal")
+    }
+
+    try {
+        result = eval_cond_is(null, null, null, null, null, value, caseValue, null, null, null, null, null)
+    } catch (all) {
+        result = false
+    }
+    return result
+}
+
+private buildFlowChart(tasks) {
+	def result = []
+    def indent = 0
+    def idx = 0
+    for (task in tasks) {
+        def cmd = task.c
+		def flow = [:]
+        def found = false
+        if (cmd && cmd.startsWith(virtualCommandPrefix())) {
+            def command = getVirtualCommandByDisplay(cleanUpCommand(cmd))
+            if (command && command.flow) {
+                def c = command.name.toLowerCase()
+                flow.c = c
+                flow.action = (c.startsWith("begin") ? "begin" : (c.startsWith("end") ? "end" : (c.startsWith("break") ? "break" : (c.startsWith("exit") ? "exit" : null))))
+                if (flow.action) {
+                    flow.isFor = c.contains("for")
+                    flow.isSimple = c.contains("simple")
+                    flow.isWhile = c.contains("while")
+                    flow.isLoop = c.contains("loop")
+                    flow.isIf = c.contains("if")
+                    flow.isElse = c.contains("else")
+                    flow.isSwitch = c.contains("switch")
+                    flow.isCase = c.contains("case")
+                    flow.loopType = (flow.isFor ? "for" : (flow.isWhile ? "while" : null))
+                    flow.ifType = (flow.isElse ? "else" : (flow.isIf ? "if" : null))
+                    flow.mode = (flow.isLoop ? "loop" : (flow.isIf ? "if" : (flow.isSwitch ? "switch" : null)))
+                	if (flow.mode) {
+                    	//ending flows need the indent applied before
+                    	indent = indent + (command.indent && (command.indent < 0) ? command.indent : 0)
+                        flow.indent = indent - (flow.isElse ? 1 : (flow.isCase ? 2 : 0))
+                        flow.taskId = task.i
+                        flow.idx = idx
+                        found = true
+                        //beginning flows need the indent applied after
+                        indent = indent + (command.indent && (command.indent > 0) ? command.indent : 0)
+                    }
+                }
+            }
+        }
+        result.push(found ? flow : null)
+        idx += 1
+    }
+    for (flow in result) {
+        //initialize case array
+        if (flow) {
+            if (flow.isSwitch && !(flow.isCase) && (flow.action == "begin")) flow.caseIdxs = []
+            for (def i = flow.idx + 1; i < result.size(); i++) {
+                if (result[i] && (result[i].indent == flow.indent)) {
+                    def endFlow = result[i]
+                    def breakFor = false
+                    switch (flow.action) {
+                        case "begin":
+                            switch (flow.mode) {
+                                case "if":
+                                    if (endFlow.isElse) {
+                                        flow.elseIdx = i
+                                        endFlow.startIdx = flow.idx
+                                    }
+                                    if (endFlow.isIf) {
+                                        flow.endIdx = i
+                                        endFlow.startIdx = flow.idx
+                                    }
+                                    break
+                                case "loop":
+                                    if (endFlow.mode == "loop") {
+                                        flow.endIdx = i
+                                        endFlow.startIdx = flow.idx
+                                    }
+                                    break
+                                case "switch":
+                                    if ((flow.caseIdxs != null) && (endFlow.isCase)) {
+                                        endFlow.startIdx = flow.idx
+                                        flow.caseIdxs.push i
+                                    } else if (endFlow.mode == "switch") {
+                                        endFlow.startIdx = flow.idx
+                                        flow.endIdx = i
+                                    }
+                                    break
+                            }
+                        case "break":
+                            break
+                    }
+                }
+                if (flow.endIdx) break
+            }
+        }
+    }
+	return result
+}
+
 
 
 private cmd_repeatAction(action, task, time) {
@@ -7608,9 +7954,10 @@ private setAlarmSystemStatus(status) {
 }
 
 private formatMessage(message, params = null) {
-	if (!message) {
+	if (message == null) {
     	return message
     }
+    message = "$message"
     def variables = message.findAll(/\{([^\{\}]*)?\}*/)
     def varMap = [:]
     for (variable in variables) {
@@ -7631,7 +7978,7 @@ private formatMessage(message, params = null) {
 			message = message.replace(var.key, "${var.value}")
         }
     }
-    return message
+    return message.toString()
 }
 
 
@@ -8113,7 +8460,7 @@ private parseCommandParameter(parameter) {
         dataType = tokens[tokens.size() - 1]
     }
 
-    if (dataType in ["askAlexaMacro", "attribute", "attributes", "contacts", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
+    if (dataType in ["askAlexaMacro", "attribute", "attributes", "contact", "contacts", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
     	//special case handled internally
         return [title: title, type: dataType, required: required, last: last]
     }
@@ -8491,9 +8838,21 @@ private virtualCommands() {
         [ name: "repeatAction",			requires: [],						display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
         [ name: "followUp",				requires: [],						display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
         [ name: "executePiston",		requires: [],						display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
-        [ name: "beginLoop",			requires: [],						display: "Begin loop",						parameters: ["Number of cycles:number[1..100]"],																description: "Begin loop with {0} cycles",	],
-        [ name: "breakLoop",			requires: [],						display: "Break loop",						parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than, is less than or equal to,is greater than,is greater than or equal to]","Value:decimal"],																description: "Break loop if variable {0} {1} {2}",	],
-        [ name: "endLoop",				requires: [],						display: "End loop",						parameters: ["Delay (seconds):number[0..*]"],																description: "Repeat loop after a {0}s delay",	],
+        //flow control commands
+        [ name: "beginSimpleForLoop",	requires: [],						display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:number[1..100]"],																																									description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
+        [ name: "beginForLoop",			requires: [],						display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:number","To value:number"],																													varEntry: 0,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
+//        [ name: "beginWhileLoop",		requires: [],						display: "Begin WHILE loop",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "WHILE (0} {1} {2}) DO",		flow: true,					indent: 1,	],
+        [ name: "breakLoop",			requires: [],						display: "Break loop",						parameters: [],																																																		description: "BREAK",						flow: true,								],
+        [ name: "breakLoopIf",			requires: [],						display: "Break loop (conditional)",		parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "BREAK IF ({0} {1} {2})",		flow: true,								],
+        [ name: "exitAction",			requires: [],						display: "Exit Action",						parameters: [],																																																		description: "EXIT",						flow: true,								],
+        [ name: "endLoop",				requires: [],						display: "End loop",						parameters: ["Delay (seconds):number[0..*]"],																																										description: "LOOP AFTER {0}s",				flow: true,	selfIndent: -1, indent: -1,	],
+        [ name: "beginIfBlock",			requires: [],						display: "Begin IF block",					parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "IF ({0} {1} {2}) THEN",		flow: true,					indent: 1,	],
+        [ name: "beginElseIfBlock",		requires: [],						display: "Begin ELSE IF block",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],							description: "ELSE IF ({0} {1} {2}) THEN",	flow: true,	selfIndent: -1,				],
+        [ name: "beginElseBlock",		requires: [],						display: "Begin ELSE block",				parameters: [],																																																		description: "ELSE",						flow: true,	selfIndent: -1,		 		],
+        [ name: "endIfBlock",			requires: [],						display: "End IF block",					parameters: [],																																																		description: "END IF",						flow: true,	selfIndent: -1, indent: -1,	],
+        [ name: "beginSwitchBlock",		requires: [],						display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																											description: "SWITCH ({0}) DO",				flow: true,					indent: 2,	],
+        [ name: "beginSwitchCase",		requires: [],						display: "Begin CASE block",				parameters: ["Value:string"],																																														description: "CASE {0}:",					flow: true,	selfIndent: -1, 			],
+        [ name: "endSwitchBlock",		requires: [],						display: "End SWITCH block",				parameters: [],																																																		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
     ]
 }
 
@@ -8890,3 +9249,15 @@ private getColorByName(name) {
 
 private dev() {
 }
+
+
+
+
+
+
+
+
+
+
+
+
