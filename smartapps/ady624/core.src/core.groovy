@@ -10,13 +10,14 @@
  *  
  *  This program is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *  GNU General Public License for more details.
  *  
  *  You should have received a copy of the GNU General Public License
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/10/2016 >>> v0.0.083.20160610 - Alpha test version - Action "variable" restriction (if <variable> <comparison> <value>)), piston restrictions
  *	 6/10/2016 >>> v0.0.082.20160610 - Alpha test version - Fixed an issue with saving variables to atomicState (when needed)
  *	 6/10/2016 >>> v0.0.081.20160610 - Alpha test version - Action flow commands fixes and improvements
  *	 6/10/2016 >>> v0.0.080.20160610 - Alpha test version - Welcome to CoRE++ - actions are now much smarter, with for, while (not enabled yet), switch and if-else-if blocks
@@ -164,7 +165,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.082.20160610"
+	return "v0.0.083.20160610"
 }
 
 
@@ -578,6 +579,20 @@ private pageMainCoREPiston() {
             }
         }
 
+		section("Piston Restrictions") {
+            input "restrictionMode", "mode", title: "Only execute in these modes", description: "Any location mode", required: false, multiple: true
+            input "restrictionAlarm", "enum", options: getAlarmSystemStatusOptions(), title: "Only execute during these alarm states", description: "Any alarm state", required: false, multiple: true
+            input "restrictionVariable", "enum", options: listVariables(true), title: "Only execute when variable matches", description: "Tap to choose a variable", required: false, multiple: false, submitOnChange: true
+            def rVar = settings["restrictionVariable"]
+            if (rVar) {
+                def options = ["is equal to", "is not equal to", "is less than", "is less than or equal to", "is greater than", "is greater than or equal to"]
+                input "restrictionComparison", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
+                input "restrictionValue", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
+            }
+            input "restrictionSwitchOn", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
+            input "restrictionSwitchOff", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true
+        }
+
         section() {
             href "pageSimulate", title: "Simulate", description: "Allows you to test the actions manually", state: complete
         }
@@ -590,7 +605,7 @@ private pageMainCoREPiston() {
             href "pageVariables", title: "Local Variables"
         }
         
-        section(title: "Advanced options", hideable: !settings.debugging, hidden: true) {
+        section(title: "Advanced Options", hideable: !settings.debugging, hidden: true) {
             input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
             def debugging = settings.debugging
             if (debugging) {
@@ -1463,6 +1478,13 @@ def pageAction(params) {
                     }
                 	input "actRMode$id", "mode", title: "Execute in these modes only", description: "Any location mode", required: false, multiple: true
                 	input "actRAlarm$id", "enum", options: getAlarmSystemStatusOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
+                	input "actRVariable$id", "enum", options: listVariables(true), title: "Execute when variable matches only", description: "Tap to choose a variable", required: false, multiple: false, submitOnChange: true
+                    def rVar = settings["actRVariable$id"]
+                    if (rVar) {
+                    	def options = ["is equal to", "is not equal to", "is less than", "is less than or equal to", "is greater than", "is greater than or equal to"]
+                		input "actRComparison$id", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
+                		input "actRValue$id", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
+                    }
                 }
 
             	section(title: "Advanced options") {
@@ -2409,6 +2431,13 @@ def initializeCoREPiston() {
     //save misc
     state.app.mode = settings.mode
     state.app.description = settings.description
+    state.app.restrictions = [
+    	a: settings["restrictionAlarm"],
+    	m: settings["restrictionMode"],
+    	v: settings["restrictionVariable"],
+    	vc: settings["restrictionComparison"],
+    	vv: settings["restrictionValue"] != null ? settings["restrictionValue"] : ""
+    ]
     
 	state.run = "app"
       
@@ -2815,6 +2844,9 @@ private updateAction(action) {
     action.rc = settings["actRStateChange$id"]
     action.ra = settings["actRAlarm$id"]
     action.rm = settings["actRMode$id"]
+    action.rv = settings["actRVariable$id"]
+    action.rvc = settings["actRComparison$id"]
+    action.rvv = settings["actRValue$id"] != null ? settings["actRValue$id"] : ""
     
     action.tos = settings["actTOS$id"]
     action.tcp = settings["actTCP$id"]
@@ -2965,6 +2997,9 @@ private getActionDescription(action) {
     }
     if (action.ra) {
     	result += "® If alarm is ${buildNameList(action.ra, "or")}...\n"
+    }
+    if (action.rv) {
+    	result += "® If {${action.rv}} ${action.rvc} ${action.rvv}...\n"
     }
     result += (result ? "\n" : "") + "Using " + buildDeviceNameList(devices, "and")+ "..."
     state.taskIndent = 0
@@ -3289,192 +3324,231 @@ private broadcastEvent(evt, primary, secondary) {
 	//filter duplicate events and broadcast event to proper IF blocks
     def perf = now()
     def delay = perf - evt.date.getTime()
-	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"
-    //save previous event
-	setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
-    setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
-    setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
-    setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
-    setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
-    setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
-    setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)        
-    def lastEvent = [
-    	event: [
-        	device: evt.device ? "${evt.device}" : evt.deviceId,
-            name: evt.name,
-            value: evt.value,
-            date: evt.date
-        ],
-        delay: delay
-    ]
-    state.lastEvent = lastEvent
-    setVariable("\$currentEventReceived", perf, true)
-    setVariable("\$currentEventDevice", lastEvent.event.device, true)
-    setVariable("\$currentEventDeviceIndex", 0, true)
-    setVariable("\$currentEventAttribute", lastEvent.event.name, true)
-    setVariable("\$currentEventValue", lastEvent.event.value, true)
-    setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
-    setVariable("\$currentEventDelay", lastEvent.delay, true)    
-    if (!(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
-    	def cache = atomicState.cache
-        cache = cache ? cache : [:]
-        def deviceId = evt.deviceId ? evt.deviceId : location.id
-    	def cachedValue = cache[deviceId + '-' + evt.name]
-    	def eventTime = evt.date.getTime()
-		cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
-    	atomicState.cache = cache
-        state.cache = cache
-		if (cachedValue) {
-	    	if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
-	        	//duplicate event
-	    		debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
-	            evt = null
-	        }
-	    }
-	}
-    try {
-        if (evt) {  
-            //broadcast to primary IF block
-            def result1 = null
-            def result2 = null
-            //some piston modes require evaluation of secondary conditions regardless of eligibility - we use force then
-            def force = false
-            if (mode in ["And-If", "Or-If"]) {
-            	//these two modes always evaluate both blocks
-            	primary = true
-                secondary = true
-                force = true
-            }
-            //override eligibility concerns when dealing with Follow-Up pistons, or when dealing with "execute" and "simulate" events
- 			force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
-            if (primary) {
-                result1 = evaluateConditionSet(evt, true, force)
-                state.lastPrimaryEvaluationResult = result1
-                state.lastPrimaryEvaluationDate = now()
-                def msg = "Primary IF block evaluation result is $result1"
-                if (state.sim) state.sim.evals.push(msg)
-                debug msg
-                
-                switch (mode) {
-                	case "Then-If":
-                    	//execute the secondary branch if the primary one is true
-                    	secondary = result1
-                        force = true
-                		break
-                	case "Else-If":
-                    	//execute the second branch if the primary one is false
-                    	secondary = !result1
-                        force = true
-                		break
-                }                
-            }
-            
-            //broadcast to secondary IF block
-            if (secondary) {
-                result2 = evaluateConditionSet(evt, false, force)
-                state.lastSecondaryEvaluationResult = result2
-                state.lastSecondaryEvaluationDate = now()
-                def msg = "Secondary IF block evaluation result is $result2"
-                if (state.sim) state.sim.evals.push(msg)
-                debug msg
-            }
-            def currentState = state.currentState
-            def currentStateSince = state.currentStateSince
-            def mode = state.app.mode
-            
-            def stateMsg = null
-
-            switch (mode) {
-                case "Latching":
-                    if (currentState in [null, false]) {
-                        if (result1) {
-                            //flip on
-                            state.currentState = true
-                            state.currentStateSince = now()
-                            stateMsg = "♦ Latching Piston changed state to true ♦"
-                        }
+	def app = state.run == "config" ? state.config.app : state.app    
+	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"    
+    def allowed = true
+    def restriction
+    if (evt && (evt.name != "simulate") && app.restrictions) {
+    	//check restrictions
+    	if (app.restrictions.m && app.restrictions.m.size() && !(location.mode in app.restrictions.m)) {
+        	restriction = "a mode mismatch"
+        	allowed = false
+        } else if (app.restrictions.a && app.restrictions.a.size() && !(getAlarmSystemStatus() in app.restrictions.a)) {
+        	restriction = "an alarm status mismatch"
+        	allowed = false
+        } else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
+            restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
+        	allowed = false
+        } else {
+        	if (settings["restrictionSwitchOn"]) {
+            	for(sw in settings["restrictionSwitchOn"]) {
+                	if (sw.currentValue("switch") == "off") {
+                    	restriction = "switch ${sw} being off"
+                    	allowed = false
+                        break
                     }
-                    if (currentState in [null, true]) {
-                        if (result2) {
-                            //flip off
-                            state.currentState = false
-                            state.currentStateSince = now()
-                            stateMsg = "♦ Latching Piston changed state to false ♦"
-                        }
+                }
+        	}
+        	if (allowed && settings["restrictionSwitchOff"]) {
+            	for(sw in settings["restrictionSwitchOff"]) {
+                	if (sw.currentValue("switch") == "on") {
+                    	restriction = "switch ${sw} being on"
+                    	allowed = false
+                        break
                     }
-                    break
-                case "Basic":
-                case "Simple":
-                case "Follow-Up":
-                	result2 = !result1
-                    if (currentState != result1) {
-                        state.currentState = result1
-                        state.currentStateSince = now()
-                        stateMsg = "♦ $mode Piston changed state to $result1 ♦"
-                    }
-                    break
-                case "And-If":
-                	def newState = result1 && result2
-                    if (currentState != newState) {
-                        state.currentState = newState
-                        state.currentStateSince = now()
-                        stateMsg = "♦ And-If Piston changed state to $result1 ♦"
-                    }
-                    break
-                case "Or-If":
-                	def newState = result1 || result2
-                    if (currentState != newState) {
-                        state.currentState = newState
-                        state.currentStateSince = now()
-                        stateMsg = "♦ Or-If Piston changed state to $result1 ♦"
-                    }
-                    break
-                case "Then-If":
-                	def newState = result1 && result2
-                    if (currentState != newState) {
-                        state.currentState = newState
-                        state.currentStateSince = now()
-                        stateMsg = "♦ Then-If Piston changed state to $result1 ♦"
-                    }
-                    break
-                case "Else-If":
-                	def newState = result1 || result2
-                    if (currentState != newState) {
-                        state.currentState = newState
-                        state.currentStateSince = now()
-                        stateMsg = "♦ Else-If Piston changed state to $result1 ♦"
-                    }
-                    break
-            }
-            if (stateMsg) {
-            	if (state.sim) state.sim.evals.push stateMsg
-				debug stateMsg, null, "info"
-			}
-            def stateChanged = false
-            if (currentState != state.currentState) {
-            	stateChanged = true
-            	//we have a state change
-	            setVariable("\$previousState", currentState, true)
-	            setVariable("\$previousStateSince", currentStateSince, true)
-	            setVariable("\$previousStateDuration", state.currentStateSince && currentStateSince ? state.currentStateSince - currentStateSince : null, true)
-	            setVariable("\$currentState", state.currentState, true)
-	            setVariable("\$currentStateSince", state.currentStateSince, true)
-                //new state
-                currentState = state.currentState
-                //resume all tasks that are waiting for a state change
-                cancelTasks(currentState)
-                resumeTasks(currentState)
-            }
-            //execute the DO EVERY TIME actions
-            if (result1) scheduleActions(0, stateChanged)
-            if (result2) scheduleActions(-1, stateChanged)
-            if (!(mode in ["Basic", "Latching"]) && (!currentState)) {
-            	//execute the else branch
-            	scheduleActions(-2, stateChanged)
+                }
+        	}
+        }
+    }
+    if (allowed) {
+        //save previous event
+        setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
+        setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
+        setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
+        setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
+        setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
+        setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
+        setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)        
+        def lastEvent = [
+            event: [
+                device: evt.device ? "${evt.device}" : evt.deviceId,
+                name: evt.name,
+                value: evt.value,
+                date: evt.date
+            ],
+            delay: delay
+        ]
+        state.lastEvent = lastEvent
+        setVariable("\$currentEventReceived", perf, true)
+        setVariable("\$currentEventDevice", lastEvent.event.device, true)
+        setVariable("\$currentEventDeviceIndex", 0, true)
+        setVariable("\$currentEventAttribute", lastEvent.event.name, true)
+        setVariable("\$currentEventValue", lastEvent.event.value, true)
+        setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
+        setVariable("\$currentEventDelay", lastEvent.delay, true)    
+        if (!(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
+            def cache = atomicState.cache
+            cache = cache ? cache : [:]
+            def deviceId = evt.deviceId ? evt.deviceId : location.id
+            def cachedValue = cache[deviceId + '-' + evt.name]
+            def eventTime = evt.date.getTime()
+            cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+            atomicState.cache = cache
+            state.cache = cache
+            if (cachedValue) {
+                if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
+                    //duplicate event
+                    debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
+                    evt = null
+                }
             }
         }
-	} catch(e) {
-    	debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
+        try {
+            if (evt) {  
+                //broadcast to primary IF block
+                def result1 = null
+                def result2 = null
+                //some piston modes require evaluation of secondary conditions regardless of eligibility - we use force then
+                def force = false
+                def mode = app.mode
+                if (mode in ["And-If", "Or-If"]) {
+                    //these two modes always evaluate both blocks
+                    primary = true
+                    secondary = true
+                    force = true
+                }
+                //override eligibility concerns when dealing with Follow-Up pistons, or when dealing with "execute" and "simulate" events
+                force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
+                if (primary) {
+                    result1 = evaluateConditionSet(evt, true, force)
+                    state.lastPrimaryEvaluationResult = result1
+                    state.lastPrimaryEvaluationDate = now()
+                    def msg = "Primary IF block evaluation result is $result1"
+                    if (state.sim) state.sim.evals.push(msg)
+                    debug msg
+
+                    switch (mode) {
+                        case "Then-If":
+                            //execute the secondary branch if the primary one is true
+                            secondary = result1
+                            force = true
+                            break
+                        case "Else-If":
+                            //execute the second branch if the primary one is false
+                            secondary = !result1
+                            force = true
+                            break
+                    }                
+                }
+
+                //broadcast to secondary IF block
+                if (secondary) {
+                    result2 = evaluateConditionSet(evt, false, force)
+                    state.lastSecondaryEvaluationResult = result2
+                    state.lastSecondaryEvaluationDate = now()
+                    def msg = "Secondary IF block evaluation result is $result2"
+                    if (state.sim) state.sim.evals.push(msg)
+                    debug msg
+                }
+                def currentState = state.currentState
+                def currentStateSince = state.currentStateSince
+
+                def stateMsg = null
+
+                switch (mode) {
+                    case "Latching":
+                        if (currentState in [null, false]) {
+                            if (result1) {
+                                //flip on
+                                state.currentState = true
+                                state.currentStateSince = now()
+                                stateMsg = "♦ Latching Piston changed state to true ♦"
+                            }
+                        }
+                        if (currentState in [null, true]) {
+                            if (result2) {
+                                //flip off
+                                state.currentState = false
+                                state.currentStateSince = now()
+                                stateMsg = "♦ Latching Piston changed state to false ♦"
+                            }
+                        }
+                        break
+                    case "Basic":
+                    case "Simple":
+                    case "Follow-Up":
+                        result2 = !result1
+                        if (currentState != result1) {
+                            state.currentState = result1
+                            state.currentStateSince = now()
+                            stateMsg = "♦ $mode Piston changed state to $result1 ♦"
+                        }
+                        break
+                    case "And-If":
+                        def newState = result1 && result2
+                        if (currentState != newState) {
+                            state.currentState = newState
+                            state.currentStateSince = now()
+                            stateMsg = "♦ And-If Piston changed state to $result1 ♦"
+                        }
+                        break
+                    case "Or-If":
+                        def newState = result1 || result2
+                        if (currentState != newState) {
+                            state.currentState = newState
+                            state.currentStateSince = now()
+                            stateMsg = "♦ Or-If Piston changed state to $result1 ♦"
+                        }
+                        break
+                    case "Then-If":
+                        def newState = result1 && result2
+                        if (currentState != newState) {
+                            state.currentState = newState
+                            state.currentStateSince = now()
+                            stateMsg = "♦ Then-If Piston changed state to $result1 ♦"
+                        }
+                        break
+                    case "Else-If":
+                        def newState = result1 || result2
+                        if (currentState != newState) {
+                            state.currentState = newState
+                            state.currentStateSince = now()
+                            stateMsg = "♦ Else-If Piston changed state to $result1 ♦"
+                        }
+                        break
+                }
+                if (stateMsg) {
+                    if (state.sim) state.sim.evals.push stateMsg
+                    debug stateMsg, null, "info"
+                }
+                def stateChanged = false
+                if (currentState != state.currentState) {
+                    stateChanged = true
+                    //we have a state change
+                    setVariable("\$previousState", currentState, true)
+                    setVariable("\$previousStateSince", currentStateSince, true)
+                    setVariable("\$previousStateDuration", state.currentStateSince && currentStateSince ? state.currentStateSince - currentStateSince : null, true)
+                    setVariable("\$currentState", state.currentState, true)
+                    setVariable("\$currentStateSince", state.currentStateSince, true)
+                    //new state
+                    currentState = state.currentState
+                    //resume all tasks that are waiting for a state change
+                    cancelTasks(currentState)
+                    resumeTasks(currentState)
+                }
+                //execute the DO EVERY TIME actions
+                if (result1) scheduleActions(0, stateChanged)
+                if (result2) scheduleActions(-1, stateChanged)
+                if (!(mode in ["Basic", "Latching"]) && (!currentState)) {
+                    //execute the else branch
+                    scheduleActions(-2, stateChanged)
+                }
+            }
+        } catch(e) {
+            debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
+        }
+    } else {
+        debug "Piston evaluation was prevented by ${restriction}.", null, "trace"
     }
     perf = now() - perf
     if (evt) debug "Event processing took ${perf}ms", -1, "trace"
@@ -3838,7 +3912,7 @@ private evaluateDeviceCondition(condition, evt) {
                 //all triggers should own the event, otherwise be false
                 deviceResult = false
             } else {       
-                def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + condition.comp.replace(" ", "_")
+                def function = "eval_" + (condition.trg ? "trg" : "cond") + "_" + sanitizeCommandName(condition.comp)
                 //if we have a momentary capability and the event is not owned, there's no need to evaluate the function
                 //also, if there are subdevices and the one we're looking for does not match, no need to evaluate the function either
                 if ((momentary && !ownsEvent) || (hasSubDevices && !matchesSubDevice)) {
@@ -4628,6 +4702,7 @@ private scheduleActions(conditionId, stateChanged = false) {
     	if (action.rc && !stateChanged) continue
     	if (action.rm && action.rm.size() && !(location.mode in action.rm)) continue
     	if (action.ra && action.ra.size() && !(getAlarmSystemStatus() in action.ra)) continue
+    	if (action.rv && !(checkVariableCondition(action.rv, action.rvc, action.rvv))) continue        
 		//we survived all restrictions, pfew
 		scheduleAction(action)
     }
@@ -4870,7 +4945,7 @@ private scheduleAction(action) {
 					x += 1
                     continue               
                 } else if (command && command.immediate) {
-               		def function = "cmd_${command.name}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_")
+               		def function = "cmd_${sanitizeCommandName(command.name)}"
 					def result = "$function"(action, task, time)
                 	time = (result && result.time) ? result.time : time
                     command.delay = (result && result.delay) ? result.delay : 0
@@ -4920,48 +4995,46 @@ private scheduleAction(action) {
 private checkFlowCondition(task) {
 	def result = false
     if (task.p && (task.p.size() == 3)) {
-	    def varValue = getVariable(task.p[0].d)
+	    def variable = task.p[0].d
     	def condition = task.p[1].d
     	def value = formatMessage(task.p[2].d)
-		if (varValue instanceof String) {
-        	value = cast(value, "string")
-        } else if (varValue instanceof Boolean) {
-        	value = cast(value, "boolean")
-        } else if (varValue instanceof Integer) {
-        	value = cast(value, "number")
-        } else if (varValue instanceof Float) {
-        	value = cast(value, "decimal")
-        }
-        
-        def func = "eval_cond_$condition"
-		try {
-        	result = "$func"(null, null, null, null, null, varValue, value, null, null, null, null, null)
-        } catch (all) {
-        	result = false
-        }
+ 		return checkVariableCondition(variable, comparison, value)
+	}        
+    return false
+}
+
+private checkVariableCondition(variable, comparison, value) {
+	def varValue = getVariable(variable)
+    return checkValueCondition(varValue, comparison, value)
+}
+ 
+private checkValueCondition(value1, comparison, value2) {
+	value2 = formatMessage(value2)
+    if (value1 instanceof String) {
+        value2 = cast(value2, "string")
+    } else if (value1 instanceof Boolean) {
+        value2 = cast(value2, "boolean")
+    } else if (value1 instanceof Integer) {
+        value2 = cast(value2, "number")
+    } else if (value1 instanceof Float) {
+        value2 = cast(value2, "decimal")
+    } else {
+    	value1 = cast(value1, "string")
+    	value2 = cast(value2, "string")
+    }
+
+    def func = "eval_cond_${sanitizeCommandName(comparison)}"
+    def result = false
+    try {
+        result = "$func"(null, null, null, null, null, value1, value2, null, null, null, null, null)
+    } catch (all) {
+        result = false
     }
     return result
 }
 
 private checkFlowCaseCondition(value, caseValue) {
-	def result = false
-    caseValue = formatMessage(caseValue)
-    if (value instanceof String) {
-        caseValue = cast(caseValue, "string")
-    } else if (value instanceof Boolean) {
-        caseValue = cast(caseValue, "boolean")
-    } else if (value instanceof Integer) {
-        caseValue = cast(caseValue, "number")
-    } else if (value instanceof Float) {
-        caseValue = cast(caseValue, "decimal")
-    }
-
-    try {
-        result = eval_cond_is(null, null, null, null, null, value, caseValue, null, null, null, null, null)
-    } catch (all) {
-        result = false
-    }
-    return result
+	return checkValueCondition(value, "is_equal_to", caseValue)
 }
 
 private buildFlowChart(tasks) {
@@ -5784,7 +5857,7 @@ private processCommandTask(task) {
 				}
             }
             def msg = "Executing virtual command ${cn}"
-            def function = "task_vcmd_${cn}".replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_")
+            def function = "task_vcmd_${sanitizeCommandName(cn)}"
             def perf = now()
             def result = "$function"(command.aggregated ? devices : device, action, task, suffix)
             msg += " (${now() - perf}ms)"            
@@ -7876,6 +7949,10 @@ def getActionTask(action, taskId) {
 
 private sanitizeVariableName(name) {
 	name = name ? "$name".trim().replace(" ", "_") : null
+}
+
+private sanitizeCommandName(name) {
+	name = name ? "$name".trim().replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_") : null
 }
 
 def dummy() {
