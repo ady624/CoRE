@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/11/2016 >>> v0.0.085.20160611 - Alpha test version - Added "when false" individual actions, as well as "only execute on condition state change"
  *	 6/10/2016 >>> v0.0.084.20160610 - Alpha test version - Added piston day/time restrictions
  *	 6/10/2016 >>> v0.0.083.20160610 - Alpha test version - Action "variable" restriction (if <variable> <comparison> <value>)), piston restrictions
  *	 6/10/2016 >>> v0.0.082.20160610 - Alpha test version - Fixed an issue with saving variables to atomicState (when needed)
@@ -166,7 +167,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.084.20160610"
+	return "v0.0.085.20160611"
 }
 
 
@@ -743,8 +744,17 @@ private getConditionGroupPageContent(params, condition) {
                 def actions = listActions(id)
                 if (actions.size() || state.config.expertMode) {
                     section(title: "Individual actions") {
+		                actions = listActions(id, true)
                         def desc = actions.size() ? "" : "Tap to select actions"
-                        href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                        href "pageActionGroup", params:[conditionId: id, onState: true], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                        if (actions.size()) {
+                            for (action in actions) {
+                                href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                            }
+                        }
+		                actions = listActions(id, false)
+                        desc = actions.size() ? "" : "Tap to select actions"
+                        href "pageActionGroup", params:[conditionId: id, onState: false], title: "When false, do...", description: desc, state: null, submitOnChange: false
                         if (actions.size()) {
                             for (action in actions) {
                                 href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
@@ -797,6 +807,7 @@ def pageCondition(params) {
         }
         if (condition) {
             updateCondition(condition)
+		    cleanUpActions()            
             def id = (int) condition.id
             state.config.conditionId = id
             def pid = (int) condition.parentId
@@ -808,7 +819,6 @@ def pageCondition(params) {
             def trigger = false
             def validCondition = false
             def capability
-
             def branchId = getConditionMasterId(condition.id)
             def supportsTriggers = (settings.mode != "Follow-Up") && ((branchId == 0) || (settings.mode in ["Latching", "And-If", "Or-If"]))
             dynamicPage(name: "pageCondition", title: (condition.trg ? "Trigger" : "Condition") + " #$id", uninstall: false, install: false) {
@@ -1110,8 +1120,17 @@ def pageCondition(params) {
                         def actions = listActions(id)
                         if (actions.size() || state.config.expertMode) {
                             section(title: "Individual actions") {
-                                def desc = actions.size() ? "" : "Tap to select actions"
-                                href "pageActionGroup", params:[conditionId: id], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                                actions = listActions(id, true)
+        		                def desc = actions.size() ? "" : "Tap to select actions"
+                                href "pageActionGroup", params:[conditionId: id, onState: true], title: "When true, do...", description: desc, state: null, submitOnChange: false
+                                if (actions.size()) {
+                                    for (action in actions) {
+                                        href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                                    }
+                                }
+                                actions = listActions(id, false)
+        		                desc = actions.size() ? "" : "Tap to select actions"
+                                href "pageActionGroup", params:[conditionId: id, onState: false], title: "When false, do...", description: desc, state: null, submitOnChange: false
                                 if (actions.size()) {
                                     for (action in actions) {
                                         href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
@@ -1120,7 +1139,6 @@ def pageCondition(params) {
                             }
                         }
                     }
-
                     section(title: "Advanced options") {
                         input "condNegate$id", "bool", title: "Negate ${condition.trg ? "trigger" : "condition"}", description: "Apply a logical NOT to the ${condition.trg ? "trigger" : "condition"}", defaultValue: false, state: null, submitOnChange: true
                     }
@@ -1193,9 +1211,10 @@ def pageVariables() {
 def pageActionGroup(params) {
 	state.run = "config"
 	def conditionId = params?.conditionId != null ? (int) params?.conditionId : (int) state.config.conditionId
-    state.config.conditionId = (int) conditionId
+	def onState = conditionId > 0 ? (params?.onState != null ? (boolean) params?.onState : (boolean) state.config.onState) : true
+    state.config.onState = (boolean) onState    
 	def value = conditionId < -1 ? false : true
-    def block = conditionId > 0 ? "WHEN TRUE, DO ..." : "IF"
+    def block = conditionId > 0 ? "WHEN ${onState ? "TRUE" : "FALSE"}, DO ..." : "IF"
     if (conditionId < 0) {
     	switch (settings.mode) {
         	case "Basic":
@@ -1236,7 +1255,7 @@ def pageActionGroup(params) {
     
     cleanUpActions()
 	dynamicPage(name: "pageActionGroup", title: "$block", uninstall: false, install: false) {
-	    def actions = listActions(conditionId)
+	    def actions = listActions(conditionId, onState)
         if (actions.size()) {
             section() {
                 for(def action in actions) {
@@ -1246,7 +1265,7 @@ def pageActionGroup(params) {
         }
         
         section() {
-			href "pageAction", params:[command: "add", conditionId: conditionId], title: "Add an action", required: !actions.size(), state: (actions.size() ? null : "complete"), submitOnChange: true
+			href "pageAction", params:[command: "add", conditionId: conditionId, onState: onState], title: "Add an action", required: !actions.size(), state: (actions.size() ? null : "complete"), submitOnChange: true
 		}
         
     }
@@ -1259,7 +1278,7 @@ def pageAction(params) {
     //if at least one device has been previously selected, the page will guide the user through setting up tasks for selected devices
     def action = null
     if (params?.command == "add") {
-        action = createAction(params?.conditionId)
+        action = createAction(params?.conditionId, params?.onState)        
     } else {   	
 		action = getAction(params?.actionId ? params?.actionId : state.config.actionId)
     }
@@ -1486,18 +1505,18 @@ def pageAction(params) {
                        
             if (actionUsed) {
             	section(title: "Action restrictions") {
-                	if (action.pid < 1) {
-                    	//this option is only available for the three master action groups
-                		input "actRStateChange$id", "bool", title: "Execute on piston status change only", required: false
-                    }
-                	input "actRMode$id", "mode", title: "Execute in these modes only", description: "Any location mode", required: false, multiple: true
-                	input "actRAlarm$id", "enum", options: getAlarmSystemStatusOptions(), title: "Execute during these alarm states only", description: "Any alarm state", required: false, multiple: true
-                	input "actRVariable$id", "enum", options: listVariables(true), title: "Execute when variable matches only", description: "Tap to choose a variable", required: false, multiple: false, submitOnChange: true
+                	input "actRStateChange$id", "bool", title: action.pid > 0 ? "Only execute on condition state change" : "Only execute on piston state change", required: false
+                	input "actRMode$id", "mode", title: "Only execute in these modes", description: "Any location mode", required: false, multiple: true
+                	input "actRAlarm$id", "enum", options: getAlarmSystemStatusOptions(), title: "Only execute during these alarm states", description: "Any alarm state", required: false, multiple: true
+                	input "actRVariable$id", "enum", options: listVariables(true), title: "Only execute when variable matches", description: "Tap to choose a variable", required: false, multiple: false, submitOnChange: true
                     def rVar = settings["actRVariable$id"]
                     if (rVar) {
                     	def options = ["is equal to", "is not equal to", "is less than", "is less than or equal to", "is greater than", "is greater than or equal to"]
                 		input "actRComparison$id", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
                 		input "actRValue$id", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
+                    }
+                	if (action.pid > 0) {
+	                	input "actRState$id", "enum", options:["true", "false"], defaultValue: action.rs == false ? "false" : "true", title: action.pid > 0 ? "Only execute when condition state is" : "Only execute on piston state change", required: false
                     }
                 }
 
@@ -1793,11 +1812,18 @@ private buildIfContent(id, level) {
     }
     if (condition.id > 0) {
 	    //when true - individual actions
-        def actions = listActions(id)
+        def actions = listActions(id, true)
         def sz = actions.size() - 1
         def i = 0
         for (action in actions) {
             href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when true)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
+            i = i + 1
+        }
+        actions = listActions(id, false)
+        sz = actions.size() - 1
+        i = 0
+        for (action in actions) {
+            href "pageAction", params: ["actionId": action.id], title: "", description: (i == 0 ? "${tab}╠═(when false)══ {\n" : "") + "${tab}║ " + getActionDescription(action).trim().replace("\n", "\n${tab}║") + (i == sz ? "\n${tab}╚════════ }" : ""), state: null, required: false, submitOnChange: false
             i = i + 1
         }
     } else {
@@ -2264,7 +2290,7 @@ def api_piston() {
                 }
                 action.t = action.t.sort{ it.i }
             }
-            result.app.actions = result.app.actions.sort{ it.id }
+            result.app.actions = result.app.actions.sort{ (it.rs ? -1 : 1) * it.id }
 		    result.variables = [:]
     		for(variable in child.listVariables()) {
     			result.variables[variable] = child.getVariable(variable, true)
@@ -2809,11 +2835,12 @@ private getLastConditionId(parent) {
 
 
 //creates a condition (grouped or not)
-private createAction(parentId) {
+private createAction(parentId, onState = true) {
     def action = [:]
     //give the new condition an id
     action.id = (int) getNextActionId()
     action.pid = (int) parentId
+    action.rs = !!onState
     state.config.app.actions.push(action)
     return action
 }
@@ -2860,6 +2887,7 @@ private updateAction(action) {
     
     //restrictions
     action.rc = settings["actRStateChange$id"]
+    action.rs = cast(action.pid > 0 ? (settings["actRState$id"] != null ? settings["actRState$id"] : (action.rs == null ? true : action.rs)) : true, "boolean")
     action.ra = settings["actRAlarm$id"]
     action.rm = settings["actRMode$id"]
     action.rv = settings["actRVariable$id"]
@@ -3008,7 +3036,7 @@ private getActionDescription(action) {
     def devices = (action.l ? ["location"] : listActionDevices(action.id))
     def result = ""
     if (action.rc) {
-    	result += "® If piston state changes...\n"
+    	result += "® If ${action.pid > 0 ? "condition" : "piston"} state changes...\n"
     }
     if (action.rm) {
     	result += "® If mode is ${buildNameList(action.rm, "or")}...\n"
@@ -3143,7 +3171,6 @@ private getTaskDescription(task) {
 /******************************************************************************/
 
 def deviceHandler(evt) {
-	//log.trace "${now() - evt.date.getTime()}ms"
 	entryPoint()    
 	if (!preAuthorizeEvent(evt)) {
     	return
@@ -3731,9 +3758,9 @@ private evaluateCondition(condition, evt = null) {
                 for (child in condition.children) child.eval = false
             }
         }
-        //result = postEvaluateCondition(condition, evt, result)
         //apply the NOT, if needed
         result = condition.not ? !result : result
+        def oldEval = condition.eval
         condition.eval = result
 
         //store variables (only if evt is available, i.e. not simulating)
@@ -3745,8 +3772,8 @@ private evaluateCondition(condition, evt = null) {
             if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
             if (condition.vw && !result) setVariable(condition.vw, evt.value)
 
-            if (result && (condition.id > 0)) {
-                scheduleActions(condition.id)
+            if (condition.id > 0) {
+                scheduleActions(condition.id, oldEval != result, result)
             }
         }        
         perf = now() - perf
@@ -3755,27 +3782,6 @@ private evaluateCondition(condition, evt = null) {
     	debug "ERROR: Error evaluating condition: $e", null, "error"
     }
     return false
-}
-
-private postEvaluateCondition(condition, evt, result) {
-    //apply the NOT, if needed
-    result = condition.not ? !result : result
-    condition.eval = result
-
-    //store variables (only if evt is available, i.e. not simulating)
-    if (evt) {
-        if (condition.vd) setVariable(condition.vd, now())
-        if (condition.vs) setVariable(condition.vs, result)
-        if (condition.vt && result) setVariable(condition.vt, evt.date.getTime())
-        if (condition.vv && result) setVariable(condition.vv, evt.value)
-        if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())        
-        if (condition.vw && !result) setVariable(condition.vw, evt.value)
-
-        if (result) {
-            scheduleActions(condition.id)
-        }
-    }        
-	return result
 }
 
 private evaluateDeviceCondition(condition, evt) {
@@ -4719,12 +4725,13 @@ private scheduleTimeTrigger(condition, data = null) {
     }
 }
 
-private scheduleActions(conditionId, stateChanged = false) {
+private scheduleActions(conditionId, stateChanged = false, currentState = true) {
 	debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
 	def actions = listActions(conditionId).sort{ it.id }
     for (action in actions) {
     	//restrict on state changed
     	if (action.rc && !stateChanged) continue
+        if ((action.pid > 0) && ((action.rs != false ? true : false) != currentState)) continue
     	if (action.rm && action.rm.size() && !(location.mode in action.rm)) continue
     	if (action.ra && action.ra.size() && !(getAlarmSystemStatus() in action.ra)) continue
     	if (action.rv && !(checkVariableCondition(action.rv, action.rvc, action.rvv))) continue        
@@ -6787,6 +6794,9 @@ private cast(value, dataType) {
 	switch (dataType) {
         case "string":
         case "text":
+        	if (value instanceof Boolean) {
+            	return value ? "true" : "false"
+            }
 			return value ? "$value" : ""
         case "number":
         	if (value == null) return (int) 0
@@ -7986,7 +7996,7 @@ private getTimeConditionDescription(condition) {
 /*** ACTION FUNCTIONS														***/
 /******************************************************************************/
 
-def getAction(actionId) {
+private getAction(actionId) {
     def parent = (state.run == "config" ? state.config : state)
 	for(action in parent.app.actions) {
     	if (action.id == actionId) {
@@ -7996,19 +8006,22 @@ def getAction(actionId) {
     return null
 }
 
-def listActions(conditionId) {
+private listActions(conditionId, onState = null) {
 	def result = []
     def parent = (state.run == "config" ? state.config : state)
-
+    
+    //all actions for main groups
+	if (conditionId <= 0) onState = null
+    
 	for(action in parent.app.actions) {
-    	if ((action.pid == conditionId)) {
+    	if ((action.pid == conditionId) && ((onState == null) || ((action.rs == null ? true : action.rs) == onState))) {
         	result.push(action)
         }
     }    
     return result
 }
 
-def getActionTask(action, taskId) {
+private getActionTask(action, taskId) {
     if (!action) return null
     if (!(taskId instanceof Integer)) return null
     for (task in action.t) {
