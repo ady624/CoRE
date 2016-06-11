@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/11/2016 >>> v0.0.086.20160611 - Alpha test version - Fixed the hue attribute and the setHue command to automatically convert beween % and angle
  *	 6/11/2016 >>> v0.0.085.20160611 - Alpha test version - Added "when false" individual actions, as well as "only execute on condition state change"
  *	 6/10/2016 >>> v0.0.084.20160610 - Alpha test version - Added piston day/time restrictions
  *	 6/10/2016 >>> v0.0.083.20160610 - Alpha test version - Action "variable" restriction (if <variable> <comparison> <value>)), piston restrictions
@@ -167,7 +168,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.085.20160611"
+	return "v0.0.086.20160611"
 }
 
 
@@ -1516,7 +1517,7 @@ def pageAction(params) {
                 		input "actRValue$id", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
                     }
                 	if (action.pid > 0) {
-	                	input "actRState$id", "enum", options:["true", "false"], defaultValue: action.rs == false ? "false" : "true", title: action.pid > 0 ? "Only execute when condition state is" : "Only execute on piston state change", required: false
+	                	input "actRState$id", "enum", options:["true", "false"], defaultValue: action.rs == false ? "false" : "true", title: action.pid > 0 ? "Only execute when condition state is" : "Only execute on piston state change", required: true
                     }
                 }
 
@@ -6032,6 +6033,10 @@ private processCommandTask(task) {
                         	def msg = "Executing command: [${device}].${cn}($params)" 
                             def perf = now()
                         	try {
+                            	if ((cn == "setHue") && (params.size() == 1)) {
+                                	//ST expects hue in 0.100, in reality, it is 0..360
+                                	params[0] = cast(params[0], "decimal") / 3.6
+                                }
                                 device."${cn}"(params as Object[])
                             } catch(all) {
                             	msg += " (ERROR)"
@@ -6405,6 +6410,9 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
                 if (parts.size() == 2) {
                     v = cast(v, parts[1])
                 }
+                if (command.name == "setHue") {
+                	v = cast(v, "decimal") / 3.6
+                }
                 if (device.hasCommand(command.name)) {
                     debug "Executing [${getDeviceLabel(device)}].${command.name}($v)", null, "info"
                     device."${command.name}"(v)
@@ -6502,7 +6510,11 @@ private getAggregatedAttributeValue(devices, attribute, aggregation, dataType) {
         result = cast("", attr.type)
         def values = []
         for (device in devices) {
-            values.push cast(device.currentValue(attribute), type)
+        	def val = cast(device.currentValue(attribute), type)
+            if (attribute == "hue") {
+            	val = cast(val, "decimal") * 3.6
+            }
+            values.push val
         }        
         if (values.size()) {
             switch (aggregation) {
