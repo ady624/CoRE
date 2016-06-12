@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/12/2016 >>> v0.0.088.20160612 - Alpha test version - Added the ability to initialize/change variables from within the UI
  *	 6/12/2016 >>> v0.0.087.20160612 - Alpha test version - Send notifications to contacts is now enabled
  *	 6/11/2016 >>> v0.0.086.20160611 - Alpha test version - Fixed the hue attribute and the setHue command to automatically convert beween % and angle
  *	 6/11/2016 >>> v0.0.085.20160611 - Alpha test version - Added "when false" individual actions, as well as "only execute on condition state change"
@@ -169,7 +170,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.087.20160612"
+	return "v0.0.088.20160612"
 }
 
 
@@ -217,6 +218,8 @@ preferences {
     page(name: "pageSetVariable")
     page(name: "pageSimulate")
     page(name: "pageToggleEnabled")
+    page(name: "pageInitializeVariable")
+    page(name: "pageInitializedVariable")
 }
 
 
@@ -329,6 +332,9 @@ private pageInitializeDashboard() {
 
 def pageGlobalVariables() {
 	dynamicPage(name: "pageGlobalVariables", title: "Global Variables", install: false, uninstall: false) {
+        section("Initialize variables") {
+            href "pageInitializeVariable", title: "Initialize variables"
+        }
     	section() {
         	def cnt = 0
             //initialize the store if it doesn't yet exist
@@ -1040,6 +1046,13 @@ def pageCondition(params) {
                     }
                 }
                 
+                if (capability && (capability.name == "variable")) {
+                    section("Variables") {
+                        href "pageVariables", title: "View current variables"
+                        href "pageInitializeVariable", title: "Initialize a variable"
+                    }
+                }
+                
                 if (showDateTimeRepeat) {
                     section(title: "Repeat this trigger...") {
                         input "condRepeat$id", "enum", title: "Repeat", options: timeRepeatOptions(), required: true, multiple: false, defaultValue: "every day", submitOnChange: true
@@ -1190,7 +1203,10 @@ def pageConditionVsTrigger() {
 def pageVariables() {
 	state.run = "config"
 	dynamicPage(name: "pageVariables", title: "", install: false, uninstall: false) {
-    	section("Local Variables") {
+        section("Initialize variables") {
+            href "pageInitializeVariable", title: "Initialize a variable"
+        }
+        section("Local Variables") {
         	def cnt = 0
             for (def variable in state.store.sort{ it.key }) {
             	def value = getVariable(variable.key, true)
@@ -1658,6 +1674,11 @@ private pageSetVariable(params) {
                 if (!operation || i > 10) break
             }
         }
+        
+        section("Initialize variables") {
+            href "pageInitializeVariable", title: "Initialize a variable"
+        }
+        
     }
 }
 
@@ -1742,6 +1763,29 @@ def pageToggleEnabled() {
    	dynamicPage(name: "pageToggleEnabled", title: "", uninstall: false, install: false) {
     	section() {
     		paragraph "The piston is now ${state.config.app.enabled ? "running" : "paused"}."
+        }
+    }
+}
+
+def pageInitializeVariable() {
+   	dynamicPage(name: "pageInitializeVariable", title: "", uninstall: false, install: false) {
+    	section("Initialize variable") {
+        	input "varName", "string", title: "Variable to initialize", required: true, capitalization: "none"
+        	input "varValue", "string", title: "Initial value", required: true, capitalization: "none"
+            href "pageInitializedVariable", title: "Initialize!"
+        }
+    }
+}
+
+def pageInitializedVariable() {
+   	dynamicPage(name: "pageInitializedVariable", title: "", uninstall: false, install: false) {
+    	section() {
+            def var = settings.varName
+            def val = settings.varValue
+            if ((var != null) && (val != null)) {
+                setVariable(var, val)
+                paragraph "Variable {$var} successfully initialized to value '$val'.\n\nPlease tap < or Done to continue.", title: "Success"
+            }
         }
     }
 }
