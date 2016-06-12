@@ -291,9 +291,9 @@ def pageViewVariable(params) {
                         type = "boolean"
                     } else if ((value instanceof Long) && (value >= 999999999999)) {
                         type = "time"
-                    } else if (value instanceof Float) {
+                    } else if ((value instanceof Float) || ((value instanceof String) && value.isFloat())) {
                         type = "decimal"
-                    } else if (var instanceof Integer) {
+                    } else if ((value instanceof Integer) || ((value instanceof String) && value.isInteger())) {
                         type = "number"
                     }
                     paragraph "$type", title: "Data type"
@@ -301,7 +301,9 @@ def pageViewVariable(params) {
 					value = getVariable(var, true)                    
                     paragraph "$value", title: "Display value"
                 }
-    	        href "pageDeleteVariable", title: "Delete variable", description: "CAUTION: Tapping this will delete this variable and its value", params: [var: var]
+                if (!var.startsWith("\$")) {
+                    href "pageDeleteVariable", title: "Delete variable", description: "CAUTION: Tapping here will delete this variable and its value", params: [var: var]
+                }
         	}
         } else {
         	section() {
