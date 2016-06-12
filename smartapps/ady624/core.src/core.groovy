@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/12/2016 >>> v0.0.087.20160612 - Alpha test version - Send notifications to contacts is now enabled
  *	 6/11/2016 >>> v0.0.086.20160611 - Alpha test version - Fixed the hue attribute and the setHue command to automatically convert beween % and angle
  *	 6/11/2016 >>> v0.0.085.20160611 - Alpha test version - Added "when false" individual actions, as well as "only execute on condition state change"
  *	 6/10/2016 >>> v0.0.084.20160610 - Alpha test version - Added piston day/time restrictions
@@ -168,7 +169,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.086.20160611"
+	return "v0.0.087.20160612"
 }
 
 
@@ -1442,7 +1443,6 @@ def pageAction(params) {
                                                 } else if (param.type == "contact") {
                                                     input "actParam$id#$tid-$i", "contact",  title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "contacts") {
-                                                	//log.trace "GOT HERE!!!"
                                                     input "actParam$id#$tid-$i", "contact",  title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "variable") {
                                                     input "actParam$id#$tid-$i", "enum", options: listVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
@@ -2962,6 +2962,14 @@ private updateAction(action) {
                             if (param) {
                             	def type = param.type
                                 def data = settings["actParam$id#$tid-$i"]
+                                //so ST silently!!! fails if we're having a list and that list contains wrappers (like contacts!)
+                                if ((data instanceof ArrayList)) {  
+                                	def items = []
+                                    for(it in data) {
+                                    	items.push("$it")                                        
+                                    }
+                                    data = items
+                                }
                                 def var = (command.varEntry == i)
                                 if (var) {
                                     task.p.push([i: i, t: type, d: data, v: 1])
@@ -4032,7 +4040,8 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
     	//we match any time
     } else {
         //convert times to number of minutes since midnight for easy comparison
-        def m = time ? time.hours * 60 + time.minutes : 0
+        //add one minute if we're within 3 seconds of the next minute
+        def m = time ? time.hours * 60 + time.minutes : 0 + (time.seconds >= 57 ? 1 : 0)
         def m1 = null
         def m2 = null
        	//go through each parameter
@@ -4095,8 +4104,8 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
             }
         }
         
-        
-        def rightNow = time.time - time.time.mod(60000)
+        //add one minute if we're within 3 seconds of the next minute
+        def rightNow = time.time - time.time.mod(60000) + (time.seconds >= 57 ? 60000 : 0)
         def lastMidnight =  rightNow - rightNow.mod(86400000)
         def nextMidnight =  lastMidnight + 86400000
 
@@ -6277,6 +6286,18 @@ private task_vcmd_sendSMSNotification(device, action, task, suffix = "") {
     }
 }
 
+private task_vcmd_sendNotificationToContacts(device, action, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 3) {
+    	return false
+    }
+    def message = formatMessage(params[0].d)
+    def recipients = settings["actParam${task.ownerId}#${task.taskId}-1"]
+    def saveNotification = !!params[2].d
+    try {
+	    sendNotificationToContacts(message, recipients, [event: saveNotification])
+    } catch(all) {}
+}
 
 private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -8689,7 +8710,6 @@ private parseCommandParameter(parameter) {
     // decimal
     // decimal[range]
     // enum[comma separated list, double quotes not required]
-    
     tokens = dataType.tokenize("[]")
     if (tokens.size()) {
     	dataType = tokens[0]
@@ -9044,7 +9064,6 @@ private virtualCommands() {
     	[ name: "setLocationMode",		requires: [],			 			display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
     	[ name: "setAlarmSystemStatus",	requires: [],			 			display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to '{0}'",			aggregated: true,	],
     	[ name: "sendNotification",		requires: [],			 			display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}' in notifications page",			aggregated: true,	],
-//    	[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,																aggregated: true,	],
     	[ name: "sendPushNotification",	requires: [],			 			display: "Send Push notification",			parameters: ["Message:text","Show in notifications page:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
     	[ name: "sendSMSNotification",	requires: [],			 			display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Show in notifications page:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
     	[ name: "executeRoutine",		requires: [],			 			display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
@@ -9067,7 +9086,9 @@ private virtualCommands() {
         [ name: "beginSwitchBlock",		requires: [],						display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH ({0}) DO",				flow: true,					indent: 2,	],
         [ name: "beginSwitchCase",		requires: [],						display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE {0}:",					flow: true,	selfIndent: -1, 			],
         [ name: "endSwitchBlock",		requires: [],						display: "End SWITCH block",				parameters: [],																																																	location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
-    ]
+    ] + (location.contactBookEnabled ? [
+    		[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],        
+	] : [])
 }
 
 private attributes() {
