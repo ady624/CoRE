@@ -286,7 +286,7 @@ def pageViewVariable(params) {
                 if (value == null) {
                 	paragraph "Undefined value (null)", title: "Oh-oh"
                 } else {
-                    def type = string                
+                    def type = "string"
                     if (value instanceof Boolean) {
                         type = "boolean"
                     } else if ((value instanceof Long) && (value >= 999999999999)) {
@@ -296,7 +296,7 @@ def pageViewVariable(params) {
                     } else if (var instanceof Integer) {
                         type = "number"
                     }
-                    paragraph type, title: "Data type"
+                    paragraph "$type", title: "Data type"
                     paragraph "$value", title: "Raw value"
 					value = getVariable(var, true)                    
                     paragraph "$value", title: "Display value"
