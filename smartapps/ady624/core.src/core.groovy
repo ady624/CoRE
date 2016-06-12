@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/12/2016 >>> v0.0.089.20160612 - Alpha test version - Added the ability to delete variables from within the UI
  *	 6/12/2016 >>> v0.0.088.20160612 - Alpha test version - Added the ability to initialize/change variables from within the UI
  *	 6/12/2016 >>> v0.0.087.20160612 - Alpha test version - Send notifications to contacts is now enabled
  *	 6/11/2016 >>> v0.0.086.20160611 - Alpha test version - Fixed the hue attribute and the setHue command to automatically convert beween % and angle
@@ -170,7 +171,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.088.20160612"
+	return "v0.0.089.20160612"
 }
 
 
@@ -194,6 +195,9 @@ definition(
 preferences {
 	//common pages
 	page(name: "pageMain")
+    page(name: "pageViewVariable")
+    page(name: "pageDeleteVariable")
+    
     
     //CoRE pages
     page(name: "pageInitializeDashboard")
@@ -218,6 +222,8 @@ preferences {
     page(name: "pageSetVariable")
     page(name: "pageSimulate")
     page(name: "pageToggleEnabled")
+    page(name: "pageInitializeVariable")
+    page(name: "pageInitializedVariable")
     page(name: "pageInitializeVariable")
     page(name: "pageInitializedVariable")
 }
@@ -267,6 +273,57 @@ def pageMain() {
 		pageMainCoRE()
     } else {
 		pageMainCoREPiston()
+    }
+}
+
+def pageViewVariable(params) {
+	def var = params?.var
+   	dynamicPage(name: "pageViewVariable", title: "", uninstall: false, install: false) {
+    	if (var) {
+	    	section() {
+        		paragraph var, title: "Variable name"
+                def value = getVariable(var)
+                if (value == null) {
+                	paragraph "Undefined value (null)", title: "Oh-oh"
+                } else {
+                    def type = string                
+                    if (value instanceof Boolean) {
+                        type = "boolean"
+                    } else if ((value instanceof Long) && (value >= 999999999999)) {
+                        type = "time"
+                    } else if (value instanceof Float) {
+                        type = "decimal"
+                    } else if (var instanceof Integer) {
+                        type = "number"
+                    }
+                    paragraph type, title: "Data type"
+                    paragraph "$value", title: "Raw value"
+					value = getVariable(var, true)                    
+                    paragraph "$value", title: "Display value"
+                }
+    	        href "pageDeleteVariable", title: "Delete variable", description: "CAUTION: Tapping this will delete this variable and its value", params: [var: var]
+        	}
+        } else {
+        	section() {
+            	paragraph "Sorry, variable not found."
+            }
+        }
+    }
+}
+
+def pageDeleteVariable(params) {
+	def var = params?.var
+   	dynamicPage(name: "pageInitializedVariable", title: "", uninstall: false, install: false) {
+    	if (var != null) {
+            section() {
+            	deleteVariable(var)
+                paragraph "Variable {$var} was successfully deleted.\n\nPlease tap < or Done to continue.", title: "Success"
+            }
+        } else {
+        	section() {
+            	paragraph "Sorry, variable not found."
+            }
+        }
     }
 }
 
@@ -341,7 +398,7 @@ def pageGlobalVariables() {
             if (!state.store) state.store = [:]
             for (def variable in state.store.sort{ it.key }) {
             	def value = getVariable(variable.key, true)
-                paragraph "$value", title: "${variable.key}"
+                href "pageViewVariable", description: "$value", title: "${variable.key}", params: [var: variable.key]
                 cnt++
             }
             if (!cnt) {
@@ -1210,7 +1267,7 @@ def pageVariables() {
         	def cnt = 0
             for (def variable in state.store.sort{ it.key }) {
             	def value = getVariable(variable.key, true)
-                paragraph "$value", title: "${variable.key}"
+                href "pageViewVariable", description: "$value", title: "${variable.key}", params: [var: variable.key]
                 cnt++
             }
             if (!cnt) {
@@ -1220,7 +1277,7 @@ def pageVariables() {
     	section("System Variables") {
             for (def variable in state.systemStore.sort{ it.key }) {
             	def value = getVariable(variable.key, true)
-                paragraph "$value", title: "${variable.key}"
+                href "pageViewVariable", description: "$value", title: "${variable.key}", params: [var: variable.key]
             }
         }
 	}
@@ -2025,6 +2082,19 @@ def setVariable(name, value, system = false) {
     //TODO: date&time triggers based on variables being changed need to be reevaluated
 }
 
+def deleteVariable(name) {
+    name = sanitizeVariableName(name)
+	if (!name) {
+    	return
+    }
+    if (parent && name.startsWith("@")) {
+    	parent.deleteVariable(name)
+    } else {
+    	if (state.store) {
+	    	state.store.remove(name)
+        }
+    }
+}
 
 def getStateVariable(name, global = false) {
     name = sanitizeVariableName(name)
@@ -2652,6 +2722,10 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
                 def capability = getCapabilityByDisplay(condition.cap)
             	def devices = capability.virtualDevice ? (capability.attribute == "time" ? [] : [capability.virtualDevice]) : settings["condDevices${condition.id}"]
                 def attribute = capability.virtualDevice ? capability.attribute : condition.attr
+                if (capability && (capability.name == "variable") && (!!condition.var || !!condition.var.startsWith('@'))) {
+                	//we don't want to subscribe to local variables
+                	devices = null
+                }
                 if (devices) {
                 	for (device in devices) {
                     	def subscription = "${device.id}-${attribute}"
