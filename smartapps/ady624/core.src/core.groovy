@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/13/2016 >>> v0.0.08c.20160613 - Alpha test version - Replaced facet with orientation. Added IFTTT integration
  *	 6/12/2016 >>> v0.0.08b.20160612 - Alpha test version - Added three-axis initial support.
  *	 6/12/2016 >>> v0.0.08a.20160612 - Alpha test version - Improved loop logic, providing the $index variable for simple loops and ensuring variable value during execution stage. Improved variable triggers during preauthorization.
  *	 6/12/2016 >>> v0.0.089.20160612 - Alpha test version - Added the ability to delete variables from within the UI
@@ -173,7 +174,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.08b.20160612"
+	return "v0.0.08c.20160613"
 }
 
 
@@ -207,6 +208,9 @@ preferences {
     page(name: "pageStatistics")
     page(name: "pageChart")
     page(name: "pageGlobalVariables")
+    page(name: "pageGeneralSettings")
+    page(name: "pageIntegrateIFTTT")
+    page(name: "pageIntegrateIFTTTConfirm")
     
     //Piston pages
     page(name: "pageIf")
@@ -349,42 +353,29 @@ private pageMainCoRE() {
     dynamicPage(name: "pageMain", title: "", install: true, uninstall: false) {
     	section() {
             if (!state.endpoint) {
-            	href "pageInitializeDashboard", title: "CoRE Dashboard", description: "Tap here to initialize the CoRE dashboard"
+            	href "pageInitializeDashboard", title: "CoRE Dashboard", description: "Tap here to initialize the CoRE dashboard", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png"
             } else {
             	//reinitialize endpoint
                 initializeCoREEndpoint()
             	def url = "${state.endpoint}dashboard"
                 debug "Dashboard URL: $url *** DO NOT SHARE THIS LINK WITH ANYONE ***", null, "info"
-                href "", title: "CoRE Dashboard", style: "external", url: url
+                href "", title: "CoRE Dashboard", style: "external", url: url, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png"
             }
-		}        
+		}
         
         section() {
-            app( name: "pistons", title: "Add a CoRE piston...", appName: "CoRE", namespace: "ady624", multiple: true)
+            app( name: "pistons", title: "Add a CoRE piston...", appName: "CoRE", namespace: "ady624", multiple: true, uninstall: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/piston.png")
         }
 
         section(title:"Application Info") {
-            paragraph version(), title: "Version"
-            href "pageGlobalVariables", title: "Global Variables"
-            href "pageStatistics", title: "Runtime Statistics"
+            href "pageGlobalVariables", title: "Global Variables", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/variable.png"
+            href "pageStatistics", title: "Runtime Statistics", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/statistics.png"
         }
 
-        section(title: "Advanced options", hideable: !settings.expertMode && !settings.debugging, hidden: true) {
-            input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true
-            input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
-            def debugging = settings.debugging
-            if (debugging) {
-	            input "log#info", "bool", title: "Log info messages", defaultValue: true
-	            input "log#trace", "bool", title: "Log trace messages", defaultValue: true
-	            input "log#debug", "bool", title: "Log debug messages", defaultValue: false
-	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
-	            input "log#error", "bool", title: "Log error messages", defaultValue: true
-            }
+        section(title:"") {
+            href "pageGeneralSettings", title: "Settings", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/settings.png"
         }
-        
-		section("Remove CoRE") {
-        	href "pageRemove", title: "", description: "Remove CoRE"
-        }
+
     }
 }
 
@@ -400,6 +391,37 @@ private pageInitializeDashboard() {
             }
         }
     }
+}
+
+def pageGeneralSettings(params) {
+	dynamicPage(name: "pageGeneralSettings", title: "General Settings", install: false, uninstall: false) {
+    	section("About") {
+        	paragraph app.version(), title: "CoRE Version"
+        }
+        
+        section(title: "", hideable: !settings.expertMode && !settings.debugging, hidden: true) {
+            input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true
+            input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
+            def debugging = settings.debugging
+            if (debugging) {
+	            input "log#info", "bool", title: "Log info messages", defaultValue: true
+	            input "log#trace", "bool", title: "Log trace messages", defaultValue: true
+	            input "log#debug", "bool", title: "Log debug messages", defaultValue: false
+	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
+	            input "log#error", "bool", title: "Log error messages", defaultValue: true
+            }
+        }
+        
+        section("CoRE Integrations") {
+        	def iftttConnected = state.modules && state.modules["IFTTT"] && settings["iftttEnabled"] && state.modules["IFTTT"].connected            
+        	href "pageIntegrateIFTTT", title: "IFTTT", description: iftttConnected ? "Connected" : "Not configured", state: (iftttConnected ? "complete" : null), submitOnChange: true
+        }
+        
+		section("Remove CoRE") {
+        	href "pageRemove", title: "", description: "Remove CoRE"
+        }
+        
+	}
 }
 
 def pageGlobalVariables() {
@@ -556,6 +578,44 @@ def pageChart(params) {
 }
 
 
+def pageIntegrateIFTTT() {
+    return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT™ Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
+        section() {
+            paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. Youu will be provided with a key that needs to be entered below"
+            input "iftttEnabled", "bool", title: "Enable IFTTT", submitOnChange: true
+            if (settings.iftttEnabled) {
+                href(name: "",
+                     title: "IFTTT Maker channel",
+                     required: false,
+                     style: "external",
+                     url: "https://www.ifttt.com/maker",
+                     description: "tap to go to IFTTT™ and connect the Maker channel"
+                    )
+            }
+        }
+        if (settings.iftttEnabled) {
+            section("IFTTT Maker key"){
+                input("iftttKey", "string", title: "Key", description: "Your IFTTT Maker key", required: false)
+            }
+        }
+    }
+}
+
+def pageIntegrateIFTTTConfirm() {
+    if (testIFTTT()) {
+		return dynamicPage(name: "pageIntegrateIFTTTConfirm", title: "IFTTT Integration", nextPage:"pageGeneralSettings") {
+			section(){
+				paragraph "Congratulations! You have successfully connected CoRE to IFTTT."
+			}
+    	}
+	} else {
+		return dynamicPage(name: "pageIntegrateIFTTTConfirm",  title: "IFTTT Integration") {
+			section(){
+				paragraph "Sorry, the credentials you provided for IFTTT are invalid. Please go back and try again."
+			}
+        }
+    }
+}
 
 
 /******************************************************************************/
@@ -2304,6 +2364,7 @@ def initializeCoRE() {
 def initializeCoREStore() {
     state.store = state.store ? state.store : [:]
     state.modes = state.modes ? state.modes : [:]
+    state.modules = state.modules ? state.modules : [:]
     state.stateStore = state.stateStore ? state.stateStore : [:]
     state.askAlexaMacros = state.askAlexaMacros ? state.askAlexaMacros : []
 }
@@ -2579,7 +2640,9 @@ def listAskAlexaMacros() {
     return state.askAlexaMacros ? state.askAlexaMacros : []
 }
 
-
+def iftttKey() {
+	return (state.modules && state.modules["IFTTT"] && state.modules["IFTTT"].connected ? state.modules["IFTTT"].key : null)
+}
 
 
 /******************************************************************************/
@@ -2795,6 +2858,26 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 /******************************************************************************/
 /*** CoRE PISTON CONFIGURATION METHODS										***/
 /******************************************************************************/
+
+def testIFTTT() {
+    //setup our security descriptor
+    state.modules["IFTTT"] = [
+    	key: settings.iftttKey,
+        connected: false
+    ]
+    if (settings.iftttKey) {
+    	//verify the key
+        return httpGet("https://maker.ifttt.com/trigger/test/with/key/" + settings.iftttKey) { response ->
+			if (response.status == 200) {
+				if (response.data == "Congratulations! You've fired the test event")
+				    state.modules["IFTTT"].connected = true
+                	return true;
+			}
+            return false;
+ 		}
+    }
+    return false
+}
 
 //creates a condition (grouped or not)
 private createCondition(group) {
@@ -3793,7 +3876,7 @@ private checkEventEligibility(condition, evt) {
                 }
             }
             for (deviceId in condition.dev) {
-                if ((evt.deviceId ? evt.deviceId : "location" == deviceId) && (evt.name == (condition.attr in ["facet", "axisX", "axisY", "axisZ"] ? "threeAxis" : condition.attr))) {
+                if ((evt.deviceId ? evt.deviceId : "location" == deviceId) && (evt.name == (condition.attr in ["orientation", "axisX", "axisY", "axisZ"] ? "threeAxis" : condition.attr))) {
                 	if (condition.trg) {
                     	//we found a trigger that matches the event, exit immediately
                     	return 2
@@ -4058,20 +4141,24 @@ private evaluateDeviceCondition(condition, evt) {
             //if we're dealing with a virtual device, get the virtual value
         	oldValue = cast(oldValue, type)
             
-			switch (attribute) {
-            	case "facet":
-                	virtualCurrentValue = device.currentValue("threeAxis")
-                    break
-            	case "axisX":
-                	virtualCurrentValue = device.currentValue("threeAxis").x
-                    break
-            	case "axisY":
-                	virtualCurrentValue = device.currentValue("threeAxis").y
-                    break
-            	case "axisZ":
-                	virtualCurrentValue = device.currentValue("threeAxis").z
-                    break
+            if (evt && evt.name == "threeAxis") {
+                switch (attribute) {
+                    case "orientation":
+                        virtualCurrentValue = device.currentValue("threeAxis")
+        				setVariable("\$currentEventDeviceIndex", getThreeAxisOrientation(virtualCurrentValue, true), true)
+                        break
+                    case "axisX":
+                        virtualCurrentValue = device.currentValue("threeAxis").x
+                        break
+                    case "axisY":
+                        virtualCurrentValue = device.currentValue("threeAxis").y
+                        break
+                    case "axisZ":
+                        virtualCurrentValue = device.currentValue("threeAxis").z
+                        break
+                }
             }
+            
             currentValue = cast(virtualCurrentValue != null ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(attribute)), type)
 			def value1
             def offset1
@@ -6492,6 +6579,16 @@ private task_vcmd_executePiston(devices, action, task, suffix = "") {
     return true
 }
 
+private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
+    def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+    if (params.size() != 1) {
+    	return false
+    }
+    def event = params[0].d
+    httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + parent.iftttKey())
+    return true
+}
+
 private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
 	state.rerunSchedule = true
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -7061,8 +7158,8 @@ private cast(value, dataType) {
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
 		case "vector3":
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
-		case "facet":
-                return getThreeAxisFacet(value)
+		case "orientation":
+                return getThreeAxisOrientation(value)
     }
     //anything else...
     return value
@@ -7514,19 +7611,35 @@ private groupOptions() {
 }
 
 
-private threeAxisFacets() {
+private threeAxisOrientations() {
     return ["rear side up", "down side up", "left side up", "front side up", "up side up", "right side up"]
 }
 
-private getThreeAxisFacet(value) {
+private threeAxisOrientationCoordinates() {
+    return ["rear side up", "down side up", "left side up", "front side up", "up side up", "right side up"]
+}
+
+private getThreeAxisDistance(coord1, coord2) {
+    if (coord1 && coord2){
+    	def dX = coord1.x - coord2.x
+    	def dY = coord1.y - coord2.y
+    	def dZ = coord1.z - coord2.z
+    	def s = Math.pow(dX,2) + Math.pow(dY,2) + Math.pow(dZ,2)
+    	def dist = Math.pow(s,0.5)
+		return dist.toInteger()
+    } else return null 
+}
+
+private getThreeAxisOrientation(value, getIndex = false) {
     if (value instanceof Map) {
         if ((value.x != null) && (value.y != null) && (value.z != null)) {
-            def facets = threeAxisFacets()
+            def orientations = threeAxisOrientations()
             def x = Math.abs(value.x)
             def y = Math.abs(value.y)
             def z = Math.abs(value.z)
             def side = (x > y ? (x > z ? 0 : 2) : (y > z ? 1 : 2))
-            def result = facets[side + (((side == 0) && (value.x < 0)) || ((side == 1) && (value.y < 0)) || ((side == 2) && (value.z < 0)) ? 3 : 0)]
+            side = side + (((side == 0) && (value.x < 0)) || ((side == 1) && (value.y < 0)) || ((side == 2) && (value.z < 0)) ? 3 : 0)
+            def result = getIndex ? side : orientations[side]
             return result
         }
     }
@@ -8550,7 +8663,7 @@ private listCommonDeviceAttributes(devices) {
             	//if attribute exists in standard list, increment its usage count
 	       		list[attr.name] = list[attr.name] + 1
                 if (attr.name == "threeAxis") {
-                	list["facet"] = list["facet"] + 1
+                	list["orientation"] = list["orientation"] + 1
                 	list["axisX"] = list["axisX"] + 1
                 	list["axisY"] = list["axisY"] + 1
                 	list["axisZ"] = list["axisZ"] + 1
@@ -9039,7 +9152,7 @@ private capabilities() {
     	[ name: "thermostatMode",					display: "Thermostat Mode",					attribute: "thermostatMode",			commands: ["off", "heat", "emergencyHeat", "cool", "auto", "setThermostatMode"],	multiple: true,			],
     	[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	commands: null,																		multiple: true,			],
     	[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		commands: null,																		multiple: true,			],
-    	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "facet",						commands: null,																		multiple: true,			devices: "three axis sensors",	],
+    	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "orientation",				commands: null,																		multiple: true,			devices: "three axis sensors",	],
     	[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			devices: "timed sessions"],
     	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
     	[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						commands: null,																		multiple: true,			],
@@ -9287,6 +9400,8 @@ private virtualCommands() {
         [ name: "endSwitchBlock",		requires: [],						display: "End SWITCH block",				parameters: [],																																																	location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
     ] + (location.contactBookEnabled ? [
     		[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],        
+	] : []) + (parent.iftttKey() ? [
+    		[ name: "iftttMaker",requires: [],		 			display: "Send IFTTT Maker event",	parameters: ["Event:text"],																		location: true,			description: "Send IFTTT Maker event '{0}'",													aggregated: true,	],        
 	] : [])
 }
 
@@ -9348,7 +9463,7 @@ private attributes() {
         [ name: "thermostatSetpoint",		type: "decimal",			range: "-127..127",		unit: tempUnit,	options: null,																								],
         [ name: "sessionStatus",			type: "enum",				range: null,			unit: null,		options: ["paused", "stopped", "running", "canceled"],														],
     	[ name: "threeAxis",				type: "vector3",			range: null,		unit: null,			options: null,						],
-    	[ name: "facet",					type: "facet",				range: null,			unit: null,		options: threeAxisFacets(),				valueType: "enum",	subscribe: "threeAxis",	],
+    	[ name: "orientation",				type: "orientation",		range: null,			unit: null,		options: threeAxisOrientations(),			valueType: "enum",	subscribe: "threeAxis",	],
     	[ name: "axisX",					type: "number",				range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
     	[ name: "axisY",					type: "number",				range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
     	[ name: "axisZ",					type: "number",				range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
@@ -9433,7 +9548,7 @@ private comparisons() {
     	[ type: "bool",					options: optionsBool,		],
     	[ type: "boolean",				options: optionsBool,		],
     	[ type: "vector3",				options: optionsEnum,		],
-    	[ type: "facet",				options: optionsEnum,		],
+    	[ type: "orientation",			options: optionsEnum,		],
     	[ type: "string",				options: optionsEnum,		],
     	[ type: "text",					options: optionsEnum,		],
     	[ type: "enum",					options: optionsEnum,		],
