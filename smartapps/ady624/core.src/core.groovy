@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/13/2016 >>> v0.0.08e.20160613 - Alpha test version - Tweaks for global variables
  *	 6/13/2016 >>> v0.0.08d.20160613 - Alpha test version - Due to public uproar (LOL), added per-task mode restrictions. Not so many clicks now, right?
  *	 6/13/2016 >>> v0.0.08c.20160613 - Alpha test version - Replaced facet with orientation. Added IFTTT integration
  *	 6/12/2016 >>> v0.0.08b.20160612 - Alpha test version - Added three-axis initial support.
@@ -175,7 +176,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.08d.20160613"
+	return "v0.0.08e.20160613"
 }
 
 
@@ -2147,14 +2148,13 @@ def setVariable(name, value, system = false) {
         } else {
 	    	debug "Storing variable $name with value $value"
             if (!parent) {
-            	def oldValue = state.store[name]
-				state.store[name] = value
+            	def store = atomicState.store
+            	def oldValue = store[name]
+				store[name] = value
+                atomicState.store = store
                 if (oldValue != value) {
                     //we need to save the store atomically so that if anyone is listening to this event gets the right info
-                    def store = state.store
-                    state.store = store
-                    atomicState.store = store
-                	sendLocationEvent(name: "variable", value: name, displayed: true, isStateChange: true, descriptionText: "CoRE variable $name changed from '$oldValue' to '$value'", data: [app: "CoRE", oldValue: oldValue, value: value])
+                	sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$value'", data: [app: "CoRE", oldValue: oldValue, value: value])
                 }                
             } else {
 				state.store[name] = value
@@ -2217,6 +2217,14 @@ private testDataType(value, dataType) {
         	return !((value instanceof Long) && (value > 999999999999)) && ("$value".isInteger() || "$value".isFloat())
     }
     return false
+}
+
+def listVariablesInBulk() {
+	def result = [:]
+	for(variable in listVariables()) {
+		result[variable] = getVariable(variable, true)
+    }
+	return result.sort{ it.key }
 }
 
 def listVariables(config = false, dataType = null, listLocal = true, listGlobal = true, listSystem = true) {
@@ -2494,11 +2502,7 @@ def api_piston() {
                 }
                 result.app.actions = result.app.actions.sort{ (it.rs ? -1 : 1) * it.id }
             }
-		    result.variables = [:]
-    		for(variable in child.listVariables()) {
-    			result.variables[variable] = child.getVariable(variable, true)
-    		}
-    		//result.variables = result.variables.sort{ it.key }
+		    result.variables = child.listVariablesInBulk()
             return result
         }        
     }
@@ -2638,7 +2642,7 @@ def generatePistonName() {
 
 def refreshPistons() {
 	def data = 
-    sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
+    sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, linkText: "CoRE Refresh", descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
 }
 
 def listAskAlexaMacros() {
@@ -3590,7 +3594,7 @@ private exitPoint(milliseconds) {
     
     if (lastEvent && lastEvent.event) {
     	if (lastEvent.event.name != "piston") {
-	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, isStateChange: true, descriptionText: "CoRE ${appData.mode} Piston '${app.label}' has executed in ${milliseconds}ms", data: [app: "CoRE", state: state.currentState, executionTime: milliseconds, event: lastEvent])
+	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, linkText: "CoRE/${app.label}", isStateChange: true, descriptionText: "${appData.mode} piston executed in ${milliseconds}ms", data: [app: "CoRE", state: state.currentState, executionTime: milliseconds, event: lastEvent])
     	}
     }
     
@@ -6060,11 +6064,11 @@ private processTasks() {
             }
             //if we found a time that's after 
             if (nextTime) {
-                def seconds = Math.round((nextTime - now()) / 1000)
+                def seconds = Math.ceil((nextTime - now()) / 1000)
                 runIn(seconds, timeHandler)
                 state.nextScheduledTime = nextTime
                 setVariable("\$nextScheduledTime", nextTime, true)
-                debug "Scheduling ST to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
+                debug "Scheduling ST job to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
             } else {
                 setVariable("\$nextScheduledTime", null, true)
             }
