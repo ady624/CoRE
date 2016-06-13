@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/12/2016 >>> v0.0.08a.20160612 - Alpha test version - Improved loop logic, providing the $index variable for simple loops and ensuring variable value during execution stage. Improved variable triggers during preauthorization.
  *	 6/12/2016 >>> v0.0.089.20160612 - Alpha test version - Added the ability to delete variables from within the UI
  *	 6/12/2016 >>> v0.0.088.20160612 - Alpha test version - Added the ability to initialize/change variables from within the UI
  *	 6/12/2016 >>> v0.0.087.20160612 - Alpha test version - Send notifications to contacts is now enabled
@@ -171,7 +172,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.089.20160612"
+	return "v0.0.08a.20160612"
 }
 
 
@@ -197,6 +198,7 @@ preferences {
 	page(name: "pageMain")
     page(name: "pageViewVariable")
     page(name: "pageDeleteVariable")
+    page(name: "pageRemove")
     
     
     //CoRE pages
@@ -329,6 +331,13 @@ def pageDeleteVariable(params) {
     }
 }
 
+def pageRemove() {
+    dynamicPage(name: "pageRemove", title: "", install: false, uninstall: true) {
+    	section() {
+        	paragraph parent ? "CAUTION: You are about to remove the '${app.label}' piston. This action is irreversible. If you are sure you want to do this, please tap on the Remove button below." : "CAUTION: You are about to completely remove CoRE and all of its pistons. This action is irreversible. If you are sure you want to do this, please tap on the Remove button below.", required: true, state: null
+        }      
+    }
+}
 
 /******************************************************************************/
 /*** CoRE PAGES																***/
@@ -336,7 +345,7 @@ def pageDeleteVariable(params) {
 private pageMainCoRE() {
 	initializeCoREStore()
     //CoRE main page
-    dynamicPage(name: "pageMain", title: "", install: true, uninstall: true) {
+    dynamicPage(name: "pageMain", title: "", install: true, uninstall: false) {
     	section() {
             if (!state.endpoint) {
             	href "pageInitializeDashboard", title: "CoRE Dashboard", description: "Tap here to initialize the CoRE dashboard"
@@ -371,7 +380,10 @@ private pageMainCoRE() {
 	            input "log#error", "bool", title: "Log error messages", defaultValue: true
             }
         }
-
+        
+		section("Remove CoRE") {
+        	href "pageRemove", title: "", description: "Remove CoRE"
+        }
     }
 }
 
@@ -555,7 +567,7 @@ private pageMainCoREPiston() {
     state.run = "config"
     configApp()
     cleanUpConditions(true)
-    dynamicPage(name: "pageMain", title: "", uninstall: true, install: true) {
+    dynamicPage(name: "pageMain", title: "", install: true, uninstall: false) {
     	def currentState = state.currentState
     	section() {
         	def enabled = !!state.config.app.enabled
@@ -697,6 +709,9 @@ private pageMainCoREPiston() {
 	            input "log#warn", "bool", title: "Log warning messages", defaultValue: true
 	            input "log#error", "bool", title: "Log error messages", defaultValue: true
             }
+        }
+        section("Remove piston") {
+            href "pageRemove", title: "", description: "Remove this CoRE piston"
         }
     }
 }
@@ -2287,6 +2302,7 @@ def initializeCoRE() {
 
 def initializeCoREStore() {
     state.store = state.store ? state.store : [:]
+    state.modes = state.modes ? state.modes : [:]
     state.stateStore = state.stateStore ? state.stateStore : [:]
     state.askAlexaMacros = state.askAlexaMacros ? state.askAlexaMacros : []
 }
@@ -3389,7 +3405,7 @@ def executeHandler() {
 }
 
 private preAuthorizeEvent(evt) {
-	if (!(evt.name in ["piston", "routineExecuted", "askAlexaMacro"])) {
+	if (!(evt.name in ["piston", "routineExecuted", "askAlexaMacro", "variable"])) {
     	return true
     }
 
@@ -3418,7 +3434,7 @@ private preAuthorizeTrigger(condition, evt) {
             value = evt.displayName
             break
     }
-	if ((condition.attr == attribute) && ((condition.var1 ? getVariable(condition.var1) : condition.val1) == value)) {
+	if ((condition.attr == attribute) && (attribute == "variable" ? condition.var == value : ((condition.var1 ? getVariable(condition.var1) : condition.val1) == value))) {
     	state.filterEvent = false
     }
     return
@@ -5036,6 +5052,7 @@ private scheduleAction(action) {
                                             flow.pos = flow.start
                                             //start the loop
                                             flow.active = true
+                                            scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, [variable: flow.varName, value: flow.pos])
                                             x += 1
                                             continue
                                         } else {
@@ -5046,6 +5063,7 @@ private scheduleAction(action) {
                                             flow.pos = flow.pos + flow.step
                                             //if we're using a variable, update it
                                             if (flow.varName) setVariable(flow.varName, flow.pos)
+                                            scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, [variable: flow.varName, value: flow.pos])
                                             if (flow.step > 0 ? (flow.pos > flow.end) : (flow.pos < flow.end)) {
                                             	//loop ended, jump over the end
                                                 //jmp endIdx + 0x0001 :D
@@ -6468,6 +6486,19 @@ private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
     return true
 }
 
+private task_vcmd_beginSimpleForLoop(device, action, task, suffix = "") {
+	if (task && task.data) {
+		setVariable("\$index", task.data.value, true)
+    }
+}
+
+private task_vcmd_beginForLoop(device, action, task, suffix = "") {
+	if (task && task.data && task.data.variable) {
+    	setVariable(task.data.variable, task.data.value)
+    }
+}
+
+
 private task_vcmd_repeatAction(device, action, task, suffix = "") {
 	state.rerunSchedule = true
     def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -6776,7 +6807,7 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
         	result = 0
             break
     }
-    def immediate = !!params[2].d
+    def algebra = !!params[2].d
     if (algebra) {
     	//no complex algebra yet :(
         return simulate ? null : false
@@ -9403,6 +9434,7 @@ private initialSystemStore() {
         "\$dayOfWeekName": "",
         "\$month": 0,
         "\$monthName": "",
+        "\$index": 0,
         "\$year": 0,
         "\$meridianWithDots": "",
         "\$previousEventAttribute": null,
