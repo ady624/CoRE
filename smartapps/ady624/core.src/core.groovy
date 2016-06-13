@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/13/2016 >>> v0.0.08d.20160613 - Alpha test version - Due to public uproar (LOL), added per-task mode restrictions. Not so many clicks now, right?
  *	 6/13/2016 >>> v0.0.08c.20160613 - Alpha test version - Replaced facet with orientation. Added IFTTT integration
  *	 6/12/2016 >>> v0.0.08b.20160612 - Alpha test version - Added three-axis initial support.
  *	 6/12/2016 >>> v0.0.08a.20160612 - Alpha test version - Improved loop logic, providing the $index variable for simple loops and ensuring variable value during execution stage. Improved variable triggers during preauthorization.
@@ -174,7 +175,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.08c.20160613"
+	return "v0.0.08d.20160613"
 }
 
 
@@ -1626,7 +1627,10 @@ def pageAction(params) {
                                                 paragraph "Invalid parameter definition for $parameter"
                                             }
                                             i += 1
-                                        }
+                                        }                                        
+                                    }
+                                    if (!command.flow) {
+                                    	input "actParamMode$id#$tid", "enum", options: getLocationModeOptions(), title: "Only during these modes", description: "Any", required: false, multiple: true
                                     }
                                 } else if (custom) {
                                 	//custom command parameters... complicated stuff
@@ -1643,7 +1647,7 @@ def pageAction(params) {
                                         input "actParam$id#$tid-$i", type, range: "*..*", title: "Parameter #$j value", required: true, submitOnChange: true, multiple: false
                                         i += 1
                                     }
-                                
+                                    input "actParamMode$id#$tid", "enum", options: getLocationModeOptions(), title: "Only during these modes", description: "Any", required: false, multiple: true                                                                    
                                 }
                                 idx += 1
                             }
@@ -2477,15 +2481,19 @@ def api_piston() {
             ]
             if (result.app.conditions) withEachCondition(result.app.conditions, "api_piston_prepare", child)
             if (result.app.otherConditions) withEachCondition(result.app.otherConditions, "api_piston_prepare", child)
-            for(def action in result.app.actions) {
-            	action.desc = child.getActionDeviceList(action)
-                state.taskIndent = 0
-            	for(def task in action.t) {
-                	task.desc = getTaskDescription(task)
+            if (result.app.actions) {
+                for(def action in result.app.actions) {
+                    action.desc = child.getActionDeviceList(action)
+                    state.taskIndent = 0
+                    if (action.t) {
+                        for(def task in action.t) {
+                            task.desc = getTaskDescription(task)
+                        }
+                        action.t = action.t.sort{ it.i }
+                    }
                 }
-                action.t = action.t.sort{ it.i }
+                result.app.actions = result.app.actions.sort{ (it.rs ? -1 : 1) * it.id }
             }
-            result.app.actions = result.app.actions.sort{ (it.rs ? -1 : 1) * it.id }
 		    result.variables = [:]
     		for(variable in child.listVariables()) {
     			result.variables[variable] = child.getVariable(variable, true)
@@ -2641,6 +2649,9 @@ def listAskAlexaMacros() {
 }
 
 def iftttKey() {
+	if (parent) {
+    	return parent.iftttKey()
+    }
 	return (state.modules && state.modules["IFTTT"] && state.modules["IFTTT"].connected ? state.modules["IFTTT"].key : null)
 }
 
@@ -3139,6 +3150,7 @@ private updateAction(action) {
                 def cmd = settings["$prefix$tid"]
                 task.c = cmd
                 task.p = []
+                task.m = settings["actParamMode$id#$tid"]
                 def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
                 def custom = (cmd && cmd.startsWith(customCommandPrefix()))
                 cmd = cleanUpCommand(cmd)
@@ -3311,7 +3323,7 @@ private getTaskDescription(task) {
     def virtual = (task.c && task.c.startsWith(virtualCommandPrefix()))
     def custom = (task.c && task.c.startsWith(customCommandPrefix()))
 	def command = cleanUpCommand(task.c)
-    
+   
     def selfIndent = 0
     def indent = 0
     
@@ -3319,7 +3331,6 @@ private getTaskDescription(task) {
     if (custom) {
 		result = task.c
     } else {
-
         def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))    
         if (!cmd) {
         	result = "[ERROR]"
@@ -3378,11 +3389,11 @@ private getTaskDescription(task) {
             }
         }
     }
-    
+
     def currentIndent = state.taskIndent + selfIndent
     def prefix = "".padLeft(currentIndent > 0 ? currentIndent * 3 : 0, " ")
     state.taskIndent = state.taskIndent + indent
-    return prefix + result
+    return prefix + result + (task.m && task.m.size() ? " (${buildNameList(task.m, "or")})" : "")
 }
 
 
@@ -4141,22 +4152,20 @@ private evaluateDeviceCondition(condition, evt) {
             //if we're dealing with a virtual device, get the virtual value
         	oldValue = cast(oldValue, type)
             
-            if (evt && evt.name == "threeAxis") {
-                switch (attribute) {
-                    case "orientation":
-                        virtualCurrentValue = device.currentValue("threeAxis")
-        				setVariable("\$currentEventDeviceIndex", getThreeAxisOrientation(virtualCurrentValue, true), true)
-                        break
-                    case "axisX":
-                        virtualCurrentValue = device.currentValue("threeAxis").x
-                        break
-                    case "axisY":
-                        virtualCurrentValue = device.currentValue("threeAxis").y
-                        break
-                    case "axisZ":
-                        virtualCurrentValue = device.currentValue("threeAxis").z
-                        break
-                }
+            switch (attribute) {
+                case "orientation":
+                	virtualCurrentValue = evt && ownsEvent ? evt.xyzValue : device.currentValue("threeAxis")
+                	setVariable("\$currentEventDeviceIndex", getThreeAxisOrientation(virtualCurrentValue, true), true)
+                	break
+                case "axisX":
+                	virtualCurrentValue = evt && ownsEvent ? evt.xyzValue?.x : device.currentValue("threeAxis").x
+                	break
+                case "axisY":
+                	virtualCurrentValue = evt && ownsEvent ? evt.xyzValue?.y : device.currentValue("threeAxis").y
+                	break
+                case "axisZ":
+                	virtualCurrentValue = evt && ownsEvent ? evt.xyzValue?.z : device.currentValue("threeAxis").z
+                	break
             }
             
             currentValue = cast(virtualCurrentValue != null ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(attribute)), type)
@@ -6170,6 +6179,8 @@ private processCommandTask(task) {
     def device = devices.find{ it.id == task.deviceId }
     def t = action.t.find{ it.i == task.taskId }
     if (!t) return false
+    //only execute task in certain modes?
+    if (t.m && !(location.mode in t.m)) return false    
     //found the actual task, let's figure out what command we're running
     def cmd = t.c
     def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
@@ -6585,7 +6596,7 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
     	return false
     }
     def event = params[0].d
-    httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + parent.iftttKey())
+    httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey())
     return true
 }
 
@@ -9400,7 +9411,7 @@ private virtualCommands() {
         [ name: "endSwitchBlock",		requires: [],						display: "End SWITCH block",				parameters: [],																																																	location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
     ] + (location.contactBookEnabled ? [
     		[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],        
-	] : []) + (parent.iftttKey() ? [
+	] : []) + (iftttKey() ? [
     		[ name: "iftttMaker",requires: [],		 			display: "Send IFTTT Maker event",	parameters: ["Event:text"],																		location: true,			description: "Send IFTTT Maker event '{0}'",													aggregated: true,	],        
 	] : [])
 }
