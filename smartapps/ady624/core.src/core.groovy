@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/12/2016 >>> v0.0.08b.20160612 - Alpha test version - Added three-axis initial support.
  *	 6/12/2016 >>> v0.0.08a.20160612 - Alpha test version - Improved loop logic, providing the $index variable for simple loops and ensuring variable value during execution stage. Improved variable triggers during preauthorization.
  *	 6/12/2016 >>> v0.0.089.20160612 - Alpha test version - Added the ability to delete variables from within the UI
  *	 6/12/2016 >>> v0.0.088.20160612 - Alpha test version - Added the ability to initialize/change variables from within the UI
@@ -172,7 +173,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.08a.20160612"
+	return "v0.0.08b.20160612"
 }
 
 
@@ -2740,6 +2741,10 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
                 def capability = getCapabilityByDisplay(condition.cap)
             	def devices = capability.virtualDevice ? (capability.attribute == "time" ? [] : [capability.virtualDevice]) : settings["condDevices${condition.id}"]
                 def attribute = capability.virtualDevice ? capability.attribute : condition.attr
+                def attr = getAttributeByName(attribute)
+                if (attr && attr.subscribe) {
+                	attribute = attr.subscribe
+                }
                 if (capability && (capability.name == "variable") && (!!condition.var || !!condition.var.startsWith('@'))) {
                 	//we don't want to subscribe to local variables
                 	devices = null
@@ -3788,7 +3793,7 @@ private checkEventEligibility(condition, evt) {
                 }
             }
             for (deviceId in condition.dev) {
-                if ((evt.deviceId ? evt.deviceId : "location" == deviceId) && (evt.name == condition.attr)) {
+                if ((evt.deviceId ? evt.deviceId : "location" == deviceId) && (evt.name == (condition.attr in ["facet", "axisX", "axisY", "axisZ"] ? "threeAxis" : condition.attr))) {
                 	if (condition.trg) {
                     	//we found a trigger that matches the event, exit immediately
                     	return 2
@@ -4052,7 +4057,21 @@ private evaluateDeviceCondition(condition, evt) {
             //if we're dealing with an owned event, use that event's value
             //if we're dealing with a virtual device, get the virtual value
         	oldValue = cast(oldValue, type)
-
+            
+			switch (attribute) {
+            	case "facet":
+                	virtualCurrentValue = device.currentValue("threeAxis")
+                    break
+            	case "axisX":
+                	virtualCurrentValue = device.currentValue("threeAxis").x
+                    break
+            	case "axisY":
+                	virtualCurrentValue = device.currentValue("threeAxis").y
+                    break
+            	case "axisZ":
+                	virtualCurrentValue = device.currentValue("threeAxis").z
+                    break
+            }
             currentValue = cast(virtualCurrentValue != null ? virtualCurrentValue : (evt && ownsEvent ? evt.value : device.currentValue(attribute)), type)
 			def value1
             def offset1
@@ -7040,6 +7059,10 @@ private cast(value, dataType) {
             return !!value
 		case "time":
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
+		case "vector3":
+			return value instanceof String ? adjustTime(value).time : cast(value, "long")
+		case "facet":
+                return getThreeAxisFacet(value)
     }
     //anything else...
     return value
@@ -7490,6 +7513,25 @@ private groupOptions() {
 	return ["AND", "OR", "XOR", "THEN IF", "ELSE IF", "FOLLOWED BY"]
 }
 
+
+private threeAxisFacets() {
+    return ["rear side up", "down side up", "left side up", "front side up", "up side up", "right side up"]
+}
+
+private getThreeAxisFacet(value) {
+    if (value instanceof Map) {
+        if ((value.x != null) && (value.y != null) && (value.z != null)) {
+            def facets = threeAxisFacets()
+            def x = Math.abs(value.x)
+            def y = Math.abs(value.y)
+            def z = Math.abs(value.z)
+            def side = (x > y ? (x > z ? 0 : 2) : (y > z ? 1 : 2))
+            def result = facets[side + (((side == 0) && (value.x < 0)) || ((side == 1) && (value.y < 0)) || ((side == 2) && (value.z < 0)) ? 3 : 0)]
+            return result
+        }
+    }
+    return value
+}
 private timeOptions(trigger = false) {
 	def result = ["1 minute"]
     for (def i =2; i <= (trigger ? 360 : 60); i++) {
@@ -8503,10 +8545,16 @@ private listCommonDeviceAttributes(devices) {
 	//get supported attributes
     for (device in devices) {    
     	def attrs = device.supportedAttributes
-        for (attr in attrs) {        	
+        for (attr in attrs) {   	
         	if (list.containsKey(attr.name)) {
             	//if attribute exists in standard list, increment its usage count
 	       		list[attr.name] = list[attr.name] + 1
+                if (attr.name == "threeAxis") {
+                	list["facet"] = list["facet"] + 1
+                	list["axisX"] = list["axisX"] + 1
+                	list["axisY"] = list["axisY"] + 1
+                	list["axisZ"] = list["axisZ"] + 1
+                }
             } else {
             	//otherwise increment the usage count in the custom list
 	       		customList[attr.name] = customList[attr.name] ? customList[attr.name] + 1 : 1
@@ -8991,7 +9039,7 @@ private capabilities() {
     	[ name: "thermostatMode",					display: "Thermostat Mode",					attribute: "thermostatMode",			commands: ["off", "heat", "emergencyHeat", "cool", "auto", "setThermostatMode"],	multiple: true,			],
     	[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	commands: null,																		multiple: true,			],
     	[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		commands: null,																		multiple: true,			],
-    	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "threeAxis",					commands: null,																		multiple: true,			devices: "three axis sensors",	],
+    	[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "facet",						commands: null,																		multiple: true,			devices: "three axis sensors",	],
     	[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			devices: "timed sessions"],
     	[ name: "tone",								display: "Tone Generator",					attribute: null,						commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
     	[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						commands: null,																		multiple: true,			],
@@ -9299,7 +9347,11 @@ private attributes() {
         [ name: "heatingSetpoint",			type: "decimal",			range: "-127..127",		unit: tempUnit,	options: null,																								],
         [ name: "thermostatSetpoint",		type: "decimal",			range: "-127..127",		unit: tempUnit,	options: null,																								],
         [ name: "sessionStatus",			type: "enum",				range: null,			unit: null,		options: ["paused", "stopped", "running", "canceled"],														],
-    	[ name: "threeAxis",				type: "threeAxis",			range: "0..1024",		unit: null,		options: null,																								],
+    	[ name: "threeAxis",				type: "vector3",			range: null,		unit: null,			options: null,						],
+    	[ name: "facet",					type: "facet",				range: null,			unit: null,		options: threeAxisFacets(),				valueType: "enum",	subscribe: "threeAxis",	],
+    	[ name: "axisX",					type: "number",				range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
+    	[ name: "axisY",					type: "number",				range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
+    	[ name: "axisZ",					type: "number",				range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
     	[ name: "touch",					type: "enum",				range: null,			unit: null,		options: ["touched"],																						],
     	[ name: "valve",					type: "enum",				range: null,			unit: null,		options: ["open", "closed"],																				],
         [ name: "voltage",					type: "decimal",			range: "*..*",			unit: "V",		options: null,																								],
@@ -9308,7 +9360,7 @@ private attributes() {
     	[ name: "mode",						type: "mode",				range: null,			unit: null,		options: state.run == "config" ? getLocationModeOptions() : [],												],
     	[ name: "alarmSystemStatus",		type: "enum",				range: null,			unit: null,		options: state.run == "config" ? getAlarmSystemStatusOptions() : [],										],
     	[ name: "routineExecuted",			type: "routine", 			range: null,			unit: null,		options: state.run == "config" ? location.helloHome?.getPhrases()*.label : [],								valueType: "enum",	],
-    	[ name: "piston",					type: "piston",				range: null,			unit: null,		options: state.run == "config" ? parent.listPistons(state.config.expertMode ? null : app.label) : [],													valueType: "enum",	],
+    	[ name: "piston",					type: "piston",				range: null,			unit: null,		options: state.run == "config" ? parent.listPistons(state.config.expertMode ? null : app.label) : [],		valueType: "enum",	],
     	[ name: "variable",					type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listVariables(true) : [],													valueType: "enum",	],
 //    	[ name: "stateVariable",			type: "enum",				range: null,			unit: null,		options: state.run == "config" ? listStateVariables(true) : [],												],
     	[ name: "time",						type: "time",				range: null,			unit: null,		options: null,																								],
@@ -9333,7 +9385,7 @@ private comparisons() {
     def optionsMomentary = [
         [ condition: "is", trigger: "changes to", parameters: 1, timed: false],
 	]
-    
+
 	def optionsBool = [
         [ condition: "is equal to", parameters: 1, timed: false],
         [ condition: "is not equal to", parameters: 1, timed: false],
@@ -9380,6 +9432,8 @@ private comparisons() {
 	return [
     	[ type: "bool",					options: optionsBool,		],
     	[ type: "boolean",				options: optionsBool,		],
+    	[ type: "vector3",				options: optionsEnum,		],
+    	[ type: "facet",				options: optionsEnum,		],
     	[ type: "string",				options: optionsEnum,		],
     	[ type: "text",					options: optionsEnum,		],
     	[ type: "enum",					options: optionsEnum,		],
