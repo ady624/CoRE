@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/13/2016 >>> v0.0.08f.20160613 - Alpha test version - More tweaks for global variables
  *	 6/13/2016 >>> v0.0.08e.20160613 - Alpha test version - Tweaks for global variables
  *	 6/13/2016 >>> v0.0.08d.20160613 - Alpha test version - Due to public uproar (LOL), added per-task mode restrictions. Not so many clicks now, right?
  *	 6/13/2016 >>> v0.0.08c.20160613 - Alpha test version - Replaced facet with orientation. Added IFTTT integration
@@ -176,7 +177,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.08e.20160613"
+	return "v0.0.08f.20160613"
 }
 
 
@@ -2128,7 +2129,11 @@ def getVariable(name) {
     	if (name.startsWith("\$")) {
 			return state.systemStore[name]
         } else {
-			return state.store[name]
+        	if (parent) {
+				return state.store[name]
+            }
+            //use atomic state for global variables
+            return atomicState.store[name]
     	}
     }
 }
@@ -2147,10 +2152,11 @@ def setVariable(name, value, system = false) {
             }
         } else {
 	    	debug "Storing variable $name with value $value"
-            if (!parent) {
+            if (!parent) {            	
             	def store = atomicState.store
             	def oldValue = store[name]
 				store[name] = value
+                state.store = store
                 atomicState.store = store
                 if (oldValue != value) {
                     //we need to save the store atomically so that if anyone is listening to this event gets the right info
