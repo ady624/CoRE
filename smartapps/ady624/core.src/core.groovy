@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/14/2016 >>> v0.1.091.20160614 - Beta M1 - Fixed the $index variable during loops, attempted a more complex workaround fix for global variable race conditions, removed an extra "u" from the IFTTT page (ha ha)
  *	 6/13/2016 >>> v0.1.090.20160613 - Beta M1 - First beta release
  *	 6/13/2016 >>> v0.0.08f.20160613 - Alpha test version - More tweaks for global variables
  *	 6/13/2016 >>> v0.0.08e.20160613 - Alpha test version - Tweaks for global variables
@@ -178,7 +179,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.1.090.20160613"
+	return "v0.1.091.20160614"
 }
 
 
@@ -585,7 +586,7 @@ def pageChart(params) {
 def pageIntegrateIFTTT() {
     return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT™ Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
         section() {
-            paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. Youu will be provided with a key that needs to be entered below"
+            paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. You will be provided with a key that needs to be entered below"
             input "iftttEnabled", "bool", title: "Enable IFTTT", submitOnChange: true
             if (settings.iftttEnabled) {
                 href(name: "",
@@ -2145,6 +2146,7 @@ def setVariable(name, value, system = false) {
     	return
     }
     if (parent && name.startsWith("@")) {
+    	state.globalVariables += 1
     	parent.setVariable(name, value)
     } else {
     	if (name.startsWith("\$")) {
@@ -2169,6 +2171,12 @@ def setVariable(name, value, system = false) {
     	}
     }
     //TODO: date&time triggers based on variables being changed need to be reevaluated
+}
+
+def publishVariables() {
+	if (parent) return
+    //we're saving the atomic store to our regular store to prevent race conditions
+    state.store = atomicState.store
 }
 
 def deleteVariable(name) {
@@ -3556,6 +3564,7 @@ private entryPoint() {
     state.run = "app"
     state.sim = null
 	state.debugLevel = 0
+    state.globarlVars = 0
 	state.tasker = state.tasker ? state.tasker : []
 }
 
@@ -3590,6 +3599,10 @@ private exitPoint(milliseconds) {
     	debug "ERROR: Could not update charts: $e", null, "error"
     }    
     atomicState.runStats = runStats
+    
+    if (parent && (state.globalVars > 0)) {
+    	parent.publishVariables()
+    }
    
 	//save all atomic states to state
     //to avoid race conditions
@@ -5162,6 +5175,7 @@ private scheduleAction(action) {
                                                 flow.varName = null
                                                 flow.start = 0
                                                 flow.end = Math.abs(cast(formatMessage(task.p[0].d), "number")) - 1
+                                                setVariable("\$index", flow.start, true)
                                                 if (flow.end < flow.start) {
                                                     flow.active = false
                                                 	x = flow.endIdx + 1
@@ -5189,6 +5203,7 @@ private scheduleAction(action) {
                                             flow.pos = flow.pos + flow.step
                                             //if we're using a variable, update it
                                             if (flow.varName) setVariable(flow.varName, flow.pos)
+                                            setVariable("\$index", flow.pos, true)
                                             scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, [variable: flow.varName, value: flow.pos])
                                             if (flow.step > 0 ? (flow.pos > flow.end) : (flow.pos < flow.end)) {
                                             	//loop ended, jump over the end
