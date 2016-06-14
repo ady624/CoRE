@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/14/2016 >>> v0.1.092.20160614 - Beta M1 - Another attempt at fixing global variable race conditions
  *	 6/14/2016 >>> v0.1.091.20160614 - Beta M1 - Fixed the $index variable during loops, attempted a more complex workaround fix for global variable race conditions, removed an extra "u" from the IFTTT page (ha ha)
  *	 6/13/2016 >>> v0.1.090.20160613 - Beta M1 - First beta release
  *	 6/13/2016 >>> v0.0.08f.20160613 - Alpha test version - More tweaks for global variables
@@ -179,7 +180,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.1.091.20160614"
+	return "v0.1.092.20160614"
 }
 
 
@@ -3600,9 +3601,7 @@ private exitPoint(milliseconds) {
     }    
     atomicState.runStats = runStats
     
-    if (parent && (state.globalVars > 0)) {
-    	parent.publishVariables()
-    }
+   	parent.publishVariables()
    
 	//save all atomic states to state
     //to avoid race conditions
