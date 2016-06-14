@@ -2146,7 +2146,7 @@ def setVariable(name, value, system = false) {
     	return
     }
     if (parent && name.startsWith("@")) {
-    	state.globalVariables += 1
+    	state.globalVars = (state.globalVars ? state.globalVars + 1 : 1)
     	parent.setVariable(name, value)
     } else {
     	if (name.startsWith("\$")) {
@@ -3564,7 +3564,7 @@ private entryPoint() {
     state.run = "app"
     state.sim = null
 	state.debugLevel = 0
-    state.globarlVars = 0
+    state.globalVars = 0
 	state.tasker = state.tasker ? state.tasker : []
 }
 
