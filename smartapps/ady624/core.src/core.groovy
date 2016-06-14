@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/13/2016 >>> v0.1.090.20160613 - Beta M1 - First beta release
  *	 6/13/2016 >>> v0.0.08f.20160613 - Alpha test version - More tweaks for global variables
  *	 6/13/2016 >>> v0.0.08e.20160613 - Alpha test version - Tweaks for global variables
  *	 6/13/2016 >>> v0.0.08d.20160613 - Alpha test version - Due to public uproar (LOL), added per-task mode restrictions. Not so many clicks now, right?
@@ -177,7 +178,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.0.08f.20160613"
+	return "v0.1.090.20160613"
 }
 
 
@@ -9257,14 +9258,14 @@ private commands() {
     	[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",						parameters: [], ],
 		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], description: "Set volume to {0}%",	],
     	[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], description: "Speak text \"{0}\"", ],
-    	[ name: "playTextAndRestore",						category: "Entertainment",				group: "Control [devices]",			display: "Speak text and restore",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and restore", ],
-    	[ name: "playTextAndResume",						category: "Entertainment",				group: "Control [devices]",			display: "Speak text and resume",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and resume", ],
+    	[ name: "playTextAndRestore",						category: null,							group: null,						display: "Speak text and restore",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and restore", ],
+    	[ name: "playTextAndResume",						category: null,							group: null,						display: "Speak text and resume",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and resume", ],
     	[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: ["Track URI:string"],				description: "Play track \"{0}\"",	],
-    	[ name: "playTrackAtVolume",						category: "Entertainment",				group: "Control [devices]",			display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
-    	[ name: "playTrackAndRestore",						category: "Entertainment",				group: "Control [devices]",			display: "Play track and restore",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
-    	[ name: "playTrackAndResume",						category: "Entertainment",				group: "Control [devices]",			display: "Play track and resume",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
+    	[ name: "playTrackAtVolume",						category: null,							group: null,						display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
+    	[ name: "playTrackAndRestore",						category: null,							group: null,						display: "Play track and restore",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
+    	[ name: "playTrackAndResume",						category: null,							group: null,						display: "Play track and resume",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
     	[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			display: "Set track",					parameters: [], ],
-    	[ name: "setLocalLevel",							category: "Entertainment",				group: "Control [devices]",			display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
+    	[ name: "setLocalLevel",							category: null,							group: null,						display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
     	[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				parameters: [], ],
     	[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				parameters: [], ],
     	[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], description: "Speak \"{0}\"", ],
