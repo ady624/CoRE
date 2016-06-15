@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.095.20160615" }
+def version() {	return "v0.1.096.20160615" }
 /*
+ *	 6/15/2016 >>> v0.1.096.20160615 - Beta M1 - Improved command execution, not executing commands if their associated attribute is already at expected value. Added "raises" and "drops" triggers
  *	 6/15/2016 >>> v0.1.095.20160615 - Beta M1 - Cleaned some code up, lowered file size by 21%, currently at 393425 bytes
  *	 6/15/2016 >>> v0.1.094.20160615 - Beta M1 - Concurrency issues fixes. Using atomicState for global CoRE, implemented markers to prevent tasks being executed by other processes running at the same time
  *	 6/14/2016 >>> v0.1.093.20160614 - Beta M1 - Yet another attempt at fixing global variable race conditions
@@ -4565,6 +4566,10 @@ private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue
 			eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
+private eval_trg_drops(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return currentValue < oldValue
+}
+
 private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_less_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
 			eval_cond_is_less_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
@@ -4573,6 +4578,10 @@ private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSin
 private eval_trg_drops_to_or_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
 			eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+}
+
+private eval_trg_raises(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
+	return currentValue > oldValue
 }
 
 private eval_trg_raises_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -6005,42 +6014,66 @@ private processCommandTask(task) {
 								p.saturation = saturation
 								p.level - lightness
 							}
-							def msg = "Executing command: [${device}].${cn}($p)"
-							def perf = now()
-							try {
-								device."${cn}"(p)
-							} catch(all) {
-								msg += " (ERROR)"
-							}
-							msg += " (${now() - perf}ms)"
+                            def msg = "Executing command: [${device}].${cn}($p)"
+                            def perf = now()
+                            try {
+                                device."${cn}"(p)
+                            } catch(all) {
+                                msg += " (ERROR)"
+                            }
+                            msg += " (${now() - perf}ms)"
 							if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
 						} else {
-							def msg = "Executing command: [${device}].${cn}($params)"
 							def perf = now()
-							try {
-								if ((cn == "setHue") && (params.size() == 1)) {
-									//ST expects hue in 0.100, in reality, it is 0..360
-									params[0] = cast(params[0], "decimal") / 3.6
+                            if ((cn == "setHue") && (params.size() == 1)) {
+                                //ST expects hue in 0.100, in reality, it is 0..360
+                                params[0] = cast(params[0], "decimal") / 3.6
+                            }
+                            def doIt = true
+                            def msg
+                            if (command.attribute && (params.size() == 1)) {
+                            	//we may be able to avoid executing this command
+			                	def currentValue = "${device.currentValue(command.attribute)}"
+            			        if (currentValue == "${p[0]}") {
+                                	doIt = false
+                    				msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}($params) because current value is the same"
+                                }
+                            }
+                            if (doIt) {                            
+	                            msg = "Executing command: [${getDeviceLabel(device)}].${cn}($params)"
+								try {
+									device."${cn}"(params as Object[])
+								} catch(all) {
+									msg += " (ERROR)"
 								}
-								device."${cn}"(params as Object[])
-							} catch(all) {
-								msg += " (ERROR)"
-							}
-							msg += " (${now() - perf}ms)"
+								msg += " (${now() - perf}ms)"
+                            }
 							if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
 						}
 						return true
 					} else {
-						def msg = "Executing command: [${device}].${cn}()"
-						def perf = now()
-						try {
-							device."${cn}"()
-						} catch(all) {
-							msg += " (ERROR)"
-						}
-						msg += " (${now() - perf}ms)"
+                        def doIt = true
+                        def msg
+                        if (command.attribute && command.value) {
+                            //we may be able to avoid executing this command
+                            def currentValue = "${device.currentValue(command.attribute)}"
+                            if (currentValue == command.value) {
+                                doIt = false
+                                msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}() because current value is the same"
+                            }
+                        }
+                        if (doIt) {                    
+							msg = "Executing command: [${getDeviceLabel(device)}].${cn}()"
+							def perf = now()
+							try {
+								device."${cn}"()
+							} catch(all) {
+								msg += " (ERROR)"
+							}
+							msg += " (${now() - perf}ms)"
+                        }
 						if (state.sim) state.sim.cmds.push(msg)
 						debug msg, null, "info"
 						return true
@@ -6433,10 +6466,15 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 				}
 				if (command.name == "setHue") {
 					v = cast(v, "decimal") / 3.6
-				}
+				}                
 				if (device.hasCommand(command.name)) {
-					debug "Executing [${getDeviceLabel(device)}].${command.name}($v)", null, "info"
-					device."${command.name}"(v)
+                	def currentValue = "${device.currentValue(attribute)}"
+                    if (currentValue == "$v") {
+                    	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}($v) because current value is the same", null, "info"
+                    } else {
+						debug "Executing [${getDeviceLabel(device)}].${command.name}($v)", null, "info"
+						device."${command.name}"(v)
+                	}
 					return true
 				}
 			}
@@ -6444,7 +6482,12 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 			if ((command.value == value) && (!command.parameters)) {
 				//found an exact match, let's do it
 				if (device.hasCommand(command.name)) {
-					debug "Executing [${getDeviceLabel(device)}].${command.name}()", null, "info"
+                	def currentValue = "${device.currentValue(attribute)}"
+                    if (currentValue == "$value") {
+                    	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}() because current value is the same", null, "info"
+                    } else {
+						debug "Executing [${getDeviceLabel(device)}].${command.name}()", null, "info"
+                    }
 					device."${command.name}"()
 					return true
 				}
@@ -8847,32 +8890,32 @@ private commands() {
 		[ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set location mode",			],
 		[ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set Smart Home Monitor status",],
 		[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 						attribute: "switch",	value: "on",	],
-		[ name: "on1",										category: "Convenience",				display: "Turn on #1", 						attribute: "switch1",	value: "on",	],
-		[ name: "on2",										category: "Convenience",				display: "Turn on #2", 						attribute: "switch2",	value: "on",	],
-		[ name: "on3",										category: "Convenience",				display: "Turn on #3", 						attribute: "switch3",	value: "on",	],
-		[ name: "on4",										category: "Convenience",				display: "Turn on #4", 						attribute: "switch4",	value: "on",	],
-		[ name: "on5",										category: "Convenience",				display: "Turn on #5", 						attribute: "switch5",	value: "on",	],
-		[ name: "on6",										category: "Convenience",				display: "Turn on #6", 						attribute: "switch6",	value: "on",	],
-		[ name: "on7",										category: "Convenience",				display: "Turn on #7", 						attribute: "switch7",	value: "on",	],
-		[ name: "on8",										category: "Convenience",				display: "Turn on #8", 						attribute: "switch8",	value: "on",	],
+		[ name: "on1",										display: "Turn on #1", 						attribute: "switch1",	value: "on",	],
+		[ name: "on2",										display: "Turn on #2", 						attribute: "switch2",	value: "on",	],
+		[ name: "on3",										display: "Turn on #3", 						attribute: "switch3",	value: "on",	],
+		[ name: "on4",										display: "Turn on #4", 						attribute: "switch4",	value: "on",	],
+		[ name: "on5",										display: "Turn on #5", 						attribute: "switch5",	value: "on",	],
+		[ name: "on6",										display: "Turn on #6", 						attribute: "switch6",	value: "on",	],
+		[ name: "on7",										display: "Turn on #7", 						attribute: "switch7",	value: "on",	],
+		[ name: "on8",										display: "Turn on #8", 						attribute: "switch8",	value: "on",	],
 		[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",						attribute: "switch",	value: "off",	],
-		[ name: "off1",										category: "Convenience",				display: "Turn off #1",						attribute: "switch1",	value: "off",	],
-		[ name: "off2",										category: "Convenience",				display: "Turn off #2",						attribute: "switch2",	value: "off",	],
-		[ name: "off3",										category: "Convenience",				display: "Turn off #3",						attribute: "switch3",	value: "off",	],
-		[ name: "off4",										category: "Convenience",				display: "Turn off #4",						attribute: "switch4",	value: "off",	],
-		[ name: "off5",										category: "Convenience",				display: "Turn off #5",						attribute: "switch5",	value: "off",	],
-		[ name: "off6",										category: "Convenience",				display: "Turn off #6",						attribute: "switch6",	value: "off",	],
-		[ name: "off7",										category: "Convenience",				display: "Turn off #7",						attribute: "switch7",	value: "off",	],
-		[ name: "off8",										category: "Convenience",				display: "Turn off #8",						attribute: "switch8",	value: "off",	],
-		[ name: "toggle",									category: "Convenience",				display: "Toggle",		],
-		[ name: "toggle1",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle2",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle3",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle4",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle5",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle6",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle7",									category: "Convenience",				display: "Toggle #1",	],
-		[ name: "toggle8",									category: "Convenience",				display: "Toggle #1",	],
+		[ name: "off1",										display: "Turn off #1",						attribute: "switch1",	value: "off",	],
+		[ name: "off2",										display: "Turn off #2",						attribute: "switch2",	value: "off",	],
+		[ name: "off3",										display: "Turn off #3",						attribute: "switch3",	value: "off",	],
+		[ name: "off4",										display: "Turn off #4",						attribute: "switch4",	value: "off",	],
+		[ name: "off5",										display: "Turn off #5",						attribute: "switch5",	value: "off",	],
+		[ name: "off6",										display: "Turn off #6",						attribute: "switch6",	value: "off",	],
+		[ name: "off7",										display: "Turn off #7",						attribute: "switch7",	value: "off",	],
+		[ name: "off8",										display: "Turn off #8",						attribute: "switch8",	value: "off",	],
+		[ name: "toggle",									display: "Toggle",		],
+		[ name: "toggle1",									display: "Toggle #1",	],
+		[ name: "toggle2",									display: "Toggle #1",	],
+		[ name: "toggle3",									display: "Toggle #1",	],
+		[ name: "toggle4",									display: "Toggle #1",	],
+		[ name: "toggle5",									display: "Toggle #1",	],
+		[ name: "toggle6",									display: "Toggle #1",	],
+		[ name: "toggle7",									display: "Toggle #1",	],
+		[ name: "toggle8",									display: "Toggle #1",	],
 		[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",		attribute: "level",		value: "*|number",	],
 		[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], 	attribute: "color",		value: "*|color",	],
 		[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	attribute: "hue",		value: "*|number",	],
@@ -9208,6 +9251,8 @@ private comparisons() {
 		[ condition: "was even", trigger: "stays even", parameters: 0, timed: true],
 		[ condition: "was odd", trigger: "stays odd", parameters: 0, timed: true],
 		[ trigger: "changes", parameters: 0, timed: false],
+		[ trigger: "raises", parameters: 0, timed: false],
+		[ trigger: "drops", parameters: 0, timed: false],
 		[ condition: "changed", parameters: 0, timed: true],
 		[ condition: "did not change", parameters: 0, timed: true],
 	]
