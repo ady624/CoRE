@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/15/2016 >>> v0.1.094.20160615 - Beta M1 - Concurrency issues fixes. Using atomicState for global CoRE, implemented markers to prevent tasks being executed by other processes running at the same time
  *	 6/14/2016 >>> v0.1.093.20160614 - Beta M1 - Yet another attempt at fixing global variable race conditions
  *	 6/14/2016 >>> v0.1.092.20160614 - Beta M1 - Another attempt at fixing global variable race conditions
  *	 6/14/2016 >>> v0.1.091.20160614 - Beta M1 - Fixed the $index variable during loops, attempted a more complex workaround fix for global variable race conditions, removed an extra "u" from the IFTTT page (ha ha)
@@ -181,7 +182,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.1.093.20160614"
+	return "v0.1.094.20160615"
 }
 
 
@@ -2154,17 +2155,20 @@ def setVariable(name, value, system = false) {
         } else {
 	    	debug "Storing variable $name with value $value"
             if (!parent) {
-                log.trace "Setting variable $name from $oldValue to value $value, right ${now()}"
-            	def oldValue = atomicState.store[name]
-				state.store[name] = value
-                atomicState.store = state.store
+            	//we're using atomic state in parent app
+                def store = atomicState.store
+            	def oldValue = store[name]
+				store[name] = value
+                atomicState.store = store
                 //save var name for broadcasting events
-                state.globalVars = state.globalVars instanceof Map ? state.globalVars : [:]
-                if (state.globalVars.containsKey(name)) {
-                    state.globalVars[name].newValue = value
+                def globalVars = atomicState.globalVars
+                globalVars = globalVars instanceof Map ? globalVars : [:]
+                if (globalVars.containsKey(name)) {
+                    globalVars[name].newValue = value
                 } else {
-                    state.globalVars[name] = [oldValue: oldValue, newValue: value]
+                    globalVars[name] = [oldValue: oldValue, newValue: value]
                 }
+                atomicState.globalVars = globalVars
             } else {
 				state.store[name] = value
             }
@@ -2176,22 +2180,25 @@ def setVariable(name, value, system = false) {
 def publishVariables() {
 	if (parent) return
     //we're saving the atomic store to our regular store to prevent race conditions
-    //log.trace "state is ${state.store}"
-    //log.trace state
-    if (state.globalVars instanceof Map) {
-   		for (variable in state.globalVars) {
+    def globalVars = atomicState.globalVars
+    if (globalVars instanceof Map) {
+   		for (variable in globalVars) {
         	def name = variable.key
             def oldValue = variable.value.oldValue
             def newValue = variable.value.newValue            
             if (oldValue != newValue) {
+            	//write the global vars back
+            	globalVars.remove(name)
+                atomicState.globalVars = globalVars
 				sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])            
             }
         }
     }
-    state.remove("globalVars")
+    atomicState.remove("globalVars")
 }
 
 def deleteVariable(name) {
+	//used during config, safe to use state
     name = sanitizeVariableName(name)
 	if (!name) {
     	return
@@ -2213,7 +2220,8 @@ def getStateVariable(name, global = false) {
     if (parent && global) {
     	return parent.getStateVariable(name)
     } else {
-       	return state.stateStore[name]
+    	if (parent) return state.stateStore[name]
+        return atomicState.stateStore[name]
     }
 }
 
@@ -2226,9 +2234,13 @@ def setStateVariable(name, value, global = false) {
     	parent.setStateVariable(name, value)
     } else {
     	debug "Storing state variable $name with value $value"
-		state.stateStore[name] = value
-		if (!parent) {
-			atomicState.stateStore = state.stateStore
+		if (parent) {
+        	state.stateStore[name] = value
+        } else {
+        	//using atomic state for globals
+        	def store = atomicState.stateStore
+            store[name] = value
+			atomicState.stateStore = store
         }
     }
 }
@@ -2568,9 +2580,9 @@ def listPistons(excludeApp = null, type = null) {
 def execute(pistonName) {
 	if (parent) {
     	//if a child executes a piston, we need to save the variables to the atomic state to make them show in the new piston execution
-        def store = state.store
-        state.store = store
-        atomicState.store = store
+        //def store = state.store
+        //state.store = store
+        //atomicState.store = store
         return parent.execute(pistonName)
     } else {
 		def piston = getChildApps().find{ it.label == pistonName }
@@ -2642,7 +2654,7 @@ def updateChart(name, value) {
 	    //state.charts = charts
         //atomicState.charts = charts
         atomicState.charts = charts
-        state.charts = charts
+        //state.charts = charts
     }
    	return null
 }
@@ -2671,7 +2683,6 @@ def generatePistonName() {
 }
 
 def refreshPistons() {
-	def data = 
     sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, linkText: "CoRE Refresh", descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
 }
 
@@ -2686,7 +2697,8 @@ def iftttKey() {
 	if (parent) {
     	return parent.iftttKey()
     }
-	return (state.modules && state.modules["IFTTT"] && state.modules["IFTTT"].connected ? state.modules["IFTTT"].key : null)
+    def modules = atomicState.modules
+	return (modules && modules["IFTTT"] && modules["IFTTT"].connected ? modules["IFTTT"].key : null)
 }
 
 
@@ -3517,6 +3529,12 @@ def recoveryHandler() {
 	//starting primary IF block evaluation
     def perf = now()
     debug "CAUTION: Received a recovery event", 1, "warn"
+    //reset markers for all tasks, the owner of the task probably crashed :)
+    def tasks = atomicState.tasks
+    for(task in tasks.findAll{ it.value.marker != null }) {
+        task.value.marker = null
+    }
+    atomicState.tasks = tasks    
     processTasks()
     perf = now() - perf
     debug "Done in ${perf}ms", -1
@@ -3614,22 +3632,24 @@ private exitPoint(milliseconds) {
     	debug "ERROR: Could not update charts: $e", null, "error"
     }    
     atomicState.runStats = runStats
-    
-   	parent.publishVariables()
-   
-	//save all atomic states to state
-    //to avoid race conditions
-	state.cache = atomicState.cache
-    //state.tasks = atomicState.tasks
-    state.runStats = atomicState.runStats   
-    state.temp = null
-    state.sim = null
-    
+
     if (lastEvent && lastEvent.event) {
     	if (lastEvent.event.name != "piston") {
 	    	sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, linkText: "CoRE/${app.label}", isStateChange: true, descriptionText: "${appData.mode} piston executed in ${milliseconds}ms", data: [app: "CoRE", state: state.currentState, executionTime: milliseconds, event: lastEvent])
     	}
     }
+
+	//give a chance to variable events
+   	parent.publishVariables()
+
+	//save all atomic states to state
+    //to avoid race conditions
+	state.cache = atomicState.cache    
+    state.tasks = atomicState.tasks
+    state.runStats = atomicState.runStats   
+    state.temp = null
+    state.sim = null
+    
     
 }
 
@@ -5969,6 +5989,7 @@ private processTasks() {
     state.rerunSchedule = false
     def tasks = null
     def perf = now()
+    def marker = now()
     debug "Processing tasks (${version()})", 1, "trace"   
     try {
 
@@ -5983,7 +6004,7 @@ private processTasks() {
         while (true) {
             //we need to read the list every time we get here because the loop itself takes time.
             //we always need to work with a fresh list.
-            tasks = tasks ? tasks : atomicState.tasks
+            tasks = atomicState.tasks
             tasks = tasks ? tasks : [:]
             for (item in tasks.findAll{it.value?.type == "evt"}.sort{ it.value?.time }) {
                 def task = item.value
@@ -6042,10 +6063,13 @@ private processTasks() {
         while (repeatCount < 2) {
 			//we allow some tasks to rerun this code because they're altering our task list...
             //then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
+            tasks = atomicState.tasks
+            tasks = tasks ? tasks : [:]
+            
             if (state.tasker && state.tasker.size()) {
                 for (task in state.tasker.sort{ it.idx }) {
                     if (task.add) {
-                        def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data])
+                        def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data, marker: (task.time < now() + threshold ? marker : null)])
                         //def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}:${task.idx}:$idx"
                         def n = "t$idx"
                         idx++
@@ -6090,7 +6114,10 @@ private processTasks() {
                 if (!task.data || !task.data.w) {
                     //if a task is already due, we keep track of it
                     if (task.time <= thresholdTime) {
-                        immediateTasks++
+                        if (task.marker in [null, marker]) {
+                        	//we only handle our own tasks or no ones tasks
+                            immediateTasks += 1
+                        }
                     } else {
                         //we try to get the nearest time in the future
                         nextTime = (nextTime == null) || (nextTime > task.time) ? task.time : nextTime
@@ -6125,17 +6152,16 @@ private processTasks() {
                     found = false
                     //we need to read the list every time we get here because the loop itself takes time.
                     //we always need to work with a fresh list. Using a ? would not read the list the first time around (optimal, right?)
-                    tasks = tasks ? tasks : atomicState.tasks
+                    tasks = atomicState.tasks
                     tasks = tasks ? tasks : [:]
-                    def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time <= (now() + threshold)) }
+                    def firstTask = tasks.sort{ it.value.time }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time <= (now() + threshold)) && (it.value.marker in [null, marker]) }
                     if (firstTask) {
-                        def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time == firstTask.value.time) }
+                        def firstSubTask = tasks.sort{ it.value.idx }.find{ (it.value.type == "cmd") && (!it.value.data || !it.value.data.w) && (it.value.time == firstTask.value.time) && (it.value.marker in [null, marker]) }
                         if (firstSubTask) {
                             def task = firstSubTask.value
                             //remove from tasks
                             tasks = atomicState.tasks
                             tasks.remove(firstSubTask.key)
-                            //state.tasks = tasks
                             atomicState.tasks = tasks
                             //throw away the task list as this procedure below may take time, making our list stale
                             //not to worry, we'll read it again on our next iteration
@@ -6164,7 +6190,15 @@ private processTasks() {
         }
         //would you look at that, we finished!
         //remove the safety net, wasn't worth the investment
-        debug "Removing any existing ST safety nets", null, "trace"
+
+		//remove the markers
+        tasks = atomicState.tasks
+        for(task in tasks.findAll{ it.value.marker == marker }) {
+        	task.value.marker = null
+        }
+        atomicState.tasks = tasks
+        
+        debug "Removing any existing ST safety nets", null, "trace"        
         unschedule(recoveryHandler)
     } catch (e) {
     	debug "ERROR: Error while executing processTasks: $e", null, "error"
@@ -6176,7 +6210,7 @@ private processTasks() {
 }
 
 private cancelTasks(state) {
-	def tasks = tasks ? tasks : atomicState.tasks
+	def tasks = atomicState.tasks
 	tasks = tasks ? tasks : [:]
 	//debug "Resuming tasks on piston state change, resumable states are $resumableStates", null, "trace"
     while (true) {
@@ -6191,7 +6225,7 @@ private cancelTasks(state) {
 }
 
 private resumeTasks(state) {
-	def tasks = tasks ? tasks : atomicState.tasks
+	def tasks = atomicState.tasks
 	tasks = tasks ? tasks : [:]
     def resumableStates = ["a", (state ? "t" : "f")]
 	//debug "Resuming tasks on piston state change, resumable states are $resumableStates", null, "trace"
