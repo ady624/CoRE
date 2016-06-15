@@ -1,0 +1,149 @@
+ *  Version history
+ *
+ *	 6/13/2016 >>> v0.0.08f.20160613 - Alpha test version - More tweaks for global variables
+ *	 6/13/2016 >>> v0.0.08e.20160613 - Alpha test version - Tweaks for global variables
+ *	 6/13/2016 >>> v0.0.08d.20160613 - Alpha test version - Due to public uproar (LOL), added per-task mode restrictions. Not so many clicks now, right?
+ *	 6/13/2016 >>> v0.0.08c.20160613 - Alpha test version - Replaced facet with orientation. Added IFTTT integration
+ *	 6/12/2016 >>> v0.0.08b.20160612 - Alpha test version - Added three-axis initial support.
+ *	 6/12/2016 >>> v0.0.08a.20160612 - Alpha test version - Improved loop logic, providing the $index variable for simple loops and ensuring variable value during execution stage. Improved variable triggers during preauthorization.
+ *	 6/12/2016 >>> v0.0.089.20160612 - Alpha test version - Added the ability to delete variables from within the UI
+ *	 6/12/2016 >>> v0.0.088.20160612 - Alpha test version - Added the ability to initialize/change variables from within the UI
+ *	 6/12/2016 >>> v0.0.087.20160612 - Alpha test version - Send notifications to contacts is now enabled
+ *	 6/11/2016 >>> v0.0.086.20160611 - Alpha test version - Fixed the hue attribute and the setHue command to automatically convert beween % and angle
+ *	 6/11/2016 >>> v0.0.085.20160611 - Alpha test version - Added "when false" individual actions, as well as "only execute on condition state change"
+ *	 6/10/2016 >>> v0.0.084.20160610 - Alpha test version - Added piston day/time restrictions
+ *	 6/10/2016 >>> v0.0.083.20160610 - Alpha test version - Action "variable" restriction (if <variable> <comparison> <value>)), piston restrictions
+ *	 6/10/2016 >>> v0.0.082.20160610 - Alpha test version - Fixed an issue with saving variables to atomicState (when needed)
+ *	 6/10/2016 >>> v0.0.081.20160610 - Alpha test version - Action flow commands fixes and improvements
+ *	 6/10/2016 >>> v0.0.080.20160610 - Alpha test version - Welcome to CoRE++ - actions are now much smarter, with for, while (not enabled yet), switch and if-else-if blocks
+ *	 6/09/2016 >>> v0.0.07f.20160609 - Alpha test version - Caching physical for conditions, updating atomic variables before executing pistons, loops...
+ *	 6/08/2016 >>> v0.0.07e.20160608 - Alpha test version - Attempt to fix a race condition with global variable events
+ *	 6/08/2016 >>> v0.0.07d.20160608 - Alpha test version - Fixed a problem in "in between"
+ *	 6/08/2016 >>> v0.0.07c.20160608 - Alpha test version - Modified time offsets to allow -1440..1440 minutes and fixed a problem with "in between"'s next time estimation
+ *	 6/08/2016 >>> v0.0.07b.20160608 - Alpha test version - Introduced software-mode "Fade to level" and renamed the old one "Fade to level (hardware)"
+ *	 6/08/2016 >>> v0.0.07a.20160608 - Alpha test version - Fixed a problem with "is between" introduced in v0.0.070
+ *	 6/08/2016 >>> v0.0.079.20160608 - Alpha test version - Introducing the "THEN IF", "ELSE IF" and "FOLLWED BY" grouping methods. Out of ideas for unique names :)
+ *	 6/07/2016 >>> v0.0.078.20160607 - Alpha test version - Minor bug fixes for Ask Alexa integration.
+ *	 6/07/2016 >>> v0.0.077.20160607 - Alpha test version - Variables galore in dashboard.
+ *	 6/07/2016 >>> v0.0.075.20160607 - Alpha test version - Added support for D-Link Camera Manager (thanks to @blebson)
+ *	 6/07/2016 >>> v0.0.074.20160607 - Alpha test version - AskAlexa integration (thanks to @MichaelS) and better custom attributes support (thanks to @RBoy)
+ *	 6/06/2016 >>> v0.0.073.20160606 - Alpha test version - Attempt #1 to fix sorting order of actions and tasks in dashboard.
+ *	 6/06/2016 >>> v0.0.072.20160606 - Alpha test version - Reallowing piston execution of same piston at @krlaframboise's request
+ *	 6/06/2016 >>> v0.0.070.20160606 - Alpha test version - Date & Time gets comparisons against variables. Time of variable picks up the time from the variable and compares it just like any ther options (sunset, sunrise, etc.). Date and time of variable works completely different. It actually uses the date of the variable in the comparison, so one can delay things any number of days/months etc. and have the trigger happen then.
+ *	 6/06/2016 >>> v0.0.06e.20160606 - Alpha test version - Added "Ask Alexa Macro" and "Piston" capabilities. Minor fixes for condition descriptions and event authorization/eligibility.
+ *	 6/05/2016 >>> v0.0.06d.20160605 - Alpha test version - Variable triggers should now work - you can trigger on a global variable change (other pistons can change the global variable too, you'll get a trigger)
+ *	 6/04/2016 >>> v0.0.06c.20160604 - Alpha test version - Added more multimedia commands like playTextAndRestore, playTextAndResume, etc.
+ *	 6/04/2016 >>> v0.0.06b.20160604 - Alpha test version - Screwed up the location events - fixed them now...
+ *	 6/04/2016 >>> v0.0.06a.20160604 - Alpha test version - Finally found out the Cast error and why location changes away from did not work... fixed. *	 6/04/2016 >>> v0.0.069.20160604 - Alpha test version - Fixed a bug where converting a task from a standard command to a custom command may stop the action from displaying.
+ *	 6/04/2016 >>> v0.0.068.20160604 - Alpha test version - Today's special is log errors. Apparently, log.here does not exist.
+ *	 6/04/2016 >>> v0.0.067.20160604 - Alpha test version - Fixed some name of null object errors - a log trace was causing it. Added fadeLevel which only works for certain DTHs...
+ *	 6/03/2016 >>> v0.0.066.20160603 - Alpha test version - Fixed some bugs involving the "changes away from" - still keeping an eye on this though
+ *	 6/03/2016 >>> v0.0.065.20160603 - Alpha test version - Introducing trigger interaction method (any, physical, programmatic) for some attributes (door, lock, switch). Various other fixes.
+ *	 6/03/2016 >>> v0.0.064.20160603 - Alpha test version - Introducing the Basic piston. It's... umm... basic. IF (conditions) THEN (actions). Minor bug fixes.
+ *	 6/03/2016 >>> v0.0.063.20160603 - Alpha test version - Save/Load state seems to work. LOL. Local state is piston-wide, global state is across all pistons. Each device gets one state stored locally (one per piston) and one stored globally.
+ *	 6/02/2016 >>> v0.0.062.20160602 - Alpha test version - Updated Follow Up and added Execute. Not fully tested yet.
+ *	 6/02/2016 >>> v0.0.061.20160602 - Alpha test version - Minor bug fixes. Introducing the Follow-Up piston. Chain them together, delay them forever, do whatever you need with them :)
+ *	 6/02/2016 >>> v0.0.060.20160602 - Alpha test version - Fixed a problem with initialization of global variable store on first install of CoRE. Added $time and $time24 to system variables.
+ *	 6/02/2016 >>> v0.0.05f.20160602 - Alpha test version - Dashboard enhancements (capture piston image) and minor bug fixes (i.e. aggregate Send Notification on multiple device actions)
+ *	 6/02/2016 >>> v0.0.05e.20160602 - Alpha test version - Dashboard shows time till next trigger
+ *	 6/01/2016 >>> v0.0.05d.20160601 - Alpha test version - Fixed a problem with compound commands (i.e. thermostat.off instead of off)
+ *	 6/01/2016 >>> v0.0.05c.20160601 - Alpha test version - Updated the startActivity action
+ *	 6/01/2016 >>> v0.0.05b.20160601 - Alpha test version - Updated dashboard, first attempt at displaying an IF statement
+ *	 6/01/2016 >>> v0.0.05a.20160601 - Alpha test version - Fixed a bug introduced in v0.0.059 where some pistons would not run due to state.app.enabled missing
+ *	 6/01/2016 >>> v0.0.059.20160601 - Alpha test version - Replaced the Enabled boolean checkbox in the UI to allow for dashboard ON/OFF integration.
+ *	 6/01/2016 >>> v0.0.058.20160601 - Alpha test version - More dashboard work. Nasty stuff, really. Dashboard is built in angular.js and css3. HTML is minimal :)
+ *	 5/31/2016 >>> v0.0.057.20160531 - Alpha test version - Fixed some bugs with trg_changes missing a parameter, as well as vcmd_setVariable missing a new parameter. (also introduced the Dashboard)
+ *	 5/31/2016 >>> v0.0.056.20160531 - Alpha test version - Initial DTH integration of custom attributes. DTHs can describe their attributes so they become "standard" instead of "custom" in the Attribute list
+ *	 5/30/2016 >>> v0.0.055.20160530 - Alpha test version - Added the repeatAction command - minimal testing done
+ *	 5/30/2016 >>> v0.0.054.20160530 - Alpha test version - Enabled custom commands with simple parameters (boolean, decimal, number, string)
+ *	 5/30/2016 >>> v0.0.053.20160530 - Alpha test version - Enabled simple custom commands, added predefined commands for hue: startLoop, stopLoop, setLoopTime and for Harmony: allOn, allOff, hubOn, hubOff
+ *	 5/28/2016 >>> v0.0.052.20160528 - Alpha test version - Fixed a bug where last executed task was not correctly removed
+ *	 5/28/2016 >>> v0.0.051.20160528 - Alpha test version - More fixes for casting and variable condition description
+ *	 5/27/2016 >>> v0.0.050.20160527 - Alpha test version - Load Attribute from variable done and partially tested. Missing: color support - this is a complex data type...
+ *	 5/27/2016 >>> v0.0.04f.20160527 - Alpha test version - We have an official icon! Also, fixed a problem with time scheduling for "not in between", fixed a potential problem with casting null values.
+ *	 5/27/2016 >>> v0.0.04e.20160527 - Alpha test version - Implemented saveAttribute, introduced "aggregated" commands, these only run once, even when used on a list of devices
+ *	 5/27/2016 >>> v0.0.04d.20160527 - Alpha test version - Fixed a bug (for good?) with item in list for is_one_of. Types enum, mode, and other special types need not be casted.
+ *	 5/26/2016 >>> v0.0.04c.20160526 - Alpha test version - Fixed a bug with item in list for is_one_of.
+ *	 5/26/2016 >>> v0.0.04b.20160526 - Alpha test version - Fixed a bug introduced by the simulator
+ *	 5/26/2016 >>> v0.0.04a.20160526 - Alpha test version - First attempt at simulations :)
+ *	 5/26/2016 >>> v0.0.049.20160526 - Alpha test version - Fixed a problem with the new casting function. There are several special data types, namely mode, alarmSystemStatus, etc. that act as strings.
+ *	 5/26/2016 >>> v0.0.048.20160526 - Alpha test version - Conditions for capability Variable should now work. Triggers are only available for @ (global) variables, but the mechanism for subscribing to changes is not yet here. So triggers don't yet work.
+ *	 5/26/2016 >>> v0.0.047.20160526 - Alpha test version - Fixed a problem with casting enums... they are now handled as strings
+ *	 5/26/2016 >>> v0.0.046.20160526 - Alpha test version - Pretty major changes at conditions UI and logic. Added the ability to compare against another device/attribute pair (can choose any attribute of that device). Added the toggleLevel command and fixed some bugs with setting SHM status.
+ *	 5/25/2016 >>> v0.0.045.20160525 - Alpha test version - Caching attributes - attempt to speed up some things
+ *	 5/25/2016 >>> v0.0.044.20160525 - Alpha test version - Fixed the command description for custom commands - temporary until custom commands are complete
+ *	 5/25/2016 >>> v0.0.043.20160525 - Alpha test version - Fixed toggle virtual command, modified the Flash virtual command to turn the switch back on if it started on, added the Cancel Pending Tasks virtual command, added action advanced options Task Override Scope and Task Cancellation Policy. Global scope does not yet work, CoRE would have to "spread the word" to all child pistons. Improved the device condition evaluation to speed up things - took common code outside of the device loop.
+ *	 5/24/2016 >>> v0.0.042.20160524 - Alpha test version - Execute Routine action is now available. Routine execution trigger not yet ready.
+ *	 5/24/2016 >>> v0.0.041.20160524 - Alpha test version - Extended "is one of" and "is not one of" to attributes that have only two values. It was previously available only to those having three or more values.
+ *	 5/24/2016 >>> v0.0.040.20160524 - Alpha test version - Multi sub-device support (read buttons in conditions, or multi-switch in actions). TODO: buttons & triggers - the button state does not change, so detecting a change is tricky, or rather, simpler, but different.
+ *	 5/23/2016 >>> v0.0.03f.20160523 - Alpha test version - Added matching and non-matching device list variables and renamed "With (devices)" to "Using (devices)"
+ *	 5/23/2016 >>> v0.0.03e.20160523 - Alpha test version - Set Variable fixes for time variables, fixed variables not being parsed in sendNotification
+ *	 5/23/2016 >>> v0.0.03d.20160523 - Alpha test version - Set Variable done, testing in progress
+ *	 5/23/2016 >>> v0.0.03c.20160523 - Alpha test version - Fixed a problem where dry evaluation of a condition may fail when changing the capability or the attribute or the comparison in the UI
+ *	 5/22/2016 >>> v0.0.03b.20160522 - Alpha test version - Changed hue to angle, 0-360. Fixed a problem with mode and SHM alarm triggers. Added two predefined commands: quickSetCool and quickSetHeat
+ *	 5/20/2016 >>> v0.0.03a.20160520 - Alpha test version - Color support. Added all 140 standard CSS colors, plus 4 white light colors. Partially tested with Osram (Green is green and Crimson is crimson)
+ *	 5/20/2016 >>> v0.0.039.20160520 - Alpha test version - Fixed an error where an incomplete (during building) time condition would fail due to next event calculation introduced in v0.0.036.20160520
+ *	 5/20/2016 >>> v0.0.038.20160520 - Alpha test version - Displaying individual actions (when true) in the main piston page and showing action restrictions as per https://github.com/ady624/CoRE/issues/7
+ *	 5/20/2016 >>> v0.0.037.20160520 - Alpha test version - Modified event duplication detection to only ignore identical events received within one second of each other, or events generated before the last event was generated. Also enabled {$variable} support in notification messages. "Time is {$now}" will return the time... :)
+ *	 5/20/2016 >>> v0.0.036.20160520 - Alpha test version - Optimized time condition evaluation for next event time - limitations: events only happen at designated times, with no regards to any existing time restrictions (i.e. will trigger an event on Fri even if Fri is restricted - the evaluation at that time, however, will take restrictions into account)
+ *	 5/19/2016 >>> v0.0.035.20160519 - Alpha test version - Fixed a problem where custom time in a "between" condition would reset the offset for sunrise/sunset
+ *	 5/19/2016 >>> v0.0.034.20160519 - Alpha test version - Notification support. Push/SMS/Notification. Coming soon: variable support in message.
+ *	 5/19/2016 >>> v0.0.033.20160519 - Alpha test version - Location Mode and SHM status now trigger events
+ *	 5/19/2016 >>> v0.0.032.20160519 - Alpha test version - Added delayed turn on, off and toggle
+ *	 5/19/2016 >>> v0.0.031.20160519 - Alpha test version - Minor fixes, removed [] from no-parameter device commands
+ *	 5/19/2016 >>> v0.0.030.20160519 - Alpha test version - Implemented the Toggle and Flash virtual commands, ability to control any device using Capability selection, and unified the way location control works. Minor fixes, spelling and others
+ *	 5/18/2016 >>> v0.0.02f.20160518 - Alpha test version - Minor bug fixes - including time condition scheduling, unscheduling of all event tasks prior to rescheduling (deleting a time trigger left the schedule behind)
+ *	 5/18/2016 >>> v0.0.02e.20160518 - Alpha test version - Broken debugging mode down into several levels, info, trace, debug, warn and error. Fixed display of device names where device has no label.
+ *	 5/18/2016 >>> v0.0.02d.20160518 - Alpha test version - Time conditions now act as triggers if no triggers are involved in any of the condition sets - this is to mimic the way device act as triggers when the same applies
+ *	 5/17/2016 >>> v0.0.02c.20160517 - Alpha test version - Fixed time not between
+ *	 5/17/2016 >>> v0.0.02b.20160517 - Alpha test version - Individual actions...
+ *	 5/17/2016 >>> v0.0.02a.20160517 - Alpha test version - Fixed a problem with time subscriptions subscribe() failing
+ *	 5/17/2016 >>> v0.0.029.20160517 - Alpha test version - Fixed a problem with time between - comparing only one variable, not both
+ *	 5/17/2016 >>> v0.0.028.20160517 - Alpha test version - Fixed circulateFan misspelled, fixed is_one_of missing, progress to detecting location mode and alarm system
+ *	 5/17/2016 >>> v0.0.027.20160517 - Alpha test version - More minor bugs with triggers
+ *	 5/17/2016 >>> v0.0.026.20160517 - Alpha test version - Minor bug with trigger support
+ *	 5/17/2016 >>> v0.0.025.20160517 - Alpha test version - Live condition evaluation and fixed minor bugs
+ *	 5/17/2016 >>> v0.0.024.20160517 - Alpha test version - Added three more piston modes. We now have Simple, Latching, And-If, Or-If, Then-If, and Else-If
+ *	 5/17/2016 >>> v0.0.023.20160517 - Alpha test version - Change SHM state now functional
+ *	 5/17/2016 >>> v0.0.022.20160517 - Alpha test version - Change location mode now functional, fixes for Android (removed ranges on Parent ID)
+ *	 5/16/2016 >>> v0.0.021.20160516 - Alpha test version - More bug fixes
+ *	 5/16/2016 >>> v0.0.020.20160516 - Alpha test version - More float vs int problems fixed with Android
+ *	 5/16/2016 >>> v0.0.01f.20160516 - Alpha test version - Fixed a problem with $previousStateDuration not being available on first run
+ *	 5/16/2016 >>> v0.0.01e.20160516 - Alpha test version - Fixed the action ID being considered float under Android. Forcefully casting to int.
+ *	 5/16/2016 >>> v0.0.01c.20160516 - Alpha test version - Fixed the time condition evaluation returning false. Result was not correctly initialized to true
+ *	 5/16/2016 >>> v0.0.01b.20160516 - Alpha test version - Added the $random and $randomLevel "random" variables. Also initializing the system store correctly. Added submitOnChange for pageActionDevices
+ *	 5/16/2016 >>> v0.0.01a.20160516 - Alpha test version - Simple actions are now executed. Capture/Restore states, attributes, or variables not completed yet.
+ *	 5/14/2016 >>> v0.0.019.20160514 - Alpha test version - Bug fixes - event cache not properly initialized leading to impossibility to install a new piston, more action UI progress
+ *	 5/13/2016 >>> v0.0.017.20160513 - Alpha test version - Variable support improved - full list of variables during config
+ *	 5/13/2016 >>> v0.0.016.20160513 - Alpha test version - Minor fixes, bringing missing methods back from the dead
+ *	 5/13/2016 >>> v0.0.015.20160513 - Alpha test version - Merged CoRE and CoRE Piston into one single its-own-parent-and-child app, action UI progress
+ * 
+ *  CoRE version history before merge
+ *	 5/11/2016 >>> v0.0.005.20160511 - Alpha test version - Changed name from "Rule Engine" to "CoRE" and added an easter egg
+ *	 5/10/2016 >>> v0.0.004.20160510 - Alpha test version - Added runtime statistics - even more stats for nerds
+ *	 5/10/2016 >>> v0.0.003.20160510 - Alpha test version - Added runtime statistics - stats for nerds
+ *	 5/10/2016 >>> v0.0.001.20160510 - Alpha test version - Minor improvements for global variable list
+ *	 5/10/2016 >>> v0.0.000.20160510 - Alpha test version - Initial build
+ * 
+ *  CoRE Piston version history before merge
+ *   5/12/2016 >>> v0.0.014.20160512 - Alpha test version - Piston's scheduler, "Timing belt" is now operational.
+ *   5/11/2016 >>> v0.0.013.20160511 - Alpha test version - Name changed to CoRE Piston, child of CoRE, time triggers operational - can figure out next schedule time
+ *   5/10/2016 >>> v0.0.012.20160510 - Alpha test version - Added runtime statistics - even more stats for nerds
+ *   5/10/2016 >>> v0.0.011.20160510 - Alpha test version - Added runtime statistics - stats for nerds
+ *   5/10/2016 >>> v0.0.010.20160510 - Alpha test version - Minor improvements for global variable list
+ *   5/10/2016 >>> v0.0.00f.20160510 - Alpha test version - Local and global (@) variables support, added offsets for device and variable comparison
+ *   5/10/2016 >>> v0.0.00e.20160510 - Alpha test version - Time condition evaluation done, filters pending
+ *   5/10/2016 >>> v0.0.00d.20160510 - Alpha test version - Date & Time condition UI tweaks, time interpretation complete
+ *   5/07/2016 >>> v0.0.00c.20160507 - Alpha test version - Date & Time condition UI tweaks
+ *   5/07/2016 >>> v0.0.00b.20160507 - Alpha test version - Date & Time condition UI finalized, pending community comments
+ *   5/07/2016 >>> v0.0.00a.20160507 - Alpha test version - Name changed to Piston, child app of Rule Engine, courtesy of @bridaus and @JDRoberts (reinforcement of the word Rule)
+ *   5/06/2016 >>> v0.0.009.20160506 - Alpha test version - Partial support for Location Mode, Smart Home Monitor and Date & Time - work in progress
+ *   5/06/2016 >>> v0.0.008.20160506 - Alpha test version - Minor improvements
+ *   5/05/2016 >>> v0.0.007.20160505 - Alpha test version - All conditions implemented, simple triggers implemented. History-based triggers ("...stays...") not working yet
+ *   5/05/2016 >>> v0.0.006.20160505 - Alpha test version - Simple conditions implemented. All "is" type conditions should work
+ *   5/04/2016 >>> v0.0.005.20160504 - Alpha test version - added full list of standard capabilities, attributes and commands, improved condition UI
+ *   5/02/2016 >>> v0.0.004.20160502 - Alpha test version - changed license from Apache to GPLv3
+ *   5/02/2016 >>> v0.0.003.20160502 - Alpha test version - added mode - simple, latching or else-if
+ *   5/02/2016 >>> v0.0.002.20160502 - Alpha test version - added latching rules
+ *   4/29/2016 >>> v0.0.001.20160429 - Alpha test version - added condition naming
+ *   4/29/2016 >>> v0.0.000.20160429 - Alpha test version
