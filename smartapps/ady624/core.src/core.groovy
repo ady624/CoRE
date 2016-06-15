@@ -17,6 +17,7 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
+ *	 6/14/2016 >>> v0.1.093.20160614 - Beta M1 - Yet another attempt at fixing global variable race conditions
  *	 6/14/2016 >>> v0.1.092.20160614 - Beta M1 - Another attempt at fixing global variable race conditions
  *	 6/14/2016 >>> v0.1.091.20160614 - Beta M1 - Fixed the $index variable during loops, attempted a more complex workaround fix for global variable race conditions, removed an extra "u" from the IFTTT page (ha ha)
  *	 6/13/2016 >>> v0.1.090.20160613 - Beta M1 - First beta release
@@ -180,7 +181,7 @@
 /******************************************************************************/
 
 def version() {
-	return "v0.1.092.20160614"
+	return "v0.1.093.20160614"
 }
 
 
@@ -1610,7 +1611,7 @@ def pageAction(params) {
                                                 } else if (param.type == "stateVariables") {
                                                     input "actParam$id#$tid-$i", "enum", options:  listStateVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
                                                 } else if (param.type == "piston") {
-                                                	def pistons = parent.listPistons(state.config.expertMode ? null : app.label)
+                                                	def pistons = parent.listPistons(state.config.expertMode || command.name.contains("follow") ? null : app.label)
                                                     input "actParam$id#$tid-$i", "enum", options: pistons, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
                                                 } else if (param.type == "routine") {
                                                 	def routines = location.helloHome?.getPhrases()*.label
@@ -2132,10 +2133,7 @@ def getVariable(name) {
     	if (name.startsWith("\$")) {
 			return state.systemStore[name]
         } else {
-        	if (parent) {
-				return state.store[name]
-            }
-            //use atomic state for global variables
+        	if (parent) return state.store[name]
             return atomicState.store[name]
     	}
     }
@@ -2147,7 +2145,6 @@ def setVariable(name, value, system = false) {
     	return
     }
     if (parent && name.startsWith("@")) {
-    	state.globalVars = (state.globalVars ? state.globalVars + 1 : 1)
     	parent.setVariable(name, value)
     } else {
     	if (name.startsWith("\$")) {
@@ -2156,16 +2153,18 @@ def setVariable(name, value, system = false) {
             }
         } else {
 	    	debug "Storing variable $name with value $value"
-            if (!parent) {            	
-            	def store = atomicState.store
-            	def oldValue = store[name]
-				store[name] = value
-                state.store = store
-                atomicState.store = store
-                if (oldValue != value) {
-                    //we need to save the store atomically so that if anyone is listening to this event gets the right info
-                	sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$value'", data: [app: "CoRE", oldValue: oldValue, value: value])
-                }                
+            if (!parent) {
+                log.trace "Setting variable $name from $oldValue to value $value, right ${now()}"
+            	def oldValue = atomicState.store[name]
+				state.store[name] = value
+                atomicState.store = state.store
+                //save var name for broadcasting events
+                state.globalVars = state.globalVars instanceof Map ? state.globalVars : [:]
+                if (state.globalVars.containsKey(name)) {
+                    state.globalVars[name].newValue = value
+                } else {
+                    state.globalVars[name] = [oldValue: oldValue, newValue: value]
+                }
             } else {
 				state.store[name] = value
             }
@@ -2177,7 +2176,19 @@ def setVariable(name, value, system = false) {
 def publishVariables() {
 	if (parent) return
     //we're saving the atomic store to our regular store to prevent race conditions
-    state.store = atomicState.store
+    //log.trace "state is ${state.store}"
+    //log.trace state
+    if (state.globalVars instanceof Map) {
+   		for (variable in state.globalVars) {
+        	def name = variable.key
+            def oldValue = variable.value.oldValue
+            def newValue = variable.value.newValue            
+            if (oldValue != newValue) {
+				sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])            
+            }
+        }
+    }
+    state.remove("globalVars")
 }
 
 def deleteVariable(name) {
@@ -2202,7 +2213,7 @@ def getStateVariable(name, global = false) {
     if (parent && global) {
     	return parent.getStateVariable(name)
     } else {
-		return state.stateStore[name]
+       	return state.stateStore[name]
     }
 }
 
@@ -2216,6 +2227,9 @@ def setStateVariable(name, value, global = false) {
     } else {
     	debug "Storing state variable $name with value $value"
 		state.stateStore[name] = value
+		if (!parent) {
+			atomicState.stateStore = state.stateStore
+        }
     }
 }
 
@@ -3606,7 +3620,7 @@ private exitPoint(milliseconds) {
 	//save all atomic states to state
     //to avoid race conditions
 	state.cache = atomicState.cache
-    state.tasks = atomicState.tasks
+    //state.tasks = atomicState.tasks
     state.runStats = atomicState.runStats   
     state.temp = null
     state.sim = null
@@ -3713,7 +3727,7 @@ private broadcastEvent(evt, primary, secondary) {
             def eventTime = evt.date.getTime()
             cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
             atomicState.cache = cache
-            state.cache = cache
+            //state.cache = cache
             if (cachedValue) {
                 if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
                     //duplicate event
@@ -5977,7 +5991,7 @@ private processTasks() {
                     //remove from tasks
                     tasks.remove(item.key)
                     atomicState.tasks = tasks
-                    state.tasks = tasks
+                    //state.tasks = tasks
                     //throw away the task list as this procedure below may take time, making our list stale
                     //not to worry, we'll read it again on our next iteration
                     tasks = null
@@ -6062,7 +6076,7 @@ private processTasks() {
                 //running and modifying the old list that we picked up above
                 state.tasksProcessed = now()
                 atomicState.tasks = tasks
-                state.tasks = tasks
+                //state.tasks = tasks
                 state.tasker = null
             }
 
@@ -6121,8 +6135,8 @@ private processTasks() {
                             //remove from tasks
                             tasks = atomicState.tasks
                             tasks.remove(firstSubTask.key)
+                            //state.tasks = tasks
                             atomicState.tasks = tasks
-                            state.tasks = tasks
                             //throw away the task list as this procedure below may take time, making our list stale
                             //not to worry, we'll read it again on our next iteration
                             tasks = null
