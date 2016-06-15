@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.096.20160615" }
+def version() {	return "v0.1.097.20160615" }
 /*
+ *	 6/15/2016 >>> v0.1.097.20160615 - Beta M1 - Dashboard improvements - capture piston is now completely self-contained, should work in embedded browser on Android
  *	 6/15/2016 >>> v0.1.096.20160615 - Beta M1 - Improved command execution, not executing commands if their associated attribute is already at expected value. Added "raises" and "drops" triggers
  *	 6/15/2016 >>> v0.1.095.20160615 - Beta M1 - Cleaned some code up, lowered file size by 21%, currently at 393425 bytes
  *	 6/15/2016 >>> v0.1.094.20160615 - Beta M1 - Concurrency issues fixes. Using atomicState for global CoRE, implemented markers to prevent tasks being executed by other processes running at the same time
@@ -2041,7 +2042,7 @@ def listVariablesInBulk() {
 	for(variable in listVariables()) {
 		result[variable] = getVariable(variable, true)
 	}
-	return result.sort{ it.key }
+	return result.sort{ it.key.substring(0, 1) in ["\$", "@"] ? it.key : "!${it.key}" }
 }
 
 def listVariables(config = false, dataType = null, listLocal = true, listGlobal = true, listSystem = true) {
@@ -2239,7 +2240,7 @@ mappings {
 
 def api_dashboard() {
 	def cdn = "https://core.caramaliu.com/dashboard"
-	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/bootstrap.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/angular-loading-bar.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/font-awesome.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/html2canvas.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-route.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-resource.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-sanitize.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/components/angular-loading-bar.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/components.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/components.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
 
 def api_getDashboardData() {
@@ -2494,6 +2495,9 @@ def initializeCoREPiston() {
 		tfc: settings["restrictionTimeFromCustom"],
 		tt: settings["restrictionTimeTo"],
 		ttc: settings["restrictionTimeToCustom"],
+        w: settings["restrictionDOW"],
+        s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
+        s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
 	]
 	state.run = "app"
 	initializeCoREPistonStore()
@@ -3178,7 +3182,7 @@ private getTaskDescription(task) {
 	def currentIndent = state.taskIndent + selfIndent
 	def prefix = "".padLeft(currentIndent > 0 ? currentIndent * 3 : 0, " ")
 	state.taskIndent = state.taskIndent + indent
-	return prefix + result + (task.m && task.m.size() ? " (${buildNameList(task.m, "or")})" : "")
+	return prefix + result + (task.m && task.m.size() ? " (only for ${buildNameList(task.m, "or")})" : "")
 }
 
 
@@ -3379,7 +3383,7 @@ private broadcastEvent(evt, primary, secondary) {
 		} else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
 			restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
 			allowed = false
-		} else if (app.restrictions.dow && app.restrictions.dow.size() && !(getDayOfWeekName() in app.restrictions.dow)) {
+		} else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
 			restriction = "a day of week mismatch"
 			allowed = false
 		} else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tt, app.restrictions.ttc))) {
