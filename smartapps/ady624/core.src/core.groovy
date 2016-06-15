@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.097.20160615" }
+def version() {	return "v0.1.098.20160615" }
 /*
+ *	 6/15/2016 >>> v0.1.098.20160615 - Beta M1 - Bug fix - error while trying to prevent redundant requests to devices
  *	 6/15/2016 >>> v0.1.097.20160615 - Beta M1 - Dashboard improvements - capture piston is now completely self-contained, should work in embedded browser on Android
  *	 6/15/2016 >>> v0.1.096.20160615 - Beta M1 - Improved command execution, not executing commands if their associated attribute is already at expected value. Added "raises" and "drops" triggers
  *	 6/15/2016 >>> v0.1.095.20160615 - Beta M1 - Cleaned some code up, lowered file size by 21%, currently at 393425 bytes
@@ -6039,7 +6040,7 @@ private processCommandTask(task) {
                             if (command.attribute && (params.size() == 1)) {
                             	//we may be able to avoid executing this command
 			                	def currentValue = "${device.currentValue(command.attribute)}"
-            			        if (currentValue == "${p[0]}") {
+            			        if (currentValue == "${params[0]}") {
                                 	doIt = false
                     				msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}($params) because current value is the same"
                                 }
