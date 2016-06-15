@@ -2178,23 +2178,30 @@ def setVariable(name, value, system = false) {
 }
 
 def publishVariables() {
-	if (parent) return
+	if (parent) return parent.publishVariables()
     //we're saving the atomic store to our regular store to prevent race conditions
-    def globalVars = atomicState.globalVars
-    if (globalVars instanceof Map) {
-   		for (variable in globalVars) {
-        	def name = variable.key
-            def oldValue = variable.value.oldValue
-            def newValue = variable.value.newValue            
-            if (oldValue != newValue) {
-            	//write the global vars back
-            	globalVars.remove(name)
-                atomicState.globalVars = globalVars
-				sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])            
+    while (true) {
+    	def globalVars = atomicState.globalVars
+    	if (globalVars instanceof Map) {
+        	def variable = globalVars.find()
+            if (variable) {
+            	globalVars.remove(variable.key)
+                atomicState.globalVars = globalVars.size() ? globalVars : null
+                def name = variable.key
+                def oldValue = variable.value.oldValue
+                def newValue = variable.value.newValue            
+            	if (oldValue != newValue) {
+                    sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])
+                }
+            } else {
+            	break
             }
+        } else {
+        	break
         }
     }
-    atomicState.remove("globalVars")
+    return 
+    atomicState.globalVars = null
 }
 
 def deleteVariable(name) {
