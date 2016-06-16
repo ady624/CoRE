@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.09b.20160616" }
+def version() {	return "v0.1.09c.20160616" }
 /*
+ *	 6/16/2016 >>> v0.1.09c.20160616 - Beta M1 - Added "Adjust level". Modified "Fade to level" to include an optional start level - All "Fade to level" tasks need to be revisited and fixed.
  *	 6/16/2016 >>> v0.1.09b.20160616 - Beta M1 - Fixed a bug with variable triggers/conditions
  *	 6/16/2016 >>> v0.1.09a.20160616 - Beta M1 - Weird atomicState issues - trying to fix Waits and Set Variable (global)...
  *	 6/15/2016 >>> v0.1.099.20160615 - Beta M1 - Allowing setLevel to run if switch is different from what setLevel would set
@@ -2611,23 +2612,19 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 				if (attr && attr.subscribe) {
 					attribute = attr.subscribe
 				}
-                log.trace "$capability $condition $devices"
 				if (capability && (capability.name == "variable") && (!condition.var || !condition.var.startsWith('@'))) {
 					//we don't want to subscribe to local variables
-                    log.trace "OOPS"
 					devices = null
 				}
 				if (devices) {
 					for (device in devices) {
 						def subscription = "${device.id}-${attribute}"
-                        log.trace "HERE $excludeSubscriptions"
 						if ((excludeSubscriptions == null) || !(excludeSubscriptions[subscription])) {
 							//if we're provided with an exclusion list, we don't subscribe to those devices/attributes events
 							if ((onlySubscriptions == null) || onlySubscriptions[subscription]) {
 								//if we're provided with a restriction list, we use it
 								if (!subscriptions[subscription]) {
 									subscriptions[subscription] = true //[deviceId: device.id, attribute: attribute]
-                                    log.trace "$subscription, $handler"
 									if (handler) {
 										//we only subscribe to the device if we're provided a handler (not simulating)
 										debug "Subscribing to events from $device for attribute $attribute, handler is $handler", null, "trace"
@@ -6173,7 +6170,7 @@ private task_vcmd_delayedOff(device, action, task, suffix = "") {
 	return true
 }
 
-private task_vcmd_fadeLevel(device, action, task, suffix = "") {
+private task_vcmd_fadeLevelHW(device, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 2)) {
 		return false
@@ -6190,14 +6187,15 @@ private task_vcmd_fadeLevel(device, action, task, suffix = "") {
 	return true
 }
 
-private task_vcmd_adjustLevel(device, action, task, suffix = "") {
+private task_vcmd_fadeLevel(device, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 2)) {
+	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 3)) {
 		return false
 	}
-	def level = cast(params[0].d, params[1].t)
-	def duration = cast(params[1].d, params[1].t)
-	def currentLevel = cast(device.currentValue('level'), "number")
+    def currentLevel = cast(param[0].d, params[0].t)
+    if (currentLevel == null) currentLevel = cast(device.currentValue('level'), "number")
+	def level = cast(params[1].d, params[1].t)
+	def duration = cast(params[2].d, params[2].t)
 	def delta = level - currentLevel
 	if (delta == 0) return
 	//we try to achieve 10 steps
@@ -6216,6 +6214,20 @@ private task_vcmd_adjustLevel(device, action, task, suffix = "") {
 			oldLevel = newLevel
 		}
 	}
+	return true
+}
+
+
+private task_vcmd_adjustLevel(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 1)) {
+		return false
+	}
+    def currentLevel = cast(device.currentValue('level'), "number")
+    def level = currentLevel + cast(params[0].d, params[0].t)
+    level = (level < 0 ? 0 : (level > 100 ? 100 : level))
+	if (level == currentLevel) return
+	device."setLevel$suffix"(level)
 	return true
 }
 
@@ -9099,8 +9111,9 @@ private virtualCommands() {
 		[ name: "delayedToggle#6",		requires: ["on6", "off6"], 			display: "Toggle #6 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #6 after {0}ms",	],
 		[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
 		[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
-		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level (hardware)",		parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
-		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["Target level:level","Duration (seconds):number[1..600]"],																							description: "Fade to {0}% in {1}s",				],
+		[ name: "fadeLevelHW",			requires: ["setLevel"], 			display: "Fade to level (hardware)",		parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
+		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["?Start level (optional):level","Target level:level","Duration (seconds):number[1..600]"],															description: "Fade from {0} to {1}% in {2}s",				],
+		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Adjust level",					parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust level by {0}",	],
 		[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",		],
 		[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
 		[ name: "flash#2",				requires: ["on2", "off2"], 			display: "Flash #2",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #2 {0}ms/{1}ms for {2} time(s)",	],
