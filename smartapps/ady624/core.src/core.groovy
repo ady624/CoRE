@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.099.20160615" }
+def version() {	return "v0.1.09a.20160616" }
 /*
+ *	 6/16/2016 >>> v0.1.09a.20160616 - Beta M1 - Weird atomicState issues - trying to fix Waits and Set Variable (global)...
  *	 6/15/2016 >>> v0.1.099.20160615 - Beta M1 - Allowing setLevel to run if switch is different from what setLevel would set
  *	 6/15/2016 >>> v0.1.098.20160615 - Beta M1 - Bug fix - error while trying to prevent redundant requests to devices
  *	 6/15/2016 >>> v0.1.097.20160615 - Beta M1 - Dashboard improvements - capture piston is now completely self-contained, should work in embedded browser on Android
@@ -730,8 +731,6 @@ private getConditionGroupPageContent(params, condition) {
 				section("Set variables") {
 					input "condVarD$id", "string", title: "Save last evaluation date", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
 					input "condVarS$id", "string", title: "Save last evaluation result", description: "Enter a variable name to store the truth result in", required: false, capitalization: "none"
-					//input "condVarM$id", "string", title: "Save matching device list", description: "Enter a variable name to store the list of devices that match the condition", required: false, capitalization: "none"
-					//input "condVarN$id", "string", title: "Save non-matching device list", description: "Enter a variable name to store the list of devices that do not match the condition", required: false, capitalization: "none"
 				}
 				section("Set variables on true") {
 					input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
@@ -1627,6 +1626,12 @@ def pageSimulate() {
 		}
 		state.sim = [ evals: [], cmds: [] ]
 		def error
+
+		//prepare some stuff
+        state.debugLevel = 0
+        state.globalVars = [:]
+        state.tasker = state.tasker ? state.tasker : []
+        
 		def perf = now()
 		try {
 			broadcastEvent([name: "simulate", date: new Date(), deviceId: "time", conditionId: null], true, false)
@@ -1637,7 +1642,8 @@ def pageSimulate() {
 		perf = now() - perf
 		def evals = state.sim.evals
 		def cmds = state.sim.cmds
-		state.sim = null
+        exitPoint(perf)
+        
 		section("") {
 			paragraph "Simulation ended in ${perf}ms.", state: "complete"
 			paragraph "New piston state is: ${state.currentState}"
@@ -1918,17 +1924,20 @@ def getVariable(name) {
 	}
 }
 
-def setVariable(name, value, system = false) {
+def setVariable(name, value, system = false, globalVars = null) {
 	name = sanitizeVariableName(name)
 	if (!name) return
 	if (parent && name.startsWith("@")) {
-		parent.setVariable(name, value)
+    	def gv = state.globalVars instanceof Map ? state.globalVars : [:]
+        parent.setVariable(name, value, false, gv)
+        state.globalVars = gv
 	} else {
 		if (name.startsWith("\$")) {
 			if (system) {
 				state.systemStore[name] = value
 			}
 		} else {
+        	log.trace "Storing variable $name with value $value"
 			debug "Storing variable $name with value $value"
 			if (!parent) {
 				//we're using atomic state in parent app
@@ -1937,14 +1946,11 @@ def setVariable(name, value, system = false) {
 				store[name] = value
 				atomicState.store = store
 				//save var name for broadcasting events
-				def globalVars = atomicState.globalVars
-				globalVars = globalVars instanceof Map ? globalVars : [:]
-				if (globalVars.containsKey(name)) {
-					globalVars[name].newValue = value
-				} else {
-					globalVars[name] = [oldValue: oldValue, newValue: value]
-				}
-				atomicState.globalVars = globalVars
+                if (globalVars.containsKey(name)) {
+                    globalVars[name].newValue = value
+                } else {
+                    globalVars[name] = [oldValue: oldValue, newValue: value]
+                }
 			} else {
 				state.store[name] = value
 			}
@@ -1953,30 +1959,18 @@ def setVariable(name, value, system = false) {
 }
 
 def publishVariables() {
-	if (parent) return parent.publishVariables()
+	if (!parent) return null
 	//we're saving the atomic store to our regular store to prevent race conditions
-	while (true) {
-		def globalVars = atomicState.globalVars
-		if (globalVars instanceof Map) {
-			def variable = globalVars.find()
-			if (variable) {
-				globalVars.remove(variable.key)
-				atomicState.globalVars = globalVars.size() ? globalVars : null
-				def name = variable.key
-				def oldValue = variable.value.oldValue
-				def newValue = variable.value.newValue
-				if (oldValue != newValue) {
-					sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])
-				}
-			} else {
-				break
-			}
-		} else {
-			break
-		}
+	def globalVars = state.globalVars
+	for (variable in globalVars) {
+        def name = variable.key
+        def oldValue = variable.value.oldValue
+        def newValue = variable.value.newValue
+        if (oldValue != newValue) {
+            sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])
+        }
 	}
-	return
-	atomicState.globalVars = null
+    state.globalVars = [:]
 }
 
 def deleteVariable(name) {
@@ -2189,6 +2183,7 @@ def initializeCoREStore() {
 	state.modules = state.modules ? state.modules : [:]
 	state.stateStore = state.stateStore ? state.stateStore : [:]
 	state.askAlexaMacros = state.askAlexaMacros ? state.askAlexaMacros : []
+    state.globalVars = state.globalVars ? state.globalVars : []
 }
 
 
@@ -2207,7 +2202,7 @@ def askAlexaHandler(evt) {
 	if (!evt) return
 	switch (evt.value) {
 		case "refresh":
-				state.askAlexaMacros = evt.jsonData && evt.jsonData?.macros ? evt.jsonData.macros : []
+				atomicState.askAlexaMacros = evt.jsonData && evt.jsonData?.macros ? evt.jsonData.macros : []
 			break
 	}
 }
@@ -3311,7 +3306,7 @@ private entryPoint() {
 	state.run = "app"
 	state.sim = null
 	state.debugLevel = 0
-	state.globalVars = 0
+	state.globalVars = [:]
 	state.tasker = state.tasker ? state.tasker : []
 }
 
@@ -3350,7 +3345,7 @@ private exitPoint(milliseconds) {
 	}
 
 	//give a chance to variable events
-		parent.publishVariables()
+    publishVariables()
 
 	//save all atomic states to state
 	//to avoid race conditions
@@ -3999,7 +3994,9 @@ private evaluateDeviceCondition(condition, evt) {
 	}
 
 	if (evt) {
+    	debug "Setting matching device list to $vm"
 		if (condition.vm) setVariable(condition.vm, buildNameList(vm, "and"))
+    	debug "Setting non-matching device list to $vn"
 		if (condition.vn) setVariable(condition.vn, buildNameList(vn, "and"))
 	}
 	return  result
@@ -5655,6 +5652,7 @@ private processTasks() {
 	def perf = now()
 	def marker = now()
 	debug "Processing tasks (${version()})", 1, "trace"
+    log.trace "Starting off with these tasks: ${atomicState.tasks}"
 	try {
 
 		def safetyNet = false
@@ -5736,7 +5734,7 @@ private processTasks() {
 						def t = cleanUpMap([type: task.add, idx: idx, ownerId: task.ownerId, deviceId: task.deviceId, taskId: task.taskId, time: task.time, created: task.created, data: task.data, marker: (task.time < now() + threshold ? marker : null)])
 						//def n = "${task.add}:${task.ownerId}${task.deviceId ? ":${task.deviceId}" : ""}${task.taskId ? "#${task.taskId}" : ""}:${task.idx}:$idx"
 						def n = "t$idx"
-						idx++
+						idx += 1
 						tasks[n] = t
 					} else if (task.del) {
 						//delete a task
@@ -5857,11 +5855,15 @@ private processTasks() {
 
 		//remove the markers
 		tasks = atomicState.tasks
-		for(task in tasks.findAll{ it.value.marker == marker }) {
-			task.value.marker = null
+        def found = false
+		for(it in tasks.findAll{ it.value.marker == marker }) {
+        	def task = it.value
+			task.marker = null
+        	tasks[it.key] = task
+        	found = true
 		}
-		atomicState.tasks = tasks
-
+        if (found) atomicState.tasks = tasks
+		log.trace "We're now left with these tasks: $tasks"
 		debug "Removing any existing ST safety nets", null, "trace"
 		unschedule(recoveryHandler)
 	} catch (e) {
