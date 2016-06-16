@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.09c.20160616" }
+def version() {	return "v0.1.09d.20160616" }
 /*
+ *	 6/16/2016 >>> v0.1.09d.20160616 - Beta M1 - Fixed an issue with flow control tasks where IF blocks were not evaluating the condition correctly
  *	 6/16/2016 >>> v0.1.09c.20160616 - Beta M1 - Added "Adjust level". Modified "Fade to level" to include an optional start level - All "Fade to level" tasks need to be revisited and fixed.
  *	 6/16/2016 >>> v0.1.09b.20160616 - Beta M1 - Fixed a bug with variable triggers/conditions
  *	 6/16/2016 >>> v0.1.09a.20160616 - Beta M1 - Weird atomicState issues - trying to fix Waits and Set Variable (global)...
@@ -1939,7 +1940,7 @@ def setVariable(name, value, system = false, globalVars = null) {
 				state.systemStore[name] = value
 			}
 		} else {
-        	log.trace "Storing variable $name with value $value"
+        	//log.trace "Storing variable $name with value $value"
 			debug "Storing variable $name with value $value"
 			if (!parent) {
 				//we're using atomic state in parent app
@@ -2305,7 +2306,7 @@ def api_piston() {
 						action.t = action.t.sort{ it.i }
 					}
 				}
-				result.app.actions = result.app.actions.sort{ (it.rs ? -1 : 1) * it.id }
+				result.app.actions = result.app.actions.sort{ (it.rs == false ? -1 : 1) * it.id }
 			}
 			result.variables = child.listVariablesInBulk()
 			return result
@@ -5015,10 +5016,9 @@ private scheduleAction(action) {
 }
 
 private checkFlowCondition(task) {
-	def result = false
 	if (task.p && (task.p.size() == 3)) {
 		def variable = task.p[0].d
-		def condition = task.p[1].d
+		def comparison = task.p[1].d
 		def value = formatMessage(task.p[2].d)
  		return checkVariableCondition(variable, comparison, value)
 	}
@@ -5659,7 +5659,7 @@ private processTasks() {
 	def perf = now()
 	def marker = now()
 	debug "Processing tasks (${version()})", 1, "trace"
-    log.trace "Starting off with these tasks: ${atomicState.tasks}"
+    //log.trace "Starting off with these tasks: ${atomicState.tasks}"
 	try {
 
 		def safetyNet = false
@@ -5870,7 +5870,7 @@ private processTasks() {
         	found = true
 		}
         if (found) atomicState.tasks = tasks
-		log.trace "We're now left with these tasks: $tasks"
+		//log.trace "We're now left with these tasks: $tasks"
 		debug "Removing any existing ST safety nets", null, "trace"
 		unschedule(recoveryHandler)
 	} catch (e) {
