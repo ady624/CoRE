@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.098.20160615" }
+def version() {	return "v0.1.099.20160615" }
 /*
+ *	 6/15/2016 >>> v0.1.099.20160615 - Beta M1 - Allowing setLevel to run if switch is different from what setLevel would set
  *	 6/15/2016 >>> v0.1.098.20160615 - Beta M1 - Bug fix - error while trying to prevent redundant requests to devices
  *	 6/15/2016 >>> v0.1.097.20160615 - Beta M1 - Dashboard improvements - capture piston is now completely self-contained, should work in embedded browser on Android
  *	 6/15/2016 >>> v0.1.096.20160615 - Beta M1 - Improved command execution, not executing commands if their associated attribute is already at expected value. Added "raises" and "drops" triggers
@@ -6040,6 +6041,10 @@ private processCommandTask(task) {
                             if (command.attribute && (params.size() == 1)) {
                             	//we may be able to avoid executing this command
 			                	def currentValue = "${device.currentValue(command.attribute)}"
+                                if (cn == "setLevel") {
+                                	//setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
+                                    if (device.currentValue("switch") == (params[0] > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
+                                }
             			        if (currentValue == "${params[0]}") {
                                 	doIt = false
                     				msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}($params) because current value is the same"
@@ -6474,6 +6479,10 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 				}                
 				if (device.hasCommand(command.name)) {
                 	def currentValue = "${device.currentValue(attribute)}"
+                    if (command.name == "setLevel") {
+                        //setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
+                        if (device.currentValue("switch") == (v > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
+                    }
                     if (currentValue == "$v") {
                     	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}($v) because current value is the same", null, "info"
                     } else {
