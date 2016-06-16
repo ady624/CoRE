@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.09a.20160616" }
+def version() {	return "v0.1.09b.20160616" }
 /*
+ *	 6/16/2016 >>> v0.1.09b.20160616 - Beta M1 - Fixed a bug with variable triggers/conditions
  *	 6/16/2016 >>> v0.1.09a.20160616 - Beta M1 - Weird atomicState issues - trying to fix Waits and Set Variable (global)...
  *	 6/15/2016 >>> v0.1.099.20160615 - Beta M1 - Allowing setLevel to run if switch is different from what setLevel would set
  *	 6/15/2016 >>> v0.1.098.20160615 - Beta M1 - Bug fix - error while trying to prevent redundant requests to devices
@@ -2610,19 +2611,23 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 				if (attr && attr.subscribe) {
 					attribute = attr.subscribe
 				}
-				if (capability && (capability.name == "variable") && (!!condition.var || !!condition.var.startsWith('@'))) {
+                log.trace "$capability $condition $devices"
+				if (capability && (capability.name == "variable") && (!condition.var || !condition.var.startsWith('@'))) {
 					//we don't want to subscribe to local variables
+                    log.trace "OOPS"
 					devices = null
 				}
 				if (devices) {
 					for (device in devices) {
 						def subscription = "${device.id}-${attribute}"
+                        log.trace "HERE $excludeSubscriptions"
 						if ((excludeSubscriptions == null) || !(excludeSubscriptions[subscription])) {
 							//if we're provided with an exclusion list, we don't subscribe to those devices/attributes events
 							if ((onlySubscriptions == null) || onlySubscriptions[subscription]) {
 								//if we're provided with a restriction list, we use it
 								if (!subscriptions[subscription]) {
 									subscriptions[subscription] = true //[deviceId: device.id, attribute: attribute]
+                                    log.trace "$subscription, $handler"
 									if (handler) {
 										//we only subscribe to the device if we're provided a handler (not simulating)
 										debug "Subscribing to events from $device for attribute $attribute, handler is $handler", null, "trace"
@@ -3281,8 +3286,13 @@ private preAuthorizeEvent(evt) {
 	//prevent one piston from retriggering itself
 	if (evt && (evt.name == "piston") && (evt.value == app.label)) return false
 	state.filterEvent = true
-	withEachTrigger(state.app.conditions, "preAuthorizeTrigger", evt)
-	if (state.filterEvent) withEachTrigger(state.app.otherConditions, "preAuthorizeTrigger", evt)
+    if (evt.name == "variable") {
+		withEachCondition(state.app.conditions, "preAuthorizeTrigger", evt)
+		if (state.filterEvent) withEachCondition(state.app.otherConditions, "preAuthorizeTrigger", evt)
+    } else {
+		withEachTrigger(state.app.conditions, "preAuthorizeTrigger", evt)
+		if (state.filterEvent) withEachTrigger(state.app.otherConditions, "preAuthorizeTrigger", evt)
+    }
 	if (state.filterEvent) debug "Received a '${evt.name}' event, but no trigger matches it, so we're not going to execute at this time."
 	return !state.filterEvent
 }
@@ -3291,7 +3301,7 @@ private preAuthorizeTrigger(condition, evt) {
 	if (!state.filterEvent) return
 	def attribute = evt.name
 	def value = evt.value
-		switch (evt.name) {
+    switch (evt.name) {
 		case "routineExecuted":
 			value = evt.displayName
 			break
