@@ -5667,7 +5667,7 @@ private processTasks() {
 	def perf = now()
 	def marker = now()
 	debug "Processing tasks (${version()})", 1, "trace"
-    //log.trace "Starting off with these tasks: ${atomicState.tasks}"
+    log.trace "Starting off with these tasks: ${atomicState.tasks}"
 	try {
 
 		def safetyNet = false
@@ -5751,6 +5751,7 @@ private processTasks() {
 						def n = "t$idx"
 						idx += 1
 						tasks[n] = t
+                        log.trace "Adding task [$n] >>> $t"
 					} else if (task.del) {
 						//delete a task
 						def dirty = true
@@ -5764,6 +5765,7 @@ private processTasks() {
 										(!task.deviceId || (task.deviceId == it.value?.deviceId)) &&
 										(!task.taskId || (task.taskId == it.value?.taskId))
 								) {
+                                    log.trace "Removing task [${it.key}] >>> ${it.value}"
 									tasks.remove(it.key)
 									dirty = true
 									break
@@ -5878,7 +5880,7 @@ private processTasks() {
         	found = true
 		}
         if (found) atomicState.tasks = tasks
-		//log.trace "We're now left with these tasks: $tasks"
+		log.trace "We're now left with these tasks: $tasks"
 		debug "Removing any existing ST safety nets", null, "trace"
 		unschedule(recoveryHandler)
 	} catch (e) {
@@ -8975,7 +8977,7 @@ private commands() {
 		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						attribute: "lock",		value: "locked",	],
 		[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						attribute: "lock",		value: "unlocked",	],
 		[ name: "take",										category: "Safety and Security",		group: "Control [devices]",			display: "Take a picture",				],
-		[ name: "alarm.off",								category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						attribute: "alarm",		value: "stop",	],
+		[ name: "alarm.off",								category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						attribute: "alarm",		value: "off",	],
 		[ name: "alarm.strobe",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe",						attribute: "alarm",		value: "strobe",	],
 		[ name: "alarm.siren",								category: "Safety and Security",		group: "Control [devices]",			display: "Siren",						attribute: "alarm",		value: "siren",	],
 		[ name: "alarm.both",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe and Siren",			attribute: "alarm",		value: "both",	],
