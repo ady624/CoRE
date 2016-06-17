@@ -20,6 +20,7 @@
 */
 def version() {	return "v0.1.09e.20160617" }
 /*
+ *	 6/17/2016 >>> v0.1.09f.20160617 - Beta M1 - Fixed a problem with time conditions/triggers that was preventing tasks to be completed after a piston save
  *	 6/17/2016 >>> v0.1.09e.20160617 - Beta M1 - Due to popular demand, we're bending the rules and allowing variables to be set immediately during condition evaluations - people expect these changes to affect the following conditions right away, not at next evaluation...
  *	 6/16/2016 >>> v0.1.09d.20160616 - Beta M1 - Fixed an issue with flow control tasks where IF blocks were not evaluating the condition correctly
  *	 6/16/2016 >>> v0.1.09c.20160616 - Beta M1 - Added "Adjust level". Modified "Fade to level" to include an optional start level - All "Fade to level" tasks need to be revisited and fixed.
@@ -1944,7 +1945,6 @@ def setVariable(name, value, system = false, globalVars = null) {
 				state.systemStore[name] = value
 			}
 		} else {
-        	//log.trace "Storing variable $name with value $value"
 			debug "Storing variable $name with value $value"
 			if (!parent) {
 				//we're using atomic state in parent app
@@ -5667,7 +5667,6 @@ private processTasks() {
 	def perf = now()
 	def marker = now()
 	debug "Processing tasks (${version()})", 1, "trace"
-    log.trace "Starting off with these tasks: ${atomicState.tasks}"
 	try {
 
 		def safetyNet = false
@@ -5684,12 +5683,11 @@ private processTasks() {
 			tasks = atomicState.tasks
 			tasks = tasks ? tasks : [:]
 			for (item in tasks.findAll{it.value?.type == "evt"}.sort{ it.value?.time }) {
-				def task = item.value
+				def task = item.value                
 				if (task.time <= now() + threshold) {
 					//remove from tasks
 					tasks.remove(item.key)
 					atomicState.tasks = tasks
-					//state.tasks = tasks
 					//throw away the task list as this procedure below may take time, making our list stale
 					//not to worry, we'll read it again on our next iteration
 					tasks = null
@@ -5751,7 +5749,6 @@ private processTasks() {
 						def n = "t$idx"
 						idx += 1
 						tasks[n] = t
-                        log.trace "Adding task [$n] >>> $t"
 					} else if (task.del) {
 						//delete a task
 						def dirty = true
@@ -5765,7 +5762,6 @@ private processTasks() {
 										(!task.deviceId || (task.deviceId == it.value?.deviceId)) &&
 										(!task.taskId || (task.taskId == it.value?.taskId))
 								) {
-                                    log.trace "Removing task [${it.key}] >>> ${it.value}"
 									tasks.remove(it.key)
 									dirty = true
 									break
@@ -5880,7 +5876,10 @@ private processTasks() {
         	found = true
 		}
         if (found) atomicState.tasks = tasks
-		log.trace "We're now left with these tasks: $tasks"
+        
+        //DO NOT REMOVE THE NEXT LINE - we need this line for instances that do not run the exitPoint()
+        state.tasks = tasks
+        
 		debug "Removing any existing ST safety nets", null, "trace"
 		unschedule(recoveryHandler)
 	} catch (e) {
