@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.09d.20160616" }
+def version() {	return "v0.1.09e.20160617" }
 /*
+ *	 6/17/2016 >>> v0.1.09e.20160617 - Beta M1 - Due to popular demand, we're bending the rules and allowing variables to be set immediately during condition evaluations - people expect these changes to affect the following conditions right away, not at next evaluation...
  *	 6/16/2016 >>> v0.1.09d.20160616 - Beta M1 - Fixed an issue with flow control tasks where IF blocks were not evaluating the condition correctly
  *	 6/16/2016 >>> v0.1.09c.20160616 - Beta M1 - Added "Adjust level". Modified "Fade to level" to include an optional start level - All "Fade to level" tasks need to be revisited and fixed.
  *	 6/16/2016 >>> v0.1.09b.20160616 - Beta M1 - Fixed a bug with variable triggers/conditions
@@ -541,7 +542,10 @@ private pageMainCoREPiston() {
 			}
 		}
 
-		section("Piston Restrictions") {
+
+
+		def hasRestrictions = settings[restrictionMode] || settings[restrictionAlarm] || settings[restrictionVariable] || settings[restrictionDOW] || settings[restrictionTimeFrom] || settings[restrictionSwitchOn] || settings[restrictionSwitchOff]
+		section(title: "Piston Restrictions", hideable: true, hidden: !hasRestrictions) {
 			input "restrictionMode", "mode", title: "Only execute in these modes", description: "Any location mode", required: false, multiple: true
 			input "restrictionAlarm", "enum", options: getAlarmSystemStatusOptions(), title: "Only execute during these alarm states", description: "Any alarm state", required: false, multiple: true
 			input "restrictionVariable", "enum", options: listVariables(true), title: "Only execute when variable matches", description: "Tap to choose a variable", required: false, multiple: false, submitOnChange: true
@@ -3339,7 +3343,7 @@ private exitPoint(milliseconds) {
 	setVariable("\$previousEventExecutionTime", milliseconds, true)
 	state.lastExecutionTime = milliseconds
 	try {
-		parent.updateChart("delay", lastEvent.delay)
+		if (lastEvent) parent.updateChart("delay", lastEvent.delay)
 		parent.updateChart("exec", milliseconds)
 	} catch(e) {
 		debug "ERROR: Could not update charts: $e", null, "error"
@@ -3415,32 +3419,32 @@ private broadcastEvent(evt, primary, secondary) {
 			}
 		}
 	}
+    //save previous event
+    setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
+    setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
+    setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
+    setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
+    setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
+    setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
+    setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)
+    def lastEvent = [
+        event: [
+            device: evt.device ? "${evt.device}" : evt.deviceId,
+            name: evt.name,
+            value: evt.value,
+            date: evt.date
+        ],
+        delay: delay
+    ]
+    state.lastEvent = lastEvent
+    setVariable("\$currentEventReceived", perf, true)
+    setVariable("\$currentEventDevice", lastEvent.event.device, true)
+    setVariable("\$currentEventDeviceIndex", 0, true)
+    setVariable("\$currentEventAttribute", lastEvent.event.name, true)
+    setVariable("\$currentEventValue", lastEvent.event.value, true)
+    setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
+    setVariable("\$currentEventDelay", lastEvent.delay, true)
 	if (allowed) {
-		//save previous event
-		setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
-		setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
-		setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
-		setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
-		setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
-		setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
-		setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)
-		def lastEvent = [
-			event: [
-				device: evt.device ? "${evt.device}" : evt.deviceId,
-				name: evt.name,
-				value: evt.value,
-				date: evt.date
-			],
-			delay: delay
-		]
-		state.lastEvent = lastEvent
-		setVariable("\$currentEventReceived", perf, true)
-		setVariable("\$currentEventDevice", lastEvent.event.device, true)
-		setVariable("\$currentEventDeviceIndex", 0, true)
-		setVariable("\$currentEventAttribute", lastEvent.event.name, true)
-		setVariable("\$currentEventValue", lastEvent.event.value, true)
-		setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
-		setVariable("\$currentEventDelay", lastEvent.delay, true)
 		if (!(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
 			def cache = atomicState.cache
 			cache = cache ? cache : [:]
@@ -5003,6 +5007,10 @@ private scheduleAction(action) {
 						//an aggregated command schedules one command task for the whole group
 						deviceId = null
 					}
+                    if ((!command.delay) && (time == rightNow) && (command.name == "setVariable")) {
+                    	//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values                        
+                        task_vcmd_setVariable(null, action, [data: data])
+                    }
 					scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
 					//an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
 					if (command.aggregated) break
