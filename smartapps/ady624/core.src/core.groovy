@@ -5974,7 +5974,11 @@ private processCommandTask(task) {
 			def msg = "Executing virtual command ${cn}"
 			def function = "task_vcmd_${sanitizeCommandName(cn)}"
 			def perf = now()
-			def result = "$function"(command.aggregated ? devices : device, action, task, suffix)
+            try {            
+				def result = "$function"(command.aggregated ? devices : device, action, task, suffix)
+            } catch (all) {
+				msg += " (ERROR EXECUTING TASK $task: $all)"
+            }
 			msg += " (${now() - perf}ms)"
 			if (state.sim) state.sim.cmds.push(msg)
 			debug msg, null, "info"
@@ -6000,7 +6004,7 @@ private processCommandTask(task) {
 					device."${cmd}"()
 				}
 			} catch (all) {
-				msg += " (ERROR: $all)"
+				msg += " (ERROR EXECUTING TASK $task: $all)"
 			}
 			msg += " (${now() - perf}ms)"
 			if (state.sim) state.sim.cmds.push(msg)
@@ -6055,7 +6059,7 @@ private processCommandTask(task) {
                             try {
                                 device."${cn}"(p)
                             } catch(all) {
-                                msg += " (ERROR)"
+                                msg += " (ERROR EXECUTING TASK $task: $all)"
                             }
                             msg += " (${now() - perf}ms)"
 							if (state.sim) state.sim.cmds.push(msg)
@@ -6085,7 +6089,7 @@ private processCommandTask(task) {
 								try {
 									device."${cn}"(params as Object[])
 								} catch(all) {
-									msg += " (ERROR)"
+                                    msg += " (ERROR EXECUTING TASK $task: $all)"
 								}
 								msg += " (${now() - perf}ms)"
                             }
@@ -6110,7 +6114,7 @@ private processCommandTask(task) {
 							try {
 								device."${cn}"()
 							} catch(all) {
-								msg += " (ERROR)"
+                                msg += " (ERROR EXECUTING TASK $task: $all)"
 							}
 							msg += " (${now() - perf}ms)"
                         }
