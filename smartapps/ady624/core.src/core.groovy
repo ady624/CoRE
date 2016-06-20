@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.105.20160620" }
+def version() {	return "v0.1.106.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.106.20160620 - Beta M1 - Fixed a bug with time scheduling at end of between interval
  *	 6/20/2016 >>> v0.1.105.20160620 - Beta M1 - Fixed color "Random" to be the same color for all devices in a task, added an "Execute during evaluation stage" option for Set Variable - this allows immediate setting of the variable, making it available to following condition evaluations
  *	 6/20/2016 >>> v0.1.104.20160620 - Beta M1 - Added $randomHue, $sunrise, and $sunset system variables
  *	 6/20/2016 >>> v0.1.103.20160620 - Beta M1 - Added fade/adjust for saturation and hue. May come in handy...
@@ -293,11 +294,12 @@ def pageGlobalVariables() {
 
 def pageStatistics() {
 	dynamicPage(name: "pageStatistics", title: "", install: false, uninstall: false) {
-		def apps = getChildApps()
+		def apps = getChildApps().sort{ it.label }
+        def running = apps.findAll{ it.getPistonEnabled() }.size()
 		section(title: "CoRE") {
 			paragraph mem(), title: "Memory Usage"
-			paragraph "${apps.size}", title: "Running pistons"
-			paragraph "0", title: "Paused pistons"
+			paragraph "${running}", title: "Running pistons"
+			paragraph "${apps.size - running}", title: "Paused pistons"
 			paragraph "${apps.size}", title: "Total pistons"
 		}
 
@@ -2548,20 +2550,15 @@ def initializeCoREPiston() {
         s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
         s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
 	]
-	state.run = "app"
-	initializeCoREPistonStore()
-	if (state.app.mode != "Follow-Up") {
-		//follow-up pistons don't subscribe to anything
-		subscribeToAll(state.app)
-	}
-	state.remove("config")
-	//uncomment next line to clear system store
 	setVariable("\$lastInitialized", now(), true)
-	setVariable("\$now", null, true)
-	setVariable("\$currentStateDuration", null, true)
 	setVariable("\$currentState", state.currentState, true)
 	setVariable("\$currentStateSince", state.currentStateSince, true)
-	processTasks()
+	state.remove("config")
+
+	if (state.app.enabled) {
+    	resume()
+    }
+    
 	debug "Done", -1
 	parent.refreshPistons()
 	//we need to finalize to write atomic state
@@ -4225,7 +4222,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 				break
 			case { comparison.contains("between") }:
 				def a1 = useDate1 ? m1 + o1 * 60000 : (useDate2 ? m2 - m2.mod(86400000) : lastMidnight) + addOffsetToMinutes(m1, o1) * 60000
-				def a2 = useDate2 ? m2 + o2 * 60000 : (useDate1 ? m1 - m1.mod(86400000) : lastMidnight) + addOffsetToMinutes(m2, o2) * 60000
+				def a2 = useDate2 ? m2 + o2 * 60000 : (useDate1 ? m1 - m1.mod(86400000) : lastMidnight) + addOffsetToMinutes(m2, o2) * 60000                
 				def mm = rightNow
 				if ((a1 > a2) && (!useDate1 || !useDate2)) {
 					//if a1 is after a2, and we haven't specified dates for both, increment a2 with 1 day to bring it after a1
@@ -4242,7 +4239,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 						return convertDateToUnixTime(a2)
 					} else {
 						//we're not in between the a1 and a2
-						return convertDateToUnixTime(a1 < mm ? (a2 < mm ? (useDate1 ? null : a1 + 86400000) : a2) : a1)
+						return convertDateToUnixTime(a1 <= mm ? (a2 <= mm ? (useDate1 ? null : a1 + 86400000) : a2) : a1)
 					}
 				}
 				if (comparison.contains("not")) {
@@ -5761,7 +5758,7 @@ private processTasks() {
 		}
 
 		//okay, now let's give the time triggers a chance to readjust
-		if (state.app?.mode != "Follow-Up") {
+		if (state.app?.enabled && (state.app?.mode != "Follow-Up")) {
 			scheduleTimeTriggers()
 		}
 
@@ -7189,6 +7186,10 @@ def getPistonTasks() {
 	return atomicState.tasks
 }
 
+def getPistonEnabled() {
+	return !!state.app?.enabled
+}
+
 def getPistonConditionDescription(condition) {
 	return (condition ? getConditionDescription(condition.id) : null)
 }
@@ -7214,12 +7215,19 @@ def getSummary() {
 def pause() {
 	state.app.enabled = false
 	if (state.config && state.config.app) state.config.app.enabled = false
+    unsubscribe()
+    state.tasks = [:]
 }
 
 def resume() {
 	state.app.enabled = true
-	if (state.config && state.config.app) state.config.app.enabled = true
+	if (state.config && state.config.app) state.config.app.enabled = true    
 	state.run = "app"
+	initializeCoREPistonStore()
+	if (state.app.mode != "Follow-Up") {
+		//follow-up pistons don't subscribe to anything
+		subscribeToAll(state.app)
+	}
 	processTasks()
 }
 
