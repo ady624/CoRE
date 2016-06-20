@@ -18,8 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.102.20160620" }
+def version() {	return "v0.1.104.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.104.20160620 - Beta M1 - Added $randomHue, $sunrise, and $sunset system variables
+ *	 6/20/2016 >>> v0.1.103.20160620 - Beta M1 - Added fade/adjust for saturation and hue. May come in handy...
  *	 6/20/2016 >>> v0.1.102.20160620 - Beta M1 - Fixed a problem with fadeLevel. Missed an s on "params"...
  *	 6/20/2016 >>> v0.1.101.20160620 - Beta M1 - Various bug fixes, removed the instant variable tasks introduced in v0.1.09e because they break anything like x = x + 1
  *	 6/17/2016 >>> v0.1.100.20160617 - Beta M1 - Allowing multiple variables in condition variable settings
@@ -1876,52 +1878,52 @@ def getVariable(name, forDisplay) {
 
 def getVariable(name) {
 	name = sanitizeVariableName(name)
-	if (name == "\$now") return now()
-	if (name == "\$hour24") return adjustTime().hours
-	if (name == "\$hour") {
-		def h = adjustTime().hours
-		return (h == 0 ? 12 : (h > 12 ? h - 12 : h))
-	}
-	if (name == "\$meridian") {
-		def h = adjustTime().hours
-		return ( h < 12 ? "AM" : "PM")
-	}
-	if (name == "\$meridianWithDots") {
-		def h = adjustTime().hours
-		return ( h <12 ? "A.M." : "P.M.")
-	}
-	if (name == "\$minute") return adjustTime().minutes
-	if (name == "\$second") return adjustTime().seconds
-	if (name == "\$time") {
-		def t = adjustTime()
-		def h = t.hours
-		def m = t.minutes
-		return (h == 0 ? 12 : (h > 12 ? h - 12 : h)) + ":" + (m < 10 ? "0$m" : "$m") + " " + (h <12 ? "A.M." : "P.M.")
-	}
-	if (name == "\$time24") {
-		def t = adjustTime()
-		def h = t.hours
-		def m = t.minutes
-		return h + ":" + (m < 10 ? "0$m" : "$m")
-	}
-	if (name == "\$day") return adjustTime().date
-	if (name == "\$dayOfWeek") return getDayOfWeekNumber()
-	if (name == "\$dayOfWeekName") return getDayOfWeekName()
-	if (name == "\$month") return adjustTime().month + 1
-	if (name == "\$monthName") return getMonthName()
-	if (name == "\$year") return adjustTime().year + 1900
-	if (name == "\$now") return now()
-	if (name == "\$random") return Math.random()
-	if (name == "\$randomColor") return getColorByName("Random").rgb
-	if (name == "\$randomColorName") return getColorByName("Random").name
-	if (name == "\$randomLevel") return (int)Math.round(100 * Math.random())
-	if (name == "\$currentStateDuration") {
-		try {
-			return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
-		} catch(all) {
-			return null
-		}
-	}
+    switch (name) {
+        case "\$now": return now()
+        case "\$hour24": return adjustTime().hours
+        case "\$hour":
+            def h = adjustTime().hours
+            return (h == 0 ? 12 : (h > 12 ? h - 12 : h))
+        case "\$meridian": 
+            def h = adjustTime().hours
+            return ( h < 12 ? "AM" : "PM")
+        case "\$meridianWithDots":
+            def h = adjustTime().hours
+            return ( h <12 ? "A.M." : "P.M.")
+        case "\$minute": return adjustTime().minutes
+        case "\$second": return adjustTime().seconds
+        case "\$time":
+            def t = adjustTime()
+            def h = t.hours
+            def m = t.minutes
+            return (h == 0 ? 12 : (h > 12 ? h - 12 : h)) + ":" + (m < 10 ? "0$m" : "$m") + " " + (h <12 ? "A.M." : "P.M.")
+        case "\$time24":
+            def t = adjustTime()
+            def h = t.hours
+            def m = t.minutes
+            return h + ":" + (m < 10 ? "0$m" : "$m")
+        case "\$day": return adjustTime().date
+        case "\$dayOfWeek": return getDayOfWeekNumber()
+        case "\$dayOfWeekName": return getDayOfWeekName()
+        case "\$month": return adjustTime().month + 1
+        case "\$monthName": return getMonthName()
+        case "\$year": return adjustTime().year + 1900
+        case "\$now": return now()
+        case "\$random": return Math.random()
+        case "\$randomColor": return getColorByName("Random").rgb
+        case "\$randomColorName": return getColorByName("Random").name
+        case "\$randomHue": return (int)Math.round(360 * Math.random())
+        case "\$randomLevel": return (int)Math.round(100 * Math.random())
+        case "\$sunrise": return getSunrise()
+        case "\$sunset": return getSunset()
+        case "\$currentStateDuration":
+            try {
+                return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
+            } catch(all) {
+                return null
+            }
+            return null
+    }
 	if (!name) return null
 	if (parent && name.startsWith("@")) {
 		return parent.getVariable(name)
@@ -6257,6 +6259,98 @@ private task_vcmd_adjustLevel(device, action, task, suffix = "") {
 	return true
 }
 
+
+private task_vcmd_fadeSaturation(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 3)) {
+		return false
+	}
+    def currentSaturation = cast(params[0].d, params[0].t)
+    if (currentSaturation == null) currentSaturation = cast(device.currentValue('saturation'), "number")
+	def saturation = cast(params[1].d, params[1].t)
+	def duration = cast(params[2].d, params[2].t)
+	def delta = saturation - currentSaturation
+	if (delta == 0) return
+	//we try to achieve 10 steps
+	def interval = Math.round(duration * 10)
+	def minInterval = 1000 //min interval is 1s
+	interval = interval > minInterval ? interval : minInterval
+	def steps = Math.ceil(duration * 1000 / interval)
+	//we're trying with a delay, not all devices support this
+	if (steps > 1) {
+		def oldSaturation = currentSaturation
+		for(def i = 1; i <= steps; i++) {
+			def newSaturation = Math.round(currentSaturation + delta * i / steps)
+			if (oldSaturation != newSaturation) {
+				device."setSaturation$suffix"(newSaturation, [delay: i * interval])
+			}
+			oldSaturation = newSaturation
+		}
+	}
+	return true
+}
+
+
+private task_vcmd_adjustSaturation(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 1)) {
+		return false
+	}
+    def currentSaturation = cast(device.currentValue('saturation'), "number")
+    def saturation = currentSaturation + cast(params[0].d, params[0].t)
+    saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
+	if (saturation == currentSaturation) return
+	device."setSaturation$suffix"(saturation)
+	return true
+}
+
+
+
+private task_vcmd_fadeHue(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setHueel$suffix") || (params.size() != 3)) {
+		return false
+	}
+    def currentHue = cast(params[0].d, params[0].t)
+    if (currentHue == null) currentHue = cast(device.currentValue('hue'), "decimal") * 3.6
+	def hue = cast(params[1].d, params[1].t)
+	def duration = cast(params[2].d, params[2].t)
+	def delta = hue - currentHue
+	if (delta == 0) return
+	//we try to achieve 10 steps
+	def interval = Math.round(duration * 10)
+	def minInterval = 1000 //min interval is 1s
+	interval = interval > minInterval ? interval : minInterval
+	def steps = Math.ceil(duration * 1000 / interval)
+	//we're trying with a delay, not all devices support this
+	if (steps > 1) {
+		def oldHue = currentHue
+		for(def i = 1; i <= steps; i++) {
+			def newHue = Math.round(currentHue + delta * i / steps)
+			if (oldHue != newHue) {
+				device."setHue$suffix"(newHue / 3.6, [delay: i * interval])
+			}
+			oldHue = newHue
+		}
+	}
+	return true
+}
+
+
+private task_vcmd_adjustHue(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 1)) {
+		return false
+	}
+    def currentHue = cast(device.currentValue('hue'), "decimal") * 3.6
+    def hue = currentHue + cast(params[0].d, params[0].t)
+    while (hue < 0) hue += 360
+    while (hue >= 360) hue -= 360 
+	if (hue == currentHue) return
+	device."setHue$suffix"(hue / 3.6)
+	return true
+}
+
 private task_vcmd_flash(device, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("on$suffix") || !device.hasCommand("off$suffix") || (params.size() != 3)) {
@@ -8321,7 +8415,7 @@ private formatMessage(message, params = null) {
 			def idx = var.isInteger() ? var.toInteger() : null
 			def value = ""
 			if (params && (idx >= 0) && (idx < params.size())) {
-				value = "${params[idx].d != null ? params[idx].d : "???"}"
+				value = "${params[idx].d != null ? params[idx].d : "(not set)"}"
 			} else {
 				value = getVariable(var, true)
 			}
@@ -9138,8 +9232,12 @@ private virtualCommands() {
 		[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
 		[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
 		[ name: "fadeLevelHW",			requires: ["setLevel"], 			display: "Fade to level (hardware)",		parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
-		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["?Start level (optional):level","Target level:level","Duration (seconds):number[1..600]"],															description: "Fade from {0}% to {1}% in {2}s",				],
-		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Adjust level",					parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust level by {0}",	],
+		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["?Start level (optional):level","Target level:level","Duration (seconds):number[1..600]"],															description: "Fade level from {0}% to {1}% in {2}s",				],
+		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Adjust level",					parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust level by {0}%",	],
+        [ name: "fadeSaturation",		requires: ["setSaturation"],		display: "Fade to saturation",				parameters: ["?Start saturation (optional):level","Target saturation:saturation","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
+		[ name: "adjustSaturation",		requires: ["setSaturation"],		display: "Adjust saturation",				parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust saturation by {0}%",	],
+		[ name: "fadeHue",				requires: ["setHue"], 				display: "Fade to hue",						parameters: ["?Start hue (optional):level","Target hue:hue","Duration (seconds):number[1..600]"],																description: "Fade hue from {0}° to {1}° in {2}s",				],
+		[ name: "adjustHue",			requires: ["setHue"], 				display: "Adjust hue",						parameters: ["Adjustment (+/-):number[-360..360]"],																												description: "Adjust hue by {0}°",	],
 		[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",		],
 		[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
 		[ name: "flash#2",				requires: ["on2", "off2"], 			display: "Flash #2",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #2 {0}ms/{1}ms for {2} time(s)",	],
@@ -9407,6 +9505,8 @@ private initialSystemStore() {
 		"\$randomColor": "#FFFFFF",
 		"\$randomColorName": "White",
 		"\$randomLevel": 0,
+        "\$sunrise": 999999999999,
+        "\$sunset": 999999999999,
 		"\$time": "",
 		"\$time24": "",
 	]
