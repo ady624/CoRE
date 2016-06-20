@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.108.20160620" }
+def version() {	return "v0.1.109.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.109.20160620 - Beta M1 - Added $nextSunrise, $nextSunset, $midnight, $nextMidnight, $noon, and $nextNoon
  *	 6/20/2016 >>> v0.1.108.20160620 - Beta M1 - Improved time variables, using a custom time in a time variable will always yield today's date at the selected time
  *	 6/20/2016 >>> v0.1.107.20160620 - Beta M1 - Fixed a bug preventing the device cache from working properly
  *	 6/20/2016 >>> v0.1.106.20160620 - Beta M1 - Fixed a bug with time scheduling at end of between interval
@@ -1910,7 +1911,7 @@ def getVariable(name) {
         case "\$year": return adjustTime().year + 1900
         case "\$now": return now()
         case "\$random":
-        	def result = getRandomValue(name) ?: (int)Math.random()
+        	def result = getRandomValue(name) ?: (float)Math.random()
             setRandomValue(name, result)
             return result
         case "\$randomColor":
@@ -1929,8 +1930,37 @@ def getVariable(name) {
         	def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
             setRandomValue(name, result)
             return result
-        case "\$sunrise": return convertDateToUnixTime(getSunrise())
-        case "\$sunset": return convertDateToUnixTime(getSunset())
+        case "\$midnight":
+            def rightNow = adjustTime().time
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000))
+        case "\$nextMidnight":
+            def rightNow = adjustTime().time
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 86400000)
+        case "\$noon":
+            def rightNow = adjustTime().time
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 43200000)
+        case "\$nextNoon":
+            def rightNow = adjustTime().time
+            if (rightNow - rightNow.mod(86400000) + 43200000 < rightNow) rightNow += 86400000
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 43200000)
+        case "\$sunrise":
+        	def sunrise = getSunrise()
+            def rightNow = adjustTime().time
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunrise.hours * 3600000 + sunrise.minutes * 60000)
+        case "\$nextSunrise":
+        	def sunrise = getSunrise()
+            def rightNow = adjustTime().time
+            if (sunrise.time < rightNow) rightNow += 86400000
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunrise.hours * 3600000 + sunrise.minutes * 60000)
+        case "\$sunset":
+        	def sunset = getSunset()
+            def rightNow = adjustTime().time
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunset.hours * 3600000 + sunset.minutes * 60000)        
+        case "\$nextSunset":
+        	def sunset = getSunset()
+            def rightNow = adjustTime().time
+            if (sunset.time < rightNow) rightNow += 86400000
+            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunset.hours * 3600000 + sunset.minutes * 60000)        
         case "\$currentStateDuration":
             try {
                 return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
@@ -2308,6 +2338,7 @@ def api_getDashboardData() {
 		result.variables[variable.key] = getVariable(variable.key, true)
 	}
 	result.variables = result.variables.sort{ it.key }
+    result.now = now()
 	return result
 }
 
@@ -9553,8 +9584,14 @@ private initialSystemStore() {
 		"\$randomColor": "#FFFFFF",
 		"\$randomColorName": "White",
 		"\$randomLevel": 0,
+        "\$midnight": 999999999999,
+        "\$noon": 999999999999,
         "\$sunrise": 999999999999,
         "\$sunset": 999999999999,
+        "\$nextMidnight": 999999999999,
+        "\$nextNoon": 999999999999,
+        "\$nextSunrise": 999999999999,
+        "\$nextSunset": 999999999999,
 		"\$time": "",
 		"\$time24": "",
 	]
