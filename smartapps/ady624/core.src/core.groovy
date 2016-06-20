@@ -18,8 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.09e.20160617" }
+def version() {	return "v0.1.101.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.101.20160620 - Beta M1 - Various bug fixes, removed the instant variable tasks introduced in v0.1.09e because they break anything like x = x + 1
+ *	 6/17/2016 >>> v0.1.100.20160617 - Beta M1 - Allowing multiple variables in condition variable settings
  *	 6/17/2016 >>> v0.1.09f.20160617 - Beta M1 - Fixed a problem with time conditions/triggers that was preventing tasks to be completed after a piston save
  *	 6/17/2016 >>> v0.1.09e.20160617 - Beta M1 - Due to popular demand, we're bending the rules and allowing variables to be set immediately during condition evaluations - people expect these changes to affect the following conditions right away, not at next evaluation...
  *	 6/16/2016 >>> v0.1.09d.20160616 - Beta M1 - Fixed an issue with flow control tasks where IF blocks were not evaluating the condition correctly
@@ -1935,6 +1937,14 @@ def getVariable(name) {
 def setVariable(name, value, system = false, globalVars = null) {
 	name = sanitizeVariableName(name)
 	if (!name) return
+    if (name.contains(",")) {
+    	//multi variables
+        def vars = name.tokenize(",")
+        for (var in vars) {
+        	setVariable(var, value, system, globalVars)
+        }
+        return
+    }
 	if (parent && name.startsWith("@")) {
     	def gv = state.globalVars instanceof Map ? state.globalVars : [:]
         parent.setVariable(name, value, false, gv)
@@ -2075,8 +2085,8 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
 		//look for variables set during conditions
 		def list = settings.findAll{it.key.startsWith("condVar") && !it.key.contains("#")}
 		for (it in list) {
-			def var = sanitizeVariableName(it.value)
-			if (var) {
+			def vars = sanitizeVariableName(it.value).tokenize(",")
+			for (var in vars) {
 				if (var.startsWith("@")) {
 					//global
 					if (listGlobal && !(var in parentResult)) {
@@ -2100,8 +2110,8 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
 			if (it.value) {
 				def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
 				if (virtualCommand && (virtualCommand.varEntry != null)) {
-					def var = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"])
-					if (var) {
+					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"]).tokenize(",")
+					for (var in vars) {
 						if (var.startsWith("@")) {
 							//global
 							if (!(var in parentResult)) {
@@ -2145,8 +2155,8 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
 			if (it.value) {
 				def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
 				if (virtualCommand && (virtualCommand.stateVarEntry != null)) {
-					def var = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.stateVarEntry}"])
-					if (var) {
+					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.stateVarEntry}"]).tokenize(",")
+					for (var in vars) {
 						if (var.startsWith("@")) {
 							//global
 							if (!(var in parentResult)) {
@@ -5007,10 +5017,12 @@ private scheduleAction(action) {
 						//an aggregated command schedules one command task for the whole group
 						deviceId = null
 					}
+                    /* this section below was added in v0.1.09e and removed in v0.1.101 because it breaks constructions like x = x + 1
                     if ((!command.delay) && (time == rightNow) && (command.name == "setVariable")) {
                     	//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values                        
                         task_vcmd_setVariable(null, action, [data: data])
                     }
+                    */
 					scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
 					//an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
 					if (command.aggregated) break
@@ -9121,7 +9133,7 @@ private virtualCommands() {
 		[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
 		[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
 		[ name: "fadeLevelHW",			requires: ["setLevel"], 			display: "Fade to level (hardware)",		parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
-		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["?Start level (optional):level","Target level:level","Duration (seconds):number[1..600]"],															description: "Fade from {0} to {1}% in {2}s",				],
+		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["?Start level (optional):level","Target level:level","Duration (seconds):number[1..600]"],															description: "Fade from {0}% to {1}% in {2}s",				],
 		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Adjust level",					parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust level by {0}",	],
 		[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",		],
 		[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
