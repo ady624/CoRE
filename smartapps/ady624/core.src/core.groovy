@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.101.20160620" }
+def version() {	return "v0.1.102.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.102.20160620 - Beta M1 - Fixed a problem with fadeLevel. Missed an s on "params"...
  *	 6/20/2016 >>> v0.1.101.20160620 - Beta M1 - Various bug fixes, removed the instant variable tasks introduced in v0.1.09e because they break anything like x = x + 1
  *	 6/17/2016 >>> v0.1.100.20160617 - Beta M1 - Allowing multiple variables in condition variable settings
  *	 6/17/2016 >>> v0.1.09f.20160617 - Beta M1 - Fixed a problem with time conditions/triggers that was preventing tasks to be completed after a piston save
@@ -6217,7 +6218,7 @@ private task_vcmd_fadeLevel(device, action, task, suffix = "") {
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 3)) {
 		return false
 	}
-    def currentLevel = cast(param[0].d, params[0].t)
+    def currentLevel = cast(params[0].d, params[0].t)
     if (currentLevel == null) currentLevel = cast(device.currentValue('level'), "number")
 	def level = cast(params[1].d, params[1].t)
 	def duration = cast(params[2].d, params[2].t)
