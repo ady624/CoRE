@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.104.20160620" }
+def version() {	return "v0.1.105.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.105.20160620 - Beta M1 - Fixed color "Random" to be the same color for all devices in a task, added an "Execute during evaluation stage" option for Set Variable - this allows immediate setting of the variable, making it available to following condition evaluations
  *	 6/20/2016 >>> v0.1.104.20160620 - Beta M1 - Added $randomHue, $sunrise, and $sunset system variables
  *	 6/20/2016 >>> v0.1.103.20160620 - Beta M1 - Added fade/adjust for saturation and hue. May come in handy...
  *	 6/20/2016 >>> v0.1.102.20160620 - Beta M1 - Fixed a problem with fadeLevel. Missed an s on "params"...
@@ -1394,8 +1395,8 @@ def pageAction(params) {
 													state.taskIndent = 0
 													def desc = getTaskDescription(task)
 													desc = "$desc".tokenize("=")
-													def title = desc.size() == 2 ? desc[0].trim() : "Set variable..."
-													def description = desc.size() == 2 ? desc[1].trim() : null
+													def title = desc && desc.size() == 2 ? desc[0].trim() : "Set variable..."
+													def description = desc && desc.size() == 2 ? desc[1].trim() : null
 													href "pageSetVariable", params: [actionId: id, taskId: tid], title: title, description: description, required: true, state: description ? "complete" : null, submitOnChange: true
 													if (description) {
 														def value = task_vcmd_setVariable(null, action, task, true)
@@ -1468,6 +1469,7 @@ def pageAction(params) {
 							}
 						}
 					}
+                    
 					section() {
 						input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
 					}
@@ -1568,60 +1570,54 @@ private pageSetVariable(params) {
 		section("Variable") {
 			input "actParam$aid#$tid-0", "text", title: "Variable name", required: true, submitOnChange: true, capitalization: "none"
 			input "actParam$aid#$tid-1", "enum", title: "Variable data type", options: ["boolean", "decimal", "number", "string", "time"], required: true, submitOnChange: true
-			input "actParam$aid#$tid-2", "bool", title: "I know algebra ☺", options: ["boolean", "decimal", "number", "string", "time"], required: true, submitOnChange: true
+			input "actParam$aid#$tid-2", "bool", title: "Execute during evaluation stage", required: true, defaultValue: false
 			//input "actParam$aid#$tid-3", "text", title: "Formula", required: true, submitOnChange: true
 		}
-		def algebra = settings["actParam$aid#$tid-2"]
+		def immediate = settings["actParam$aid#$tid-2"]
 		def dataType = settings["actParam$aid#$tid-1"]
-		if (algebra) {
-			section() {
-				paragraph "Well, too bad. The algebra section is not yet complete..."
-			}
-		} else {
-			def i = 1
-			def operation = ""
-			while (dataType) {
-				def a1 = i * 4
-				def a2 = a1 + 1
-				def a3 = a2 + 1
-				def op = a3 + 1
-				def secondaryDataType = (i == 1 ? dataType : (dataType == "time" ? "decimal" : dataType))
-				section(formatOrdinalNumberName(i).capitalize() + " operand") {
-					def val = settings["actParam$aid#$tid-$a1"] != null
-					def var = settings["actParam$aid#$tid-$a2"]
-					if (val || (val == 0) || !var) {
-						def inputType = secondaryDataType == "boolean" ? "enum" : secondaryDataType
-						input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: dataType != "string", submitOnChange: true, capitalization: "none"
-					}
-					if (var || !val) {
-						input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: dataType != "string", submitOnChange: true
-					}
-					if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
-						input "actParam$aid#$tid-$a3", "enum", options: ["seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
-					}
-				}
-				operation = settings["actParam$aid#$tid-$op"]
-				if (operation) operation = "$operation"
-				section(title: operation ? "" : "Add operation") {
-					def opts = []
-					switch (dataType) {
-						case "boolean":
-							opts += ["AND", "OR"]
-							break
-						case "string":
-							opts += ["+ (concatenate)"]
-							break
-						case "number":
-						case "decimal":
-						case "time":
-							opts += ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"]
-							break
-					}
-					input "actParam$aid#$tid-$op", "enum", title: "Operation", options: opts, required: false, submitOnChange: true
-				}
-				i += 1
-				if (!operation || i > 10) break
-			}
+        def i = 1
+        def operation = ""
+        while (dataType) {
+            def a1 = i * 4
+            def a2 = a1 + 1
+            def a3 = a2 + 1
+            def op = a3 + 1
+            def secondaryDataType = (i == 1 ? dataType : (dataType == "time" ? "decimal" : dataType))
+            section(formatOrdinalNumberName(i).capitalize() + " operand") {
+                def val = settings["actParam$aid#$tid-$a1"] != null
+                def var = settings["actParam$aid#$tid-$a2"]
+                if (val || (val == 0) || !var) {
+                    def inputType = secondaryDataType == "boolean" ? "enum" : secondaryDataType
+                    input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: dataType != "string", submitOnChange: true, capitalization: "none"
+                }
+                if (var || !val) {
+                    input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: dataType != "string", submitOnChange: true
+                }
+                if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
+                    input "actParam$aid#$tid-$a3", "enum", options: ["seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
+                }
+            }
+            operation = settings["actParam$aid#$tid-$op"]
+            if (operation) operation = "$operation"
+            section(title: operation ? "" : "Add operation") {
+                def opts = []
+                switch (dataType) {
+                    case "boolean":
+                    opts += ["AND", "OR"]
+                    break
+                    case "string":
+                    opts += ["+ (concatenate)"]
+                    break
+                    case "number":
+                    case "decimal":
+                    case "time":
+                    opts += ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"]
+                    break
+                }
+                input "actParam$aid#$tid-$op", "enum", title: "Operation", options: opts, required: false, submitOnChange: true
+            }
+            i += 1
+            if (!operation || i > 10) break
 		}
 		section("Initialize variables") {
 			href "pageInitializeVariable", title: "Initialize a variable"
@@ -1909,11 +1905,26 @@ def getVariable(name) {
         case "\$monthName": return getMonthName()
         case "\$year": return adjustTime().year + 1900
         case "\$now": return now()
-        case "\$random": return Math.random()
-        case "\$randomColor": return getColorByName("Random").rgb
-        case "\$randomColorName": return getColorByName("Random").name
-        case "\$randomHue": return (int)Math.round(360 * Math.random())
-        case "\$randomLevel": return (int)Math.round(100 * Math.random())
+        case "\$random":
+        	def result = getRandomValue(name) ?: (int)Math.random()
+            setRandomValue(name, result)
+            return result
+        case "\$randomColor":
+        	def result = getRandomValue(name) ?: getColorByName("Random").rgb
+            setRandomValue(name, result)
+            return result
+        case "\$randomColorName":
+        	def result = getRandomValue(name) ?: getColorByName("Random").name
+            setRandomValue(name, result)
+            return result
+        case "\$randomHue":
+        	def result = getRandomValue(name) ?: (int)Math.round(360 * Math.random())
+            setRandomValue(name, result)
+            return result
+        case "\$randomLevel":
+        	def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
+            setRandomValue(name, result)
+            return result
         case "\$sunrise": return getSunrise()
         case "\$sunset": return getSunset()
         case "\$currentStateDuration":
@@ -2037,6 +2048,23 @@ def setStateVariable(name, value, global = false) {
 	}
 }
 
+private getRandomValue(name) {
+	state.temp = state.temp ?: [:]
+    state.temp.randoms = state.temp.randoms ?: [:]
+    return state.temp?.randoms[name]
+}
+
+private setRandomValue(name, value) {
+	state.temp = state.temp ?: [:]
+    state.temp.randoms = state.temp.randoms ?: [:]
+    state.temp.randoms[name] = value
+}
+
+private resetRandomValues() {
+	state.temp = state.temp ?: [:]
+    state.temp.randoms = [:]
+}
+
 private testDataType(value, dataType) {
 	if (!dataType || !value) return true
 	switch (dataType) {
@@ -2088,32 +2116,36 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
 		//look for variables set during conditions
 		def list = settings.findAll{it.key.startsWith("condVar") && !it.key.contains("#")}
 		for (it in list) {
-			def vars = sanitizeVariableName(it.value).tokenize(",")
-			for (var in vars) {
-				if (var.startsWith("@")) {
-					//global
-					if (listGlobal && !(var in parentResult)) {
-						if (!dataType || testDataType(it.value, dataType)) {
-							parentResult.push(var)
-						}
-					}
-				} else {
-					//local
-					if (listLocal && !(var in result)) {
-						if (!dataType || testDataType(it.value, dataType)) {
-							result.push(var)
-						}
-					}
-				}
+        	if (it.value instanceof String) {
+                def vars = sanitizeVariableName(it.value)
+                if (vars instanceof String) vars = vars.tokenize(",")
+                for (var in vars) {
+                    if (var.startsWith("@")) {
+                        //global
+                        if (listGlobal && !(var in parentResult)) {
+                            if (!dataType || testDataType(it.value, dataType)) {
+                                parentResult.push(var)
+                            }
+                        }
+                    } else {
+                        //local
+                        if (listLocal && !(var in result)) {
+                            if (!dataType || testDataType(it.value, dataType)) {
+                                result.push(var)
+                            }
+                        }
+                    }
+                }
 			}
 		}
 		//look for tasks that set variables...
 		list = settings.findAll{it.key.startsWith("actTask")}
 		for (it in list) {
-			if (it.value) {
+			if (it.value instanceof String) {
 				def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
 				if (virtualCommand && (virtualCommand.varEntry != null)) {
-					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"]).tokenize(",")
+					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"])
+                    if (vars instanceof String) vars = vars.tokenize(",")
 					for (var in vars) {
 						if (var.startsWith("@")) {
 							//global
@@ -2155,7 +2187,7 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
 		//look for variables set during conditions
 		def list = settings.findAll{it.key.startsWith("actTask")}
 		for (it in list) {
-			if (it.value) {
+        	if (it.value instanceof String) {
 				def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
 				if (virtualCommand && (virtualCommand.stateVarEntry != null)) {
 					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.stateVarEntry}"]).tokenize(",")
@@ -2976,7 +3008,7 @@ private updateAction(action) {
 						//data type
 						def dataType = settings["actParam$id#$tid-1"]
 						task.p.push([i: 1, t: "text", d: dataType])
-						//algebra
+						//immediate
 						task.p.push([i: 2, t: "bool", d: !!settings["actParam$id#$tid-2"]])
 						//formula
 						task.p.push([i: 3, t: "text", d: settings["actParam$id#$tid-3"]])
@@ -3148,42 +3180,38 @@ private getTaskDescription(task) {
 				if (task.p.size() < 7) return "[ERROR]"
 				def name = task.p[0].d
 				def dataType = task.p[1].d
-				def algebra = !!task.p[2].d
+				def immediate = !!task.p[2].d
 				if (!name || !dataType) return "[ERROR]"
-				result = "Set $dataType variable {$name} = "
-				if (algebra) {
-					return result + "<complex algebra not ready yet>"
-				} else {
-					def i = 4
-					def grouping = false
-					def groupingUnit = ""
-					while (true) {
-						def value = task.p[i].d
-						//null strings are really blanks
-						if ((dataType == "string") && (value == null)) value = ""
-						def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
-						def unit = (dataType == "time" ? task.p[i + 2].d : null)
-						def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null
-						def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
-						if (needsGrouping) {
-							//these operations require grouping i.e. (a * b * c) seconds
-							if (!grouping) {
-								grouping = true
-								groupingUnit = unit
-								result += "("
-							}
-						}
-						//add the value/variable
-						result += variable + (!grouping && unit ? " $unit" : "")
-						if (grouping && !needsGrouping) {
-							//these operations do NOT require grouping
-							grouping = false
-							result += ")${groupingUnit ? " $groupingUnit" : ""}"
-						}
-						if (!operation) break
-						result += " $operation "
-						i += 4
-					}
+				result = "${immediate ? "Immediately set" : "Set"} $dataType variable {$name} = "
+                def i = 4
+                def grouping = false
+                def groupingUnit = ""
+                while (true) {
+                    def value = task.p[i].d
+                    //null strings are really blanks
+                    if ((dataType == "string") && (value == null)) value = ""
+                    def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
+                    def unit = (dataType == "time" ? task.p[i + 2].d : null)
+                    def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null
+                    def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+                    if (needsGrouping) {
+                        //these operations require grouping i.e. (a * b * c) seconds
+                        if (!grouping) {
+                            grouping = true
+                            groupingUnit = unit
+                            result += "("
+                        }
+                    }
+                    //add the value/variable
+                    result += variable + (!grouping && unit ? " $unit" : "")
+                    if (grouping && !needsGrouping) {
+                        //these operations do NOT require grouping
+                        grouping = false
+                        result += ")${groupingUnit ? " $groupingUnit" : ""}"
+                    }
+                    if (!operation) break
+                    result += " $operation "
+                    i += 4
 				}
 			} else if (cmd.name == "setColor") {
 				result = "Set color to "
@@ -4789,6 +4817,7 @@ private scheduleAction(action) {
 		def x = 0
 		def cnt = 0
 		while (true) {
+        	resetRandomValues()
 			//make sure x is within task list
 			if ((x == null) || (x < 0) || (x >= tasks.size())) break
 			cnt += 1
@@ -5020,13 +5049,12 @@ private scheduleAction(action) {
 						//an aggregated command schedules one command task for the whole group
 						deviceId = null
 					}
-                    /* this section below was added in v0.1.09e and removed in v0.1.101 because it breaks constructions like x = x + 1
-                    if ((!command.delay) && (time == rightNow) && (command.name == "setVariable")) {
+                    if ((!command.delay) && (time == rightNow) && (command.name == "setVariable") && (data.p) && (data.p.size() >= 3) && (data.p[2].d)) {
                     	//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values                        
                         task_vcmd_setVariable(null, action, [data: data])
+                    } else {
+						scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
                     }
-                    */
-					scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
 					//an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
 					if (command.aggregated) break
 				}
@@ -6045,7 +6073,7 @@ private processCommandTask(task) {
 							def lightness = params[4]
 							def p = [:]
 							if (name) {
-								def color = getColorByName(name)
+								def color = getColorByName(name, task.ownerId, task.taskId)
 								p.hue = color.h / 3.6
 								p.saturation = color.s
 								//ST wrongly calls this level - it's lightness
@@ -6677,6 +6705,7 @@ private task_vcmd_saveAttribute(devices, action, task, simulate = false) {
 	}
 	def attribute = cleanUpAttribute(params[0].d)
 	def aggregation = params[1].d
+    if (!aggregation) aggregation = "First"
 	def dataType = params[2].d
 	def variable = params[3].d
 	//work, work, work
@@ -6857,157 +6886,152 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
 			result = 0
 			break
 	}
-	def algebra = !!params[2].d
-	if (algebra) {
-		//no complex algebra yet :(
-		return simulate ? null : false
-	} else {
-		try {
-			def i = 4
-			def grouping = false
-			def groupingUnit = ""
-			def groupingIndex = null
-			def groupingResult = null
-			def groupingOperation = null
-			def previousOperation = null
-			def operation = null
-			def subDataType = dataType
-			def idx = 0
-			while (true) {
-				def value = params[i].d
-				def variable = params[i + 1].d
-				if (!value) {
-					//we get the value of the variable
-					if (subDataType in ["time"]) {
-						value = adjustTime(getVariable(variable)).time
-					} else {
-						value = cast(getVariable(variable, dataType in ["string", "text"]), subDataType)
-					}
-				} else {
-					value = cast(value, subDataType)
-				}
-				if (i == 4) {
-					//initial values
-					result = cast(value, dataType)
-				}
-				def unit = (dataType == "time" ? params[i + 2].d : null)
-				previousOperation = operation
-				operation = params.size() > i + 3 ? "${params[i + 3].d} ".tokenize(" ")[0] : null
-				def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
-				def skip = idx == 0
-				if (needsGrouping) {
-					//these operations require grouping i.e. (a * b * c) seconds
-					if (!grouping) {
-						grouping = true
-						groupingIndex = idx
-						groupingUnit = unit
-						groupingOperation = previousOperation
-						groupingResult = value
-						skip = true
-					}
-				}
-				//add the value/variable
-				subDataType = subDataType == "time" ? "long" : subDataType
-				if (!skip) {
-					def operand1 = grouping ? groupingResult : result
-					def operand2 = value
-					if (groupingUnit ? groupingUnit : unit) {
-						switch (unit) {
-							case "seconds":
-							operand2 = operand2 * 1000
-							break
-							case "minutes":
-							operand2 = operand2 * 60000
-							break
-							case "hours":
-							operand2 = operand2 * 3600000
-							break
-							case "days":
-							operand2 = operand2 * 86400000
-							break
-							case "weeks":
-							operand2 = operand2 * 604800000
-							break
-							case "months":
-							operand2 = operand2 * 2592000000
-							break
-							case "years":
-							operand2 = operand2 * 31536000000
-							break
-						}
-					}
-					//reset the group unit - we only apply it once
-					groupingUnit = null
-					def res = null
-					switch (previousOperation) {
-						case "AND":
-						res = cast(operand1 && operand2, subDataType)
-						break
-						case "OR":
-						res = cast(operand1 || operand2, subDataType)
-						break
-						case "+":
-						res = cast(operand1 + operand2, subDataType)
-						break
-						case "-":
-						res = cast(operand1 - operand2, subDataType)
-						break
-						case "*":
-						res = cast(operand1 * operand2, subDataType)
-						break
-						case "÷":
-						if (!operand2) return null
-						res = cast(operand1 / operand2, subDataType)
-						break
-					}
-					if (grouping) {
-						groupingResult = res
-					} else {
-						result = res
-					}
-				}
-				skip = false
-				if (grouping && !needsGrouping) {
-					//these operations do NOT require grouping
-					//ungroup
-					if (!groupingOperation) {
-						result = groupingResult
-					} else {
-						def operand1 = result
-						def operand2 = groupingResult
+	def immediate = !!params[2].d
+    try {
+        def i = 4
+        def grouping = false
+        def groupingUnit = ""
+        def groupingIndex = null
+        def groupingResult = null
+        def groupingOperation = null
+        def previousOperation = null
+        def operation = null
+        def subDataType = dataType
+        def idx = 0
+        while (true) {
+            def value = params[i].d
+            def variable = params[i + 1].d
+            if (!value) {
+                //we get the value of the variable
+                if (subDataType in ["time"]) {
+                    value = adjustTime(getVariable(variable)).time
+                } else {
+                    value = cast(getVariable(variable, dataType in ["string", "text"]), subDataType)
+                }
+            } else {
+                value = cast(value, subDataType)
+            }
+            if (i == 4) {
+                //initial values
+                result = cast(value, dataType)
+            }
+            def unit = (dataType == "time" ? params[i + 2].d : null)
+            previousOperation = operation
+            operation = params.size() > i + 3 ? "${params[i + 3].d} ".tokenize(" ")[0] : null
+            def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+            def skip = idx == 0
+            if (needsGrouping) {
+                //these operations require grouping i.e. (a * b * c) seconds
+                if (!grouping) {
+                    grouping = true
+                    groupingIndex = idx
+                    groupingUnit = unit
+                    groupingOperation = previousOperation
+                    groupingResult = value
+                    skip = true
+                }
+            }
+            //add the value/variable
+            subDataType = subDataType == "time" ? "long" : subDataType
+            if (!skip) {
+                def operand1 = grouping ? groupingResult : result
+                def operand2 = value
+                if (groupingUnit ? groupingUnit : unit) {
+                    switch (unit) {
+                        case "seconds":
+                        operand2 = operand2 * 1000
+                        break
+                        case "minutes":
+                        operand2 = operand2 * 60000
+                        break
+                        case "hours":
+                        operand2 = operand2 * 3600000
+                        break
+                        case "days":
+                        operand2 = operand2 * 86400000
+                        break
+                        case "weeks":
+                        operand2 = operand2 * 604800000
+                        break
+                        case "months":
+                        operand2 = operand2 * 2592000000
+                        break
+                        case "years":
+                        operand2 = operand2 * 31536000000
+                        break
+                    }
+                }
+                //reset the group unit - we only apply it once
+                groupingUnit = null
+                def res = null
+                switch (previousOperation) {
+                    case "AND":
+                    res = cast(operand1 && operand2, subDataType)
+                    break
+                    case "OR":
+                    res = cast(operand1 || operand2, subDataType)
+                    break
+                    case "+":
+                    res = cast(operand1 + operand2, subDataType)
+                    break
+                    case "-":
+                    res = cast(operand1 - operand2, subDataType)
+                    break
+                    case "*":
+                    res = cast(operand1 * operand2, subDataType)
+                    break
+                    case "÷":
+                    if (!operand2) return null
+                    res = cast(operand1 / operand2, subDataType)
+                    break
+                }
+                if (grouping) {
+                    groupingResult = res
+                } else {
+                    result = res
+                }
+            }
+            skip = false
+            if (grouping && !needsGrouping) {
+                //these operations do NOT require grouping
+                //ungroup
+                if (!groupingOperation) {
+                    result = groupingResult
+                } else {
+                    def operand1 = result
+                    def operand2 = groupingResult
 
-						switch (groupingOperation) {
-							case "AND":
-							result = cast(operand1 && operand2, subDataType)
-							break
-							case "OR":
-							result = cast(operand1 || operand2, subDataType)
-							break
-							case "+":
-							result = cast(operand1 + operand2, subDataType)
-							break
-							case "-":
-							result = cast(operand1 - operand2, subDataType)
-							break
-							case "*":
-							result = cast(operand1 * operand2, subDataType)
-							break
-							case "÷":
-							if (!operand2) return null
-							result = cast(operand1 / operand2, subDataType)
-							break
-						}
-					}
-					grouping = false
-				}
-				if (!operation) break
-				i += 4
-				idx += 1
-			}
-		} catch (e) {
-			return simulate ? null : false
-		}
-	}
+                    switch (groupingOperation) {
+                        case "AND":
+                        result = cast(operand1 && operand2, subDataType)
+                        break
+                        case "OR":
+                        result = cast(operand1 || operand2, subDataType)
+                        break
+                        case "+":
+                        result = cast(operand1 + operand2, subDataType)
+                        break
+                        case "-":
+                        result = cast(operand1 - operand2, subDataType)
+                        break
+                        case "*":
+                        result = cast(operand1 * operand2, subDataType)
+                        break
+                        case "÷":
+                        if (!operand2) return null
+                        result = cast(operand1 / operand2, subDataType)
+                        break
+                    }
+                }
+                grouping = false
+            }
+            if (!operation) break
+            i += 4
+            idx += 1
+        }
+    } catch (e) {
+        return simulate ? null : false
+    }
 	if (dataType in ["string", "text"]) {
 		result = formatMessage(result)
 	} else if (dataType in ["time"]) {
@@ -9665,11 +9689,13 @@ private colorOptions() {
 	return colors()*.name
 }
 
-private getColorByName(name) {
-	if (name == "Random") {
+private getColorByName(name, ownerId = null, taskId = null) {
+	if (name == "Random") {    	
 		//randomize the color
-		def idx = 6 + Math.round(Math.random() * (colors().size() - 7)) as Integer
-		return colors()[idx]
+        def valName = "$ownerId-$taskId"
+        def result = getRandomValue(valName) ?: colors()[6 + Math.round(Math.random() * (colors().size() - 7)) as Integer]
+        setRandomValue(valName, result)
+		return result
 	}
 	for (color in colors()) {
 		if (color.name == name) {
