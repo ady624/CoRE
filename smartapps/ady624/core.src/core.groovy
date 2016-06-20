@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.107.20160620" }
+def version() {	return "v0.1.108.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.108.20160620 - Beta M1 - Improved time variables, using a custom time in a time variable will always yield today's date at the selected time
  *	 6/20/2016 >>> v0.1.107.20160620 - Beta M1 - Fixed a bug preventing the device cache from working properly
  *	 6/20/2016 >>> v0.1.106.20160620 - Beta M1 - Fixed a bug with time scheduling at end of between interval
  *	 6/20/2016 >>> v0.1.105.20160620 - Beta M1 - Fixed color "Random" to be the same color for all devices in a task, added an "Execute during evaluation stage" option for Set Variable - this allows immediate setting of the variable, making it available to following condition evaluations
@@ -1597,7 +1598,7 @@ private pageSetVariable(params) {
                     input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: dataType != "string", submitOnChange: true
                 }
                 if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
-                    input "actParam$aid#$tid-$a3", "enum", options: ["seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
+                    input "actParam$aid#$tid-$a3", "enum", options: ["milliseconds", "seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
                 }
             }
             operation = settings["actParam$aid#$tid-$op"]
@@ -1928,8 +1929,8 @@ def getVariable(name) {
         	def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
             setRandomValue(name, result)
             return result
-        case "\$sunrise": return getSunrise()
-        case "\$sunset": return getSunset()
+        case "\$sunrise": return convertDateToUnixTime(getSunrise())
+        case "\$sunset": return convertDateToUnixTime(getSunset())
         case "\$currentStateDuration":
             try {
                 return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
@@ -3188,6 +3189,7 @@ private getTaskDescription(task) {
                     def value = task.p[i].d
                     //null strings are really blanks
                     if ((dataType == "string") && (value == null)) value = ""
+                    if ((dataType == "time") && (i == 4) && (value != null)) value = formatTime(value)
                     def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
                     def unit = (dataType == "time" ? task.p[i + 2].d : null)
                     def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null
@@ -6908,6 +6910,18 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
                     value = cast(getVariable(variable, dataType in ["string", "text"]), subDataType)
                 }
             } else {
+            	if (subDataType in ["time"]) {
+                	//we need to bring the value to today
+                    def time = adjustTime(value)
+                    if (time) {
+                    	def h = time.hours
+                        def m = time.minutes
+                        def lastMidnight = adjustTime().time
+                        lastMidnight = lastMidnight - lastMidnight.mod(86400000)
+                        value = lastMidnight + h * 3600000 + m * 60000
+                        
+                    }
+            	}
                 value = cast(value, subDataType)
             }
             if (i == 4) {
