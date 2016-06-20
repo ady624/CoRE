@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.106.20160620" }
+def version() {	return "v0.1.107.20160620" }
 /*
+ *	 6/20/2016 >>> v0.1.107.20160620 - Beta M1 - Fixed a bug preventing the device cache from working properly
  *	 6/20/2016 >>> v0.1.106.20160620 - Beta M1 - Fixed a bug with time scheduling at end of between interval
  *	 6/20/2016 >>> v0.1.105.20160620 - Beta M1 - Fixed color "Random" to be the same color for all devices in a task, added an "Execute during evaluation stage" option for Set Variable - this allows immediate setting of the variable, making it available to following condition evaluations
  *	 6/20/2016 >>> v0.1.104.20160620 - Beta M1 - Added $randomHue, $sunrise, and $sunset system variables
@@ -3491,6 +3492,7 @@ private broadcastEvent(evt, primary, secondary) {
 			def eventTime = evt.date.getTime()
 			cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
 			atomicState.cache = cache
+            state.cache = cache
 			if (cachedValue) {
 				if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
 					//duplicate event
