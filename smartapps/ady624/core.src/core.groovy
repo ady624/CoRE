@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.109.20160620" }
+def version() {	return "v0.1.10a.20160621" }
 /*
+ *	 6/21/2016 >>> v0.1.10a.20160621 - Beta M1 - Added extra dashboard information
  *	 6/20/2016 >>> v0.1.109.20160620 - Beta M1 - Added $nextSunrise, $nextSunset, $midnight, $nextMidnight, $noon, and $nextNoon
  *	 6/20/2016 >>> v0.1.108.20160620 - Beta M1 - Improved time variables, using a custom time in a time variable will always yield today's date at the selected time
  *	 6/20/2016 >>> v0.1.107.20160620 - Beta M1 - Fixed a bug preventing the device cache from working properly
@@ -2338,6 +2339,7 @@ def api_getDashboardData() {
 		result.variables[variable.key] = getVariable(variable.key, true)
 	}
 	result.variables = result.variables.sort{ it.key }
+    result.version = version()
     result.now = now()
 	return result
 }
@@ -2583,7 +2585,8 @@ def initializeCoREPiston() {
         s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
         s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
 	]
-	setVariable("\$lastInitialized", now(), true)
+    state.lastInitialized = now()
+	setVariable("\$lastInitialized", state.lastInitialized, true)
 	setVariable("\$currentState", state.currentState, true)
 	setVariable("\$currentStateSince", state.currentStateSince, true)
 	state.remove("config")
@@ -2632,6 +2635,8 @@ private configApp() {
 			state.config.app.otherConditions.id = -1
 			state.config.app.actions = []
 			state.config.app.enabled = true
+            state.config.app.created = now()
+            state.config.app.version = version()
 		}
 	}
 	//get expert savvy
@@ -7255,7 +7260,10 @@ def getSummary() {
 		c: getConditionCount(state.app),
 		t: getTriggerCount(state.app),
 		le: state.lastEvent,
-		lx: state.lastExecutionTime
+		lx: state.lastExecutionTime,
+        cd: formatLocalTime(state.app.created),
+        cv: state.app.version,
+        md: formatLocalTime(state.lastInitialized),
 	]
 }
 
