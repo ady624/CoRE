@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.10a.20160621" }
+def version() {	return "v0.1.10b.20160622" }
 /*
+ *	 6/22/2016 >>> v0.1.10b.20160622 - Beta M1 - Reverse IFTTT support - IFTTT can now trigger pistons - coming up next: The IFTTT capability
  *	 6/21/2016 >>> v0.1.10a.20160621 - Beta M1 - Added extra dashboard information
  *	 6/20/2016 >>> v0.1.109.20160620 - Beta M1 - Added $nextSunrise, $nextSunset, $midnight, $nextMidnight, $noon, and $nextNoon
  *	 6/20/2016 >>> v0.1.108.20160620 - Beta M1 - Improved time variables, using a custom time in a time variable will always yield today's date at the selected time
@@ -2317,6 +2318,8 @@ private initializeCoREEndpoint() {
 mappings {
 	path("/dashboard") {action: [GET: "api_dashboard"]}
 	path("/getDashboardData") {action: [GET: "api_getDashboardData"]}
+	path("/execute") {action: [POST: "api_execute"]}
+	path("/execute/:pistonName") {action: [GET: "api_execute", POST: "api_execute"]}
 	path("/pause") {action: [POST: "api_pause"]}
 	path("/resume") {action: [POST: "api_resume"]}
 	path("/piston") {action: [POST: "api_piston"]}
@@ -2354,6 +2357,19 @@ def api_pause() {
 		}
 	}
 	return api_getDashboardData()
+}
+
+def api_execute() {
+	def data = request?.JSON
+	def pistonName = params?.pistonName ?: data?.pistonName
+    def result = "Sorry, piston $pistonName could not be found."
+	def d = debug("Received an API execute request for piston '$pistonName' with data: $data")        
+	if (pistonName) {
+    	data.remove "pistonName"
+    	result = execute(pistonName, data)
+        result = "Piston $pistonName is now being executed."
+    }
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">$result<body></body></html>"
 }
 
 def api_resume() {
@@ -2427,7 +2443,7 @@ def listPistons(excludeApp = null, type = null) {
 	return result.sort{ it }
 }
 
-def execute(pistonName) {
+def execute(pistonName, data = null) {
 	if (parent) {
 		//if a child executes a piston, we need to save the variables to the atomic state to make them show in the new piston execution
 		//def store = state.store
@@ -2438,7 +2454,7 @@ def execute(pistonName) {
 		def piston = getChildApps().find{ it.label == pistonName }
 		if (piston) {
 			//fire up the piston
-			return piston.executeHandler()
+			return piston.executeHandler(data)
 		}
 		return null
 	}
@@ -3346,11 +3362,16 @@ def recoveryHandler() {
 	exitPoint(perf)
 }
 
-def executeHandler() {
+def executeHandler(data = null) {
 	entryPoint()
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
+    if (data instanceof Map) {
+    	for(item in data) {
+        	setVariable(item.key, item.value)
+        }
+    }
 	debug "Received an execute request", 1
 	broadcastEvent([name: "execute", date: new Date(), deviceId: "time", conditionId: null], true, false)
 	processTasks()
