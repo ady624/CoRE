@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.10b.20160622" }
+def version() {	return "v0.1.10c.20160622" }
 /*
+ *	 6/22/2016 >>> v0.1.10c.20160622 - Beta M1 - Introducing the IFTTT capability. Have the IFTTT maker channel send an event to https://<<CoRE endpoint>>/ifttt/<event> where <event> is a string expected to execute in the IFTTT capability and you're set to go
  *	 6/22/2016 >>> v0.1.10b.20160622 - Beta M1 - Reverse IFTTT support - IFTTT can now trigger pistons - coming up next: The IFTTT capability
  *	 6/21/2016 >>> v0.1.10a.20160621 - Beta M1 - Added extra dashboard information
  *	 6/20/2016 >>> v0.1.109.20160620 - Beta M1 - Added $nextSunrise, $nextSunset, $midnight, $nextMidnight, $noon, and $nextNoon
@@ -891,7 +892,9 @@ def pageCondition(params) {
 										href "", title: "Ask Alexa", description: "Tap here for more information on Ask Alexa", style: "external", url: "https://community.smartthings.com/t/release-ask-alexa/46786"
 										showParameters = false
 									} else {
-										input "condComp$id", "enum", title: "Comparison", options: listComparisonOptions(attribute, supportsTriggers, overrideAttributeType), required: true, multiple: false, submitOnChange: true
+                                        def options = listComparisonOptions(attribute, supportsTriggers, overrideAttributeType)
+                                        def defaultValue = (options.size() == 1 ? options[0] : null)
+										input "condComp$id", "enum", title: "Comparison", options: options, defaultValue: defaultValue, required: true, multiple: false, submitOnChange: true
 										if (comparison) {
 											showParameters = true
 											validCondition = true
@@ -2318,6 +2321,7 @@ private initializeCoREEndpoint() {
 mappings {
 	path("/dashboard") {action: [GET: "api_dashboard"]}
 	path("/getDashboardData") {action: [GET: "api_getDashboardData"]}
+	path("/ifttt/:eventName") {action: [POST: "api_ifttt"]}
 	path("/execute") {action: [POST: "api_execute"]}
 	path("/execute/:pistonName") {action: [GET: "api_execute", POST: "api_execute"]}
 	path("/pause") {action: [POST: "api_pause"]}
@@ -2370,6 +2374,15 @@ def api_execute() {
         result = "Piston $pistonName is now being executed."
     }
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">$result<body></body></html>"
+}
+
+def api_ifttt() {
+	def data = request?.JSON
+	def eventName = params?.eventName
+	if (eventName) {
+		sendLocationEvent([name: "ifttt", value: eventName, isStateChange: true, linkText: "IFTTT event", descriptionText: "CoRE has received an IFTTT event: $eventName", data: [data]])    	
+    }
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">Received event $eventName.<body></body></html>"
 }
 
 def api_resume() {
@@ -2837,6 +2850,10 @@ private updateCondition(condition) {
 	switch (condition.cap) {
 		case "Ask Alexa Macro":
 			condition.attr = "askAlexaMacro"
+			condition.dev.push "location"
+			break
+		case "IFTTT":
+			condition.attr = "ifttt"
 			condition.dev.push "location"
 			break
 		case "Date & Time":
@@ -3382,7 +3399,7 @@ def executeHandler(data = null) {
 }
 
 private preAuthorizeEvent(evt) {
-	if (!(evt.name in ["piston", "routineExecuted", "askAlexaMacro", "variable"])) return true
+	if (!(evt.name in ["piston", "routineExecuted", "askAlexaMacro", "ifttt", "variable"])) return true
 	//prevent one piston from retriggering itself
 	if (evt && (evt.name == "piston") && (evt.value == app.label)) return false
 	state.filterEvent = true
@@ -3543,7 +3560,7 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
     setVariable("\$currentEventDelay", lastEvent.delay, true)
 	if (allowed) {
-		if (!(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
+		if (!(evt.name in ["askAlexaMacro", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
 			def cache = atomicState.cache
 			cache = cache ? cache : [:]
 			def deviceId = evt.deviceId ? evt.deviceId : location.id
@@ -3907,6 +3924,11 @@ private evaluateDeviceCondition(condition, evt) {
 			virtualCurrentValue = evt ? evt.value : "<<<unknown piston>>>"
 			attribute = "askAlexaMacro"
 			break
+		case "IFTTT":
+			devices = [location]
+			virtualCurrentValue = evt ? evt.value : "<<<unknown IFTTT event>>>"
+			attribute = "ifttt"
+			break
 		case "Mode":
 		case "Location Mode":
 			devices = [location]
@@ -3935,6 +3957,7 @@ private evaluateDeviceCondition(condition, evt) {
 			attribute = "variable"
 			break
 	}
+    
 	if (!devices) {
 		//something went wrong
 		return false
@@ -3989,7 +4012,7 @@ private evaluateDeviceCondition(condition, evt) {
 
 			def oldValue = null
 			def oldValueSince = null
-			if (evt && !(evt.name in ["askAlexaMacro", "piston", "routineExecuted", "variable", "time"])) {
+			if (evt && !(evt.name in ["askAlexaMacro", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
 				def cache = state.cache ? state.cache : [:]
 				def cachedValue = cache[device.id + "-" + attribute]
 				if (cachedValue) {
@@ -4053,6 +4076,7 @@ private evaluateDeviceCondition(condition, evt) {
 					}
 					break
 			}
+            
 			def interactionMatched = true
 			if (attr.interactive) {
 				interactionMatched = (physical && (condition.iact != "Programmatic")) || (!physical && (condition.iact != "Physical"))
@@ -8028,7 +8052,7 @@ private _cleanUpCondition(condition, deleteGroups) {
 	if (condition.id > 0) {
 		if (condition.children == null) {
 			//if regular condition
-			if (!(condition.cap in ["Ask Alexa Macro", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
+			if (!(condition.cap in ["Ask Alexa Macro", "IFTTT", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
 				deleteCondition(condition.id);
 				return true
 			//} else {
@@ -8136,7 +8160,11 @@ private getConditionDescription(id, level = 0) {
 				case "routine":
 					deviceList = "${capability.display} '${values.trim()}' was "
 					values = ""
-						break
+					break
+                case "ifttt":
+					deviceList = "IFTTT event '${values.trim()}' was "
+					values = ""
+					break
 				case "variable":
 					deviceList = "Variable ${condition.var ? "{${condition.var}}" : ""} (as ${condition.dt}) "
 					break
@@ -8571,7 +8599,7 @@ private listComparisonOptions(attributeName, allowTriggers, overrideAttributeTyp
 	def conditions = []
 	def triggers = []
 	def attribute = getAttributeByName(attributeName, device)
-	def allowTimedComparisons = !(attributeName in ["askAlexaMacro", "mode", "alarmSystemStatus", "piston", "routineExecuted", "variable"])
+	def allowTimedComparisons = !(attributeName in ["askAlexaMacro", "mode", "ifttt", "alarmSystemStatus", "piston", "routineExecuted", "variable"])
 	if (attribute) {
 		def optionCount = attribute.options ? attribute.options.size() : 0
 		def attributeType = overrideAttributeType ? overrideAttributeType : attribute.type
@@ -9008,7 +9036,7 @@ private parseCommandParameter(parameter) {
 		dataType = tokens[tokens.size() - 1]
 	}
 
-	if (dataType in ["askAlexaMacro", "attribute", "attributes", "contact", "contacts", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
+	if (dataType in ["askAlexaMacro", "ifttt", "attribute", "attributes", "contact", "contacts", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
 		//special case handled internally
 		return [title: title, type: dataType, required: required, last: last]
 	}
@@ -9093,6 +9121,7 @@ private capabilities() {
 		[ name: "switchLevel",						display: "Dimmable Light",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
 		[ name: "switchLevel",						display: "Dimmer",							attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers",			],
 		[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					multiple: true,			devices: "energy meters"],
+		[ name: "ifttt",							display: "IFTTT",							attribute: "ifttt",						commands: [],																		multiple: false,		virtualDevice: location,	virtualDeviceName: "IFTTT"	],
 		[ name: "illuminanceMeasurement",			display: "Illuminance Measurement",			attribute: "illuminance",				multiple: true,			devices: "illuminance sensors",	],
 		[ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
 		[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						multiple: true,			devices: "leak sensors",	],
@@ -9470,6 +9499,7 @@ private attributes() {
 		[ name: "variable",					type: "enum",			options: state.run == "config" ? listVariables(true) : [],	valueType: "enum",	],
 		[ name: "time",						type: "time",	],
 		[ name: "askAlexaMacro",			type: "askAlexaMacro",	options: state.run == "config" ? listAskAlexaMacros() : [], valueType: "enum"],
+		[ name: "ifttt",					type: "ifttt",			valueType: "string"],
 	]
 	return state.temp.attributes
 }
@@ -9549,6 +9579,7 @@ private comparisons() {
 		[ type: "routine",				options: optionsEvents		],
 		[ type: "piston",				options: optionsEvents		],
 		[ type: "askAlexaMacro",		options: optionsEvents		],
+		[ type: "ifttt",				options: optionsEvents		],
 		[ type: "number",				options: optionsNumber,		],
 		[ type: "variable",				options: optionsNumber,		],
 		[ type: "decimal",				options: optionsNumber		],
