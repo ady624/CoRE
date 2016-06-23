@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.10c.20160622" }
+def version() {	return "v0.1.10d.20160622" }
 /*
+ *	 6/22/2016 >>> v0.1.10d.20160622 - Beta M1 - Added the ability to map event data to variables - will come in handy with IFTTT events, saving ingredients to variables.
  *	 6/22/2016 >>> v0.1.10c.20160622 - Beta M1 - Introducing the IFTTT capability. Have the IFTTT maker channel send an event to https://<<CoRE endpoint>>/ifttt/<event> where <event> is a string expected to execute in the IFTTT capability and you're set to go
  *	 6/22/2016 >>> v0.1.10b.20160622 - Beta M1 - Reverse IFTTT support - IFTTT can now trigger pistons - coming up next: The IFTTT capability
  *	 6/21/2016 >>> v0.1.10a.20160621 - Beta M1 - Added extra dashboard information
@@ -1129,10 +1130,14 @@ def pageCondition(params) {
 						section("Set variables on true") {
 							input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
 							input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                            input "condImportT$id", "bool", title: "Import event data on true", required: false, submitOnChange: true
+                            if (settings["condImportT$id"]) input "condImportTP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
 						}
 						section("Set variables on false") {
 							input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
 							input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
+                            input "condImportF$id", "bool", title: "Import event data on true", required: false, submitOnChange: true
+                            if (settings["condImportF$id"]) input "condImportFP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
 						}
 					}
 				}
@@ -2380,7 +2385,7 @@ def api_ifttt() {
 	def data = request?.JSON
 	def eventName = params?.eventName
 	if (eventName) {
-		sendLocationEvent([name: "ifttt", value: eventName, isStateChange: true, linkText: "IFTTT event", descriptionText: "CoRE has received an IFTTT event: $eventName", data: [data]])    	
+		sendLocationEvent([name: "ifttt", value: eventName, isStateChange: true, linkText: "IFTTT event", descriptionText: "CoRE has received an IFTTT event: $eventName", data: data])    	
     }
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">Received event $eventName.<body></body></html>"
 }
@@ -2949,6 +2954,11 @@ private updateCondition(condition) {
 	condition.vv = settings["condVarV${condition.id}"]
 	condition.vf = settings["condVarF${condition.id}"]
 	condition.vw = settings["condVarW${condition.id}"]
+    
+    condition.it = settings["condImportT${condition.id}"]
+    condition.itp = settings["condImportTP${condition.id}"]
+    condition.if = settings["condImportF${condition.id}"]
+    condition.ifp = settings["condImportFP${condition.id}"]
 
 	condition = cleanUpMap(condition)
 	return null
@@ -3893,7 +3903,22 @@ private evaluateCondition(condition, evt = null) {
 			if (condition.vv && result) setVariable(condition.vv, evt.value)
 			if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())
 			if (condition.vw && !result) setVariable(condition.vw, evt.value)
-
+            if (condition.it && result && evt.jsonData) {
+                def prefix = condition.itp ?: ""
+                if (evt.jsonData instanceof Map) {
+                    for(item in evt.jsonData) {
+                        setVariable(prefix + item.key, item.value)
+                    }
+                }
+            }
+            if (condition.if && !result && evt.jsonData) {
+            	def prefix = condition.ifp ?: ""
+                if (evt.jsonData instanceof Map) {
+                    for(item in evt.jsonData) {
+                        setVariable(prefix + item.key, item.value)
+                    }
+                }                
+            }
 			if (condition.id > 0) {
 				scheduleActions(condition.id, oldEval != result, result)
 			}
