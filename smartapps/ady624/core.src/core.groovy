@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.10d.20160622" }
+def version() {	return "v0.1.10e.20160622" }
 /*
+ *	 6/22/2016 >>> v0.1.10e.20160622 - Beta M1 - Added the ability to use a variable in the Wait (variable) task
  *	 6/22/2016 >>> v0.1.10d.20160622 - Beta M1 - Added the ability to map event data to variables - will come in handy with IFTTT events, saving ingredients to variables.
  *	 6/22/2016 >>> v0.1.10c.20160622 - Beta M1 - Introducing the IFTTT capability. Have the IFTTT maker channel send an event to https://<<CoRE endpoint>>/ifttt/<event> where <event> is a string expected to execute in the IFTTT capability and you're set to go
  *	 6/22/2016 >>> v0.1.10b.20160622 - Beta M1 - Reverse IFTTT support - IFTTT can now trigger pistons - coming up next: The IFTTT capability
@@ -2326,7 +2327,7 @@ private initializeCoREEndpoint() {
 mappings {
 	path("/dashboard") {action: [GET: "api_dashboard"]}
 	path("/getDashboardData") {action: [GET: "api_getDashboardData"]}
-	path("/ifttt/:eventName") {action: [POST: "api_ifttt"]}
+	path("/ifttt/:eventName") {action: [GET: "api_ifttt", POST: "api_ifttt"]}
 	path("/execute") {action: [POST: "api_execute"]}
 	path("/execute/:pistonName") {action: [GET: "api_execute", POST: "api_execute"]}
 	path("/pause") {action: [POST: "api_pause"]}
@@ -5390,6 +5391,27 @@ private cmd_wait(action, task, time) {
 				break
 		}
 			def offset = task.p[0].d * unit
+			result.time = time + offset
+	}
+	return result
+}
+
+private cmd_waitVariable(action, task, time) {
+	def result = [:]
+	if (task && task.p && task.p.size() >= 2) {
+		def unit = 60000
+		switch (task.p[1].d) {
+			case "seconds":
+				unit = 1000
+				break
+			case "minutes":
+				unit = 60000
+				break
+			case "hours":
+				unit = 3600000
+				break
+		}
+			def offset = (int) Math.round(cast(getVariable(task.p[0].d), "decimal") * unit)
 			result.time = time + offset
 	}
 	return result
@@ -8588,7 +8610,7 @@ private formatMessage(message, params = null) {
 			message = message.replace(var.key, "${var.value}")
 		}
 	}
-	return message.toString()
+	return message.toString().replace("|[", "{").replace("]|", "}")
 }
 
 
@@ -9354,6 +9376,7 @@ private commands() {
 private virtualCommands() {
 	return [
 		[ name: "wait",				display: "Wait",							parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait {0} {1}",	],
+		[ name: "waitVariable",		display: "Wait (variable)",					parameters: ["Time (variable):variable","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait |[{0}]| {1}",	],
 		[ name: "waitRandom",		display: "Wait (random)",					parameters: ["At least:number[1..1440]","At most:number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
 		[ name: "waitState",		display: "Wait for piston state change",	parameters: ["Change to:enum[any,false,true]"],															immediate: true,	location: true,						description: "Wait for {0} state"],
 		[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",		],
@@ -9410,12 +9433,12 @@ private virtualCommands() {
 		[ name: "flash#7",				requires: ["on7", "off7"], 			display: "Flash #7",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #7 {0}ms/{1}ms for {2} time(s)",	],
 		[ name: "flash#8",				requires: ["on8", "off8"], 			display: "Flash #8",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #8 {0}ms/{1}ms for {2} time(s)",	],
 		[ name: "setVariable",		display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,																	aggregated: true,	],
-		[ name: "saveAttribute",	display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable '{3}'",			aggregated: true,	],
-		[ name: "saveState",		display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable '{3}'",	aggregated: true,	],
+		[ name: "saveAttribute",	display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable |[{3}]|'",			aggregated: true,	],
+		[ name: "saveState",		display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable |[{3}]|'",	aggregated: true,	],
 		[ name: "saveStateLocally",	display: "Capture state to local store",	parameters: ["Attributes:attributes"],																															description: "Capture state of attributes {0} to local store",		],
 		[ name: "saveStateGlobally",display: "Capture state to global store",	parameters: ["Attributes:attributes"],																															description: "Capture state of attributes {0} to global store",	],
-		[ name: "loadAttribute",	display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable '{1}'",	],
-		[ name: "loadState",		display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable '{1}'"				],
+		[ name: "loadAttribute",	display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable |[{1}]|",	],
+		[ name: "loadState",		display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable |[{1}]|"				],
 		[ name: "loadStateLocally",	display: "Restore state from local store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from local store",			],
 		[ name: "loadStateGlobally",display: "Restore state from global store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from global store",			],
 		[ name: "setLocationMode",	display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
@@ -9431,16 +9454,16 @@ private virtualCommands() {
 		//flow control commands
 		[ name: "beginSimpleForLoop",	display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:string"],																																										location: true,		description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
 		[ name: "beginForLoop",			display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:string","To value:string"],																													varEntry: 0,	location: true,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
-		[ name: "beginWhileLoop",		display: "Begin WHILE loop",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "WHILE (0} {1} {2}) DO",		flow: true,					indent: 1,	],
+		[ name: "beginWhileLoop",		display: "Begin WHILE loop",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "WHILE (|[{0}]| {1} {2}) DO",		flow: true,					indent: 1,	],
 		[ name: "breakLoop",			display: "Break loop",						location: true,		description: "BREAK",						flow: true,			],
 		[ name: "breakLoopIf",			display: "Break loop (conditional)",		parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "BREAK IF ({0} {1} {2})",		flow: true,			],
 		[ name: "exitAction",			display: "Exit Action",						location: true,		description: "EXIT",						flow: true,			],
 		[ name: "endLoop",				display: "End loop",						parameters: ["Delay (seconds):number[0..*]"],																																									location: true,		description: "LOOP AFTER {0}s",				flow: true,	selfIndent: -1, indent: -1,	],
-		[ name: "beginIfBlock",			display: "Begin IF block",					parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "IF ({0} {1} {2}) THEN",		flow: true,					indent: 1,	],
-		[ name: "beginElseIfBlock",		display: "Begin ELSE IF block",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "ELSE IF ({0} {1} {2}) THEN",	flow: true,	selfIndent: -1,				],
+		[ name: "beginIfBlock",			display: "Begin IF block",					parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "IF (|[{0}]| {1} {2}) THEN",		flow: true,					indent: 1,	],
+		[ name: "beginElseIfBlock",		display: "Begin ELSE IF block",				parameters: ["Variable to test:variable","Comparison:enum[is equal to,is not equal to,is less than,is less than or equal to,is greater than,is greater than or equal to]","Value:string"],						location: true,		description: "ELSE IF (|[{0}]| {1} {2}) THEN",	flow: true,	selfIndent: -1,				],
 		[ name: "beginElseBlock",		display: "Begin ELSE block",				location: true,		description: "ELSE",						flow: true,	selfIndent: -1,		 		],
 		[ name: "endIfBlock",			display: "End IF block",					location: true,		description: "END IF",						flow: true,	selfIndent: -1, indent: -1,	],
-		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH ({0}) DO",				flow: true,					indent: 2,	],
+		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH (|[{0}]|) DO",				flow: true,					indent: 2,	],
 		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE {0}:",					flow: true,	selfIndent: -1, 			],
 		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
 	] + (location.contactBookEnabled ? [
