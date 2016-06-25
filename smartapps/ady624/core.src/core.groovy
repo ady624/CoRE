@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.10e.20160622" }
+def version() {	return "v0.1.110.20160625" }
 /*
+ *	 6/25/2016 >>> v0.1.110.20160625 - Beta M1 - Improved device comparison selections - using the condition capability for selection purposes, or switch/sensor if no physical capability selected
  *	 6/24/2016 >>> v0.1.10f.20160624 - Beta M1 - Fixed a problem with saving state globally (never worked) and the hue attribute 100/360 confusion. Philips Hue works, OSRAM Lightify seem to have an issue with retrieving the hue correctly, ST was informed.
  *	 6/22/2016 >>> v0.1.10e.20160622 - Beta M1 - Added the ability to use a variable in the Wait (variable) task
  *	 6/22/2016 >>> v0.1.10d.20160622 - Beta M1 - Added the ability to map event data to variables - will come in handy with IFTTT events, saving ingredients to variables.
@@ -971,7 +972,7 @@ def pageCondition(params) {
 											input "condVar$id#$i", "enum", options: varList, title: (variable == null ? "... or choose a variable to compare ..." : (comp.parameters == 1 ? "Variable value${ variable ? " [${getVariable(variable, true)}]" : ""}" : "${i == 1 ? "From" : "To"} variable value${ variable ? " [${getVariable(variable, true)}]" : ""}")), required: true, multiple: comp.multiple, submitOnChange: true, capitalization: "none"
 										}
 										if ((value == null) && (variable == null) && (allowDeviceComparisons)) {
-											input "condDev$id#$i", "capability.${type == "boolean" ? "switch" : "sensor"}", title: (device == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device value" : "${i == 1 ? "From" : "To"} device value")), required: true, multiple: false, submitOnChange: true
+											input "condDev$id#$i", "capability.${capability && capability.name ? capability.name : (type == "boolean" ? "switch" : "sensor")}", title: (device == null ? "... or choose a device to compare ..." : (comp.parameters == 1 ? "Device value" : "${i == 1 ? "From" : "To"} device value")), required: true, multiple: false, submitOnChange: true
 											if (device) {
 												input "condAttr$id#$i", "enum", title: "Attribute", options: listCommonDeviceAttributes([device]), required: true, multiple: false, submitOnChange: true, defaultValue: attribute
 											}
