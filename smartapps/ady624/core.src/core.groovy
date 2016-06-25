@@ -20,6 +20,7 @@
 */
 def version() {	return "v0.1.10e.20160622" }
 /*
+ *	 6/24/2016 >>> v0.1.10f.20160624 - Beta M1 - Fixed a problem with saving state globally (never worked) and the hue attribute 100/360 confusion. Philips Hue works, OSRAM Lightify seem to have an issue with retrieving the hue correctly, ST was informed.
  *	 6/22/2016 >>> v0.1.10e.20160622 - Beta M1 - Added the ability to use a variable in the Wait (variable) task
  *	 6/22/2016 >>> v0.1.10d.20160622 - Beta M1 - Added the ability to map event data to variables - will come in handy with IFTTT events, saving ingredients to variables.
  *	 6/22/2016 >>> v0.1.10c.20160622 - Beta M1 - Introducing the IFTTT capability. Have the IFTTT maker channel send an event to https://<<CoRE endpoint>>/ifttt/<event> where <event> is a string expected to execute in the IFTTT capability and you're set to go
@@ -6775,7 +6776,7 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 				if (parts.size() == 2) {
 					v = cast(v, parts[1])
 				}
-				if (command.name == "setHue") {
+				if (attribute == "hue") {
 					v = cast(v, "decimal") / 3.6
 				}                
 				if (device.hasCommand(command.name)) {
@@ -6871,7 +6872,7 @@ private task_vcmd_saveStateLocally(device, action, task, simulate = false, globa
 	def values = [:]
 	for (attribute in attributes) {
 			def cleanAttribute = cleanUpAttribute(attribute)
-		values[cleanAttribute] = device.currentValue(cleanAttribute)
+		values[cleanAttribute] = cleanAttribute == "hue" ? device.currentValue(cleanAttribute) * 3.6 : device.currentValue(cleanAttribute)
 	}
 	debug "Save to state: attributes are $attributes, values are $values"
 	setStateVariable("${ global ? "@" : "" }:::${device.id}:::", values)
@@ -6879,7 +6880,7 @@ private task_vcmd_saveStateLocally(device, action, task, simulate = false, globa
 }
 
 private task_vcmd_saveStateGlobally(device, action, task, simulate = false) {
-	return task_vcmd_saveStateGlobally(device, action, task, simulate, true)
+	return task_vcmd_saveStateLocally(device, action, task, simulate, true)
 }
 
 private getAggregatedAttributeValue(devices, attribute, aggregation, dataType) {
