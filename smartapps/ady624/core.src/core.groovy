@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.110.20160625" }
+def version() {	return "v0.1.111.20160625" }
 /*
+ *	 6/25/2016 >>> v0.1.111.20160625 - Beta M1 - Added "Make web request" task. For the experts. :)
  *	 6/25/2016 >>> v0.1.110.20160625 - Beta M1 - Improved device comparison selections - using the condition capability for selection purposes, or switch/sensor if no physical capability selected
  *	 6/24/2016 >>> v0.1.10f.20160624 - Beta M1 - Fixed a problem with saving state globally (never worked) and the hue attribute 100/360 confusion. Philips Hue works, OSRAM Lightify seem to have an issue with retrieving the hue correctly, ST was informed.
  *	 6/22/2016 >>> v0.1.10e.20160622 - Beta M1 - Added the ability to use a variable in the Wait (variable) task
@@ -6668,6 +6669,73 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 	return true
 }
 
+private task_vcmd_httpRequest(devices, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 6) return false
+	def uri = params[0].d
+    def method = params[1].d
+    def contentType = params[2].d
+    def variables = params[3].d
+    def importData = !!params[4].d
+    def importPrefix = params[5].d ?: ""
+    if (!uri) return false
+    def protocol = ""
+    switch (uri.substring(0, 7).toLowerCase()) {
+    	case "http://":
+        	protocol = "http"
+            break
+    	case "https:/":
+        	protocol = "https"
+            break
+		default:
+        	protocol = "https"
+            uri = "https://" + uri
+            break
+    }
+    def data = [:]
+    for(variable in variables) {
+    	data[variable] = getVariable(variable)
+    }    
+    def requestParams = [
+        uri:  uri,
+        query: method == "GET" ? data : null,
+        contentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
+        body: method != "GET" ? data : null
+    ]
+    try {
+    	def func = ""
+    	switch(method) {
+        	case "GET":
+            	func = "httpGet"
+                break
+        	case "POST":
+            	func = "httpPost"
+                break
+        	case "PUT":
+            	func = "httpPut"
+                break
+        	case "DELETE":
+            	func = "httpDelete"
+                break
+        	case "HEAD":
+            	func = "httpHead"
+                break
+        }
+        if (func) {
+			"$func"(requestParams) { response ->
+            	if (importData && (response.status == 200) && response.data && (response.contentType == "application/json")) {
+                    for(item in response.data) {
+                    	setVariable(importPrefix + item.key, item.value)
+                    }
+                }
+            }
+        }
+    } catch (all) {
+    	debug "Error executing external web request: $all", null, "error"
+    }
+	return true
+}
+
 private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
 	state.rerunSchedule = true
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -9453,6 +9521,7 @@ private virtualCommands() {
 		[ name: "repeatAction",			display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
 		[ name: "followUp",				display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
 		[ name: "executePiston",		display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
+        [ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
 		//flow control commands
 		[ name: "beginSimpleForLoop",	display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:string"],																																										location: true,		description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
 		[ name: "beginForLoop",			display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:string","To value:string"],																													varEntry: 0,	location: true,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
