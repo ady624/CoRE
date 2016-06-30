@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.111.20160625" }
+def version() {	return "v0.1.112.20160629" }
 /*
+ *	 6/29/2016 >>> v0.1.112.20160629 - Beta M1 - WARNING: MAY BREAK A FEW THINGS. Added an option to not execute actions during restricted periods, even if scheduled while outside of restrictions.
  *	 6/25/2016 >>> v0.1.111.20160625 - Beta M1 - Added "Make web request" task. For the experts. :)
  *	 6/25/2016 >>> v0.1.110.20160625 - Beta M1 - Improved device comparison selections - using the condition capability for selection purposes, or switch/sensor if no physical capability selected
  *	 6/24/2016 >>> v0.1.10f.20160624 - Beta M1 - Fixed a problem with saving state globally (never worked) and the hue attribute 100/360 confusion. Philips Hue works, OSRAM Lightify seem to have an issue with retrieving the hue correctly, ST was informed.
@@ -590,6 +591,7 @@ private pageMainCoREPiston() {
 			}
 			input "restrictionSwitchOn", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
 			input "restrictionSwitchOff", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true
+            input "restrictionPreventTaskExecution", "bool", title: "Prevent already scheduled tasks from executing during restrictions", required: true, defaultValue: false
 		}
 
 		section() {
@@ -1140,7 +1142,7 @@ def pageCondition(params) {
 						section("Set variables on false") {
 							input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
 							input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                            input "condImportF$id", "bool", title: "Import event data on true", required: false, submitOnChange: true
+                            input "condImportF$id", "bool", title: "Import event data on false", required: false, submitOnChange: true
                             if (settings["condImportF$id"]) input "condImportFP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
 						}
 					}
@@ -2622,6 +2624,7 @@ def initializeCoREPiston() {
         w: settings["restrictionDOW"],
         s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
         s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
+        pe: settings["restrictionPreventTaskExecution"],
 	]
     state.lastInitialized = now()
 	setVariable("\$lastInitialized", state.lastInitialized, true)
@@ -3512,41 +3515,8 @@ private broadcastEvent(evt, primary, secondary) {
 	def restriction
 	if (evt && (evt.name != "simulate") && app.restrictions) {
 		//check restrictions
-		if (app.restrictions.m && app.restrictions.m.size() && !(location.mode in app.restrictions.m)) {
-			restriction = "a mode mismatch"
-			allowed = false
-		} else if (app.restrictions.a && app.restrictions.a.size() && !(getAlarmSystemStatus() in app.restrictions.a)) {
-			restriction = "an alarm status mismatch"
-			allowed = false
-		} else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
-			restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
-			allowed = false
-		} else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
-			restriction = "a day of week mismatch"
-			allowed = false
-		} else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tt, app.restrictions.ttc))) {
-			restriction = "a time of day mismatch"
-			allowed = false
-		} else {
-			if (settings["restrictionSwitchOn"]) {
-				for(sw in settings["restrictionSwitchOn"]) {
-					if (sw.currentValue("switch") == "off") {
-						restriction = "switch ${sw} being off"
-						allowed = false
-						break
-					}
-				}
-			}
-			if (allowed && settings["restrictionSwitchOff"]) {
-				for(sw in settings["restrictionSwitchOff"]) {
-					if (sw.currentValue("switch") == "on") {
-						restriction = "switch ${sw} being on"
-						allowed = false
-						break
-					}
-				}
-			}
-		}
+        restriction = checkPistonRestriction()
+        allowed = (restriction == null)
 	}
     //save previous event
     setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
@@ -3740,6 +3710,48 @@ private broadcastEvent(evt, primary, secondary) {
 	}
 	perf = now() - perf
 	if (evt) debug "Event processing took ${perf}ms", -1, "trace"
+}
+
+private checkPistonRestriction() {
+	def restriction
+	def app = state.run == "config" ? state.config.app : state.app
+    
+    if (app.restrictions.m && app.restrictions.m.size() && !(location.mode in app.restrictions.m)) {
+        restriction = "a mode mismatch"
+        allowed = false
+    } else if (app.restrictions.a && app.restrictions.a.size() && !(getAlarmSystemStatus() in app.restrictions.a)) {
+        restriction = "an alarm status mismatch"
+        allowed = false
+    } else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
+        restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
+        allowed = false
+    } else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
+        restriction = "a day of week mismatch"
+        allowed = false
+    } else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tt, app.restrictions.ttc))) {
+        restriction = "a time of day mismatch"
+        allowed = false
+    } else {
+        if (settings["restrictionSwitchOn"]) {
+            for(sw in settings["restrictionSwitchOn"]) {
+                if (sw.currentValue("switch") == "off") {
+                    restriction = "switch ${sw} being off"
+                    allowed = false
+                    break
+                }
+            }
+        }
+        if (allowed && settings["restrictionSwitchOff"]) {
+            for(sw in settings["restrictionSwitchOff"]) {
+                if (sw.currentValue("switch") == "on") {
+                    restriction = "switch ${sw} being on"
+                    allowed = false
+                    break
+                }
+            }
+        }
+    }
+    return restriction
 }
 
 private checkEventEligibility(condition, evt) {
@@ -5821,7 +5833,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			def result = convertDateToUnixTime(now)
 			//we only provide a time in the future
 			//if we weren't, we'd be hogging everyone trying to keep up
-			if (result >= (new Date()).time) {
+			if (result >= (new Date()).time + 2000) {
 				return result
 			}
 		}
@@ -5845,6 +5857,11 @@ private processTasks() {
 	try {
 
 		def safetyNet = false
+
+        //find out if we need to execute the tasks
+        def restricted = (checkPistonRestriction() != null)
+        def executeTasks = !app.restrictions?.pe || !restricted
+
 
 		//let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
 		def threshold = 2000
@@ -5873,17 +5890,21 @@ private processTasks() {
 						runIn(90, recoveryHandler)
 					}
 					//trigger an event
-					if (getCondition(task.ownerId, true)) {
-						//look for condition in primary block
-						debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task", null, "trace"
-						broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], true, false)
-					} else if (getCondition(task.ownerId, false)) {
-						//look for condition in secondary block
-						debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
-						broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
-					} else {
-						debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"
-					}
+                    if (!restricted) {
+                        if (getCondition(task.ownerId, true)) {
+                            //look for condition in primary block
+                            debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task", null, "trace"
+                            broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], true, false)
+                        } else if (getCondition(task.ownerId, false)) {
+                            //look for condition in secondary block
+                            debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
+                            broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
+                        } else {
+                            debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"                            
+                        }
+                    } else {
+                            debug "Not broadcasting event due to restrictions"
+					}                
 					//continue the loop
 					break
 				}
@@ -6019,7 +6040,7 @@ private processTasks() {
 							//do some work
 
 
-							def enabled = (state.app && (state.app.enabled != null) ? !!state.app.enabled : true)
+							def enabled = (state.app && (state.app.enabled != null) ? !!state.app.enabled : true) && executeTasks
 
 							if (enabled && (task.type == "cmd")) {
 								debug "Processing command task $task"
