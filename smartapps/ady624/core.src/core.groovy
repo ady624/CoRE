@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.112.20160629" }
+def version() {	return "v0.1.113.20160704" }
 /*
+ *	 7/04/2016 >>> v0.1.113.20160704 - Beta M1 - Happy 4th of July! Some minor bug fixes
  *	 6/29/2016 >>> v0.1.112.20160629 - Beta M1 - WARNING: MAY BREAK A FEW THINGS. Added an option to not execute actions during restricted periods, even if scheduled while outside of restrictions.
  *	 6/25/2016 >>> v0.1.111.20160625 - Beta M1 - Added "Make web request" task. For the experts. :)
  *	 6/25/2016 >>> v0.1.110.20160625 - Beta M1 - Improved device comparison selections - using the condition capability for selection purposes, or switch/sensor if no physical capability selected
@@ -3578,7 +3579,7 @@ private broadcastEvent(evt, primary, secondary) {
 				//override eligibility concerns when dealing with Follow-Up pistons, or when dealing with "execute" and "simulate" events
 				force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
 				if (primary) {
-					result1 = evaluateConditionSet(evt, true, force)
+					result1 = !!evaluateConditionSet(evt, true, force)
 					state.lastPrimaryEvaluationResult = result1
 					state.lastPrimaryEvaluationDate = now()
 					def msg = "Primary IF block evaluation result is $result1"
@@ -3601,7 +3602,7 @@ private broadcastEvent(evt, primary, secondary) {
 
 				//broadcast to secondary IF block
 				if (secondary) {
-					result2 = evaluateConditionSet(evt, false, force)
+					result2 = !!evaluateConditionSet(evt, false, force)
 					state.lastSecondaryEvaluationResult = result2
 					state.lastSecondaryEvaluationDate = now()
 					def msg = "Secondary IF block evaluation result is $result2"
@@ -3718,34 +3719,27 @@ private checkPistonRestriction() {
     
     if (app.restrictions.m && app.restrictions.m.size() && !(location.mode in app.restrictions.m)) {
         restriction = "a mode mismatch"
-        allowed = false
     } else if (app.restrictions.a && app.restrictions.a.size() && !(getAlarmSystemStatus() in app.restrictions.a)) {
         restriction = "an alarm status mismatch"
-        allowed = false
     } else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
         restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
-        allowed = false
     } else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
         restriction = "a day of week mismatch"
-        allowed = false
     } else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tt, app.restrictions.ttc))) {
         restriction = "a time of day mismatch"
-        allowed = false
     } else {
         if (settings["restrictionSwitchOn"]) {
             for(sw in settings["restrictionSwitchOn"]) {
                 if (sw.currentValue("switch") == "off") {
                     restriction = "switch ${sw} being off"
-                    allowed = false
                     break
                 }
             }
         }
-        if (allowed && settings["restrictionSwitchOff"]) {
+        if (!restriction && settings["restrictionSwitchOff"]) {
             for(sw in settings["restrictionSwitchOff"]) {
                 if (sw.currentValue("switch") == "on") {
                     restriction = "switch ${sw} being on"
-                    allowed = false
                     break
                 }
             }
@@ -9801,11 +9795,11 @@ private initialSystemStore() {
 private colors() {
 	return [
 		[ name: "Random",					rgb: "#000000",		h: 0,		s: 0,		l: 0,	],
-		[ name: "Soft White",				rgb: "#B6DA7C",		h: 83,		s: 56,		l: 67,	],
-		[ name: "Warm White",				rgb: "#DAF17E",		h: 72,		s: 80,		l: 72,	],
-		[ name: "Daylight White",			rgb: "#CEF4FD",		h: 191,		s: 91,		l: 90,	],
+		[ name: "Soft White",				rgb: "#B6DA7C",		h: 83,		s: 44,		l: 67,	],
+		[ name: "Warm White",				rgb: "#DAF17E",		h: 72,		s: 20,		l: 72,	],
+		[ name: "Daylight White",			rgb: "#CEF4FD",		h: 191,		s: 9,		l: 90,	],
 		[ name: "Cool White",				rgb: "#F3F6F7",		h: 187,		s: 19,		l: 96,	],
-		[ name: "White",					rgb: "#FFFFFF",		h: 0,		s: 100,		l: 100,	],
+		[ name: "White",					rgb: "#FFFFFF",		h: 0,		s: 0,		l: 100,	],
 		[ name: "Alice Blue",				rgb: "#F0F8FF",		h: 208,		s: 100,		l: 97,	],
 		[ name: "Antique White",			rgb: "#FAEBD7",		h: 34,		s: 78,		l: 91,	],
 		[ name: "Aqua",						rgb: "#00FFFF",		h: 180,		s: 100,		l: 50,	],
