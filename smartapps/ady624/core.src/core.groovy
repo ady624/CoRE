@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.113.20160704" }
+def version() {	return "v0.1.114.20160706" }
 /*
+ *	 7/06/2016 >>> v0.1.114.20160706 - Beta M1 - Some more minor bug fixes, including some piston restriction fixes
  *	 7/04/2016 >>> v0.1.113.20160704 - Beta M1 - Happy 4th of July! Some minor bug fixes
  *	 6/29/2016 >>> v0.1.112.20160629 - Beta M1 - WARNING: MAY BREAK A FEW THINGS. Added an option to not execute actions during restricted periods, even if scheduled while outside of restrictions.
  *	 6/25/2016 >>> v0.1.111.20160625 - Beta M1 - Added "Make web request" task. For the experts. :)
@@ -566,7 +567,7 @@ private pageMainCoREPiston() {
 
 
 
-		def hasRestrictions = settings[restrictionMode] || settings[restrictionAlarm] || settings[restrictionVariable] || settings[restrictionDOW] || settings[restrictionTimeFrom] || settings[restrictionSwitchOn] || settings[restrictionSwitchOff]
+		def hasRestrictions = settings["restrictionMode"] || settings["restrictionAlarm"] || settings["restrictionVariable"] || settings["restrictionDOW"] || settings["restrictionTimeFrom"] || settings["restrictionSwitchOn"] || settings["restrictionSwitchOff"]
 		section(title: "Piston Restrictions", hideable: true, hidden: !hasRestrictions) {
 			input "restrictionMode", "mode", title: "Only execute in these modes", description: "Any location mode", required: false, multiple: true
 			input "restrictionAlarm", "enum", options: getAlarmSystemStatusOptions(), title: "Only execute during these alarm states", description: "Any alarm state", required: false, multiple: true
@@ -3514,7 +3515,7 @@ private broadcastEvent(evt, primary, secondary) {
 	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"
 	def allowed = true
 	def restriction
-	if (evt && (evt.name != "simulate") && app.restrictions) {
+	if (evt && app.restrictions) {
 		//check restrictions
         restriction = checkPistonRestriction()
         allowed = (restriction == null)
@@ -3707,7 +3708,9 @@ private broadcastEvent(evt, primary, secondary) {
 			debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
 		}
 	} else {
-		debug "Piston evaluation was prevented by ${restriction}.", null, "trace"
+    	def msg = "Piston evaluation was prevented by ${restriction}." 
+        if (state.sim) state.sim.evals.push(msg)
+		debug msg, null, "trace"
 	}
 	perf = now() - perf
 	if (evt) debug "Event processing took ${perf}ms", -1, "trace"
@@ -3730,16 +3733,16 @@ private checkPistonRestriction() {
     } else {
         if (settings["restrictionSwitchOn"]) {
             for(sw in settings["restrictionSwitchOn"]) {
-                if (sw.currentValue("switch") == "off") {
-                    restriction = "switch ${sw} being off"
+                if (sw.currentValue("switch") != "on") {
+                    restriction = "switch ${sw} being ${sw.currentValue("switch")}"
                     break
                 }
             }
         }
         if (!restriction && settings["restrictionSwitchOff"]) {
             for(sw in settings["restrictionSwitchOff"]) {
-                if (sw.currentValue("switch") == "on") {
-                    restriction = "switch ${sw} being on"
+                if (sw.currentValue("switch") != "off") {
+                    restriction = "switch ${sw} being ${sw.currentValue("switch")}"
                     break
                 }
             }
@@ -5855,7 +5858,6 @@ private processTasks() {
         //find out if we need to execute the tasks
         def restricted = (checkPistonRestriction() != null)
         def executeTasks = !app.restrictions?.pe || !restricted
-
 
 		//let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
 		def threshold = 2000
