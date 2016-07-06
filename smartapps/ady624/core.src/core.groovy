@@ -9391,7 +9391,7 @@ private commands() {
 		[ name: "playTrackAtVolume",	display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
 		[ name: "playTrackAndRestore",	display: "Play track and restore",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
 		[ name: "playTrackAndResume",	display: "Play track and resume",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
-		[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			display: "Set track",					],
+		[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			parameters: ["Track URI:string"],	display: "Set track to '{0}'",					],
 		[ name: "setLocalLevel",display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
 		[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				],
 		[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				],
