@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.114.20160706" }
+def version() {	return "v0.1.115.20160708" }
 /*
+ *	 7/08/2016 >>> v0.1.115.20160708 - Beta M1 - Fixed a problem with "stays" triggers for Or-If and And-If pistons
  *	 7/06/2016 >>> v0.1.114.20160706 - Beta M1 - Some more minor bug fixes, including some piston restriction fixes
  *	 7/04/2016 >>> v0.1.113.20160704 - Beta M1 - Happy 4th of July! Some minor bug fixes
  *	 6/29/2016 >>> v0.1.112.20160629 - Beta M1 - WARNING: MAY BREAK A FEW THINGS. Added an option to not execute actions during restricted periods, even if scheduled while outside of restrictions.
@@ -3649,7 +3650,7 @@ private broadcastEvent(evt, primary, secondary) {
 						if (currentState != newState) {
 							state.currentState = newState
 							state.currentStateSince = now()
-							stateMsg = "♦ And-If Piston changed state to $result1 ♦"
+							stateMsg = "♦ And-If Piston changed state to $newState ♦"
 						}
 						break
 					case "Or-If":
@@ -3657,7 +3658,7 @@ private broadcastEvent(evt, primary, secondary) {
 						if (currentState != newState) {
 							state.currentState = newState
 							state.currentStateSince = now()
-							stateMsg = "♦ Or-If Piston changed state to $result1 ♦"
+							stateMsg = "♦ Or-If Piston changed state to $newState ♦"
 						}
 						break
 					case "Then-If":
@@ -3665,7 +3666,7 @@ private broadcastEvent(evt, primary, secondary) {
 						if (currentState != newState) {
 							state.currentState = newState
 							state.currentStateSince = now()
-							stateMsg = "♦ Then-If Piston changed state to $result1 ♦"
+							stateMsg = "♦ Then-If Piston changed state to $newState ♦"
 						}
 						break
 					case "Else-If":
@@ -3673,7 +3674,7 @@ private broadcastEvent(evt, primary, secondary) {
 						if (currentState != newState) {
 							state.currentState = newState
 							state.currentStateSince = now()
-							stateMsg = "♦ Else-If Piston changed state to $result1 ♦"
+							stateMsg = "♦ Else-If Piston changed state to $newState ♦"
 						}
 						break
 				}
@@ -5894,7 +5895,7 @@ private processTasks() {
                         } else if (getCondition(task.ownerId, false)) {
                             //look for condition in secondary block
                             debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
-                            broadcastEvent([name: "time", date: new Date(task.time), deviceId: "time", conditionId: task.ownerId], false, true)
+                            broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], false, true)
                         } else {
                             debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"                            
                         }
