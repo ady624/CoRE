@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.116.20160713" }
+def version() {	return "v0.1.117.20160713" }
 /*
+ *	 7/13/2016 >>> v0.1.117.20160713 - Beta M1 - Improved variable import - parsing through JSON collections and creating variables for sub-values using the . character to denote a child
  *	 7/13/2016 >>> v0.1.116.20160713 - Beta M1 - Added control over command optimizations - commands don't normally run if their requested value is already the current value
  *	 7/08/2016 >>> v0.1.115.20160708 - Beta M1 - Fixed a problem with "stays" triggers for Or-If and And-If pistons
  *	 7/06/2016 >>> v0.1.114.20160706 - Beta M1 - Some more minor bug fixes, including some piston restriction fixes
@@ -3924,17 +3925,13 @@ private evaluateCondition(condition, evt = null) {
             if (condition.it && result && evt.jsonData) {
                 def prefix = condition.itp ?: ""
                 if (evt.jsonData instanceof Map) {
-                    for(item in evt.jsonData) {
-                        setVariable(prefix + item.key, item.value)
-                    }
+                	importVariables(evt.jsonData, prefix)
                 }
             }
             if (condition.if && !result && evt.jsonData) {
             	def prefix = condition.ifp ?: ""
                 if (evt.jsonData instanceof Map) {
-                    for(item in evt.jsonData) {
-                        setVariable(prefix + item.key, item.value)
-                    }
+                	importVariables(evt.jsonData, prefix)
                 }                
             }
 			if (condition.id > 0) {
@@ -6721,7 +6718,7 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     def requestParams = [
         uri:  uri,
         query: method == "GET" ? data : null,
-        contentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
+        requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
         body: method != "GET" ? data : null
     ]
     try {
@@ -6745,9 +6742,12 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
         }
         if (func) {
 			"$func"(requestParams) { response ->
-            	if (importData && (response.status == 200) && response.data && (response.contentType == "application/json")) {
-                    for(item in response.data) {
-                    	setVariable(importPrefix + item.key, item.value)
+            	if (importData && (response.status == 200) && response.data) {
+                	try {
+                    	def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
+                		importVariables(jsonData, importPrefix)
+                    } catch (all) {
+                    	debug "Error parsing JSON response for web request: $all", null, "error"
                     }
                 }
             }
@@ -8579,6 +8579,17 @@ private sanitizeVariableName(name) {
 
 private sanitizeCommandName(name) {
 	name = name ? "$name".trim().replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_") : null
+}
+
+
+private importVariables(collection, prefix) {
+	for(item in collection) {
+    	if (item.value instanceof Map) {
+        	importVariables(item.value, "${prefix}${item.key}.")
+        } else {
+			setVariable(prefix + item.key, item.value)
+        }
+	}
 }
 
 private cleanUpMap(map) {
