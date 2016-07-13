@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.115.20160708" }
+def version() {	return "v0.1.116.20160713" }
 /*
+ *	 7/13/2016 >>> v0.1.116.20160713 - Beta M1 - Added control over command optimizations - commands don't normally run if their requested value is already the current value
  *	 7/08/2016 >>> v0.1.115.20160708 - Beta M1 - Fixed a problem with "stays" triggers for Or-If and And-If pistons
  *	 7/06/2016 >>> v0.1.114.20160706 - Beta M1 - Some more minor bug fixes, including some piston restriction fixes
  *	 7/04/2016 >>> v0.1.113.20160704 - Beta M1 - Happy 4th of July! Some minor bug fixes
@@ -619,6 +620,7 @@ private pageMainCoREPiston() {
 				input "log#warn", "bool", title: "Log warning messages", defaultValue: true
 				input "log#error", "bool", title: "Log error messages", defaultValue: true
 			}
+			input "disableCO", "bool", title: "Disable command optimizations", defaultValue: false
 		}
 		section("Remove piston") {
 			href "pageRemove", title: "", description: "Remove this CoRE piston"
@@ -2613,6 +2615,8 @@ def initializeCoREPiston() {
 	state.app = state.config ? state.config.app : state.app
 	//save misc
 	state.app.mode = settings.mode
+    state.app.debugging = settings.debugging
+    state.app.disableCO = settings.disableCO
 	state.app.description = settings.description
 	state.app.restrictions = [
 		a: settings["restrictionAlarm"],
@@ -6253,7 +6257,7 @@ private processCommandTask(task) {
                             }
                             def doIt = true
                             def msg
-                            if (command.attribute && (params.size() == 1)) {
+                            if (!state.app?.disableCO && command.attribute && (params.size() == 1)) {
                             	//we may be able to avoid executing this command
 			                	def currentValue = "${device.currentValue(command.attribute)}"
                                 if (cn == "setLevel") {
