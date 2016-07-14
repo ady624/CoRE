@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.117.20160713" }
+def version() {	return "v0.1.118.20160713" }
 /*
+ *	 7/13/2016 >>> v0.1.118.20160713 - Beta M1 - Implemented 2 recovery stages for CoRE - It kicks pistons once in a while to ensure they're still alive
  *	 7/13/2016 >>> v0.1.117.20160713 - Beta M1 - Improved variable import - parsing through JSON collections and creating variables for sub-values using the . character to denote a child
  *	 7/13/2016 >>> v0.1.116.20160713 - Beta M1 - Added control over command optimizations - commands don't normally run if their requested value is already the current value
  *	 7/08/2016 >>> v0.1.115.20160708 - Beta M1 - Fixed a problem with "stays" triggers for Or-If and And-If pistons
@@ -279,6 +280,11 @@ def pageGeneralSettings(params) {
 		section("CoRE Integrations") {
 			def iftttConnected = state.modules && state.modules["IFTTT"] && settings["iftttEnabled"] && state.modules["IFTTT"].connected
 			href "pageIntegrateIFTTT", title: "IFTTT", description: iftttConnected ? "Connected" : "Not configured", state: (iftttConnected ? "complete" : null), submitOnChange: true
+		}
+
+		section("Schedule Recovery") {
+            input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours"
+            input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day"
 		}
 
 		section("Remove CoRE") {
@@ -2267,6 +2273,7 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
 	return result.sort() + (parentResult ? parentResult.sort() : [])
 }
 
+
 /******************************************************************************/
 /***																		***/
 /*** CoRE CODE																***/
@@ -2283,6 +2290,48 @@ def initializeCoRE() {
 	refreshPistons()
 	subscribe(location, "CoRE", coreHandler)
 	subscribe(location, "askAlexa", askAlexaHandler)
+    
+    switch (settings["recovery#1"]) {
+    	case "Disabled":
+        	unschedule(recovery1)
+            break
+    	case "Every 1 hour":
+        	runEvery1Hour(recovery1)
+            break
+        default:
+        	runEvery3Hours(recovery1)
+            break
+    }
+
+	def t = new Date(now())
+    def sch = "${t.seconds} ${t.minutes}"
+    def sch2 = "$sch ${t.hours}"
+    switch (settings["recovery#2"]) {
+    	case "Disabled":
+        	unschedule(recovery2)
+            break            
+    	case "Every 2 hours":
+        	schedule("$sch 0/2 1/1 * ? *", recovery2)
+            break
+    	case "Every 4 hours":
+        	schedule("$sch 0/4 1/1 * ? *", recovery2)
+            break
+    	case "Every 6 hours":
+        	schedule("$sch 0/6 1/1 * ? *", recovery2)
+            break
+    	case "Every 12 hours":
+        	schedule("$sch 0/12 1/1 * ? *", recovery2)
+            break
+    	case "Every 2 days":
+        	schedule("$sch2 1/2 * ? *", recovery2)
+            break
+    	case "Every 3 days":
+        	schedule("$sch2 1/3 * ? *", recovery2)
+            break
+        default:
+        	schedule("$sch2 1/1 * ? *", recovery2)
+            break
+    }
 }
 
 def initializeCoREStore() {
@@ -2320,6 +2369,21 @@ def childUninstalled() {
 	refreshPistons()
 }
 
+private recovery() {
+    for(app in getChildApps()) {
+        app.recoveryHandler(false)
+    }
+}
+
+def recovery1() {
+	debug "Received a recovery stage 1 event", null, "trace"
+	recovery()
+}
+
+def recovery2() {
+	debug "Received a recovery stage 2 event", null, "trace"
+	recovery()
+}
 
 private initializeCoREEndpoint() {
 	if (!state.endpoint) {
@@ -3386,12 +3450,12 @@ def timeHandler() {
 	exitPoint(perf)
 }
 
-def recoveryHandler() {
+def recoveryHandler(showWarning = true) {
 	entryPoint()
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-	debug "CAUTION: Received a recovery event", 1, "warn"
+	if (showWarning) debug "CAUTION: Received a recovery event", 1, "warn"
 	//reset markers for all tasks, the owner of the task probably crashed :)
 	def tasks = atomicState.tasks
 	for(task in tasks.findAll{ it.value.marker != null }) {
