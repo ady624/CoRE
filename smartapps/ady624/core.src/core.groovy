@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.118.20160713" }
+def version() {	return "v0.1.119.20160714" }
 /*
+ *	 7/14/2016 >>> v0.1.119.20160714 - Beta M1 - Improvements and fixes for command optimization disabed option
  *	 7/13/2016 >>> v0.1.118.20160713 - Beta M1 - Implemented 2 recovery stages for CoRE - It kicks pistons once in a while to ensure they're still alive
  *	 7/13/2016 >>> v0.1.117.20160713 - Beta M1 - Improved variable import - parsing through JSON collections and creating variables for sub-values using the . character to denote a child
  *	 7/13/2016 >>> v0.1.116.20160713 - Beta M1 - Added control over command optimizations - commands don't normally run if their requested value is already the current value
@@ -2345,10 +2346,13 @@ def initializeCoREStore() {
 
 
 def coreHandler(evt) {
+	log.trace "GOT HERE ${evt.name} >> ${evt.value} >>> ${evt.jsonData}"
 	if (!evt) return
 	switch (evt.value) {
 		case "execute":
+        	log.trace "FOUND EXECUTE"
 			if (evt.jsonData && evt.jsonData?.pistonName) {
+            	log.trace "GOT PISTON NAME ${evt.jsonData.pistonName}"
 				execute(evt.jsonData.pistonName)
 			}
 			break
@@ -6346,7 +6350,7 @@ private processCommandTask(task) {
 					} else {
                         def doIt = true
                         def msg
-                        if (command.attribute && command.value) {
+                        if (!state.app?.disableCO && command.attribute && command.value) {
                             //we may be able to avoid executing this command
                             def currentValue = "${device.currentValue(command.attribute)}"
                             if (currentValue == command.value) {
@@ -6940,7 +6944,7 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
                         //setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
                         if (device.currentValue("switch") == (v > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
                     }
-                    if (currentValue == "$v") {
+                    if (!state.app?.disableCO && (currentValue == "$v")) {
                     	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}($v) because current value is the same", null, "info"
                     } else {
 						debug "Executing [${getDeviceLabel(device)}].${command.name}($v)", null, "info"
@@ -6954,7 +6958,7 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 				//found an exact match, let's do it
 				if (device.hasCommand(command.name)) {
                 	def currentValue = "${device.currentValue(attribute)}"
-                    if (currentValue == "$value") {
+                    if (!state.app?.disableCO && (currentValue == "$value")) {
                     	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}() because current value is the same", null, "info"
                     } else {
 						debug "Executing [${getDeviceLabel(device)}].${command.name}()", null, "info"
