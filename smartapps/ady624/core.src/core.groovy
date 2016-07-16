@@ -2370,13 +2370,10 @@ def initializeCoREStore() {
 
 
 def coreHandler(evt) {
-	log.trace "GOT HERE ${evt.name} >> ${evt.value} >>> ${evt.jsonData}"
 	if (!evt) return
 	switch (evt.value) {
 		case "execute":
-        	log.trace "FOUND EXECUTE"
 			if (evt.jsonData && evt.jsonData?.pistonName) {
-            	log.trace "GOT PISTON NAME ${evt.jsonData.pistonName}"
 				execute(evt.jsonData.pistonName)
 			}
 			break
@@ -3814,10 +3811,8 @@ private broadcastEvent(evt, primary, secondary) {
                     if (result1) scheduleActions(0, stateChanged)
                     if (result2) scheduleActions(-1, stateChanged)
                 }
-                log.trace "HERE WITH $mode and $currentState"
 				if (!(mode in ["Basic", "Latching"]) && (!currentState)) {
 					//execute the else branch
-                    log.trace "RUNNING -2"
 					scheduleActions(-2, stateChanged)
 				}
 			}
