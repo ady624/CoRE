@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.11a.20160716" }
+def version() {	return "v0.1.11b.20160716" }
 /*
+ *	 7/16/2016 >>> v0.1.11b.20160716 - Beta M1 - Fixed a problem with task execution during restrictions, thank you @bamarayne for pointing it out
  *	 7/16/2016 >>> v0.1.11a.20160716 - Beta M1 - Introducing the Do piston. Extending max condition depth to 5 levels
  *	 7/14/2016 >>> v0.1.119.20160714 - Beta M1 - Improvements and fixes for command optimization disabed option
  *	 7/13/2016 >>> v0.1.118.20160713 - Beta M1 - Implemented 2 recovery stages for CoRE - It kicks pistons once in a while to ensure they're still alive
@@ -5955,6 +5956,7 @@ private processTasks() {
 	//pfew, off to process tasks
 	//first, we make a variable to help us pick up where we left off
 	state.rerunSchedule = false
+    def app = state.run == "config" ? state.config.app : state.app
 	def tasks = null
 	def perf = now()
 	def marker = now()
