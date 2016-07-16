@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.11b.20160716" }
+def version() {	return "v0.1.11c.20160716" }
 /*
+ *	 7/16/2016 >>> v0.1.11c.20160716 - Beta M1 - Fixed a problem with condition levels beyond 3
  *	 7/16/2016 >>> v0.1.11b.20160716 - Beta M1 - Fixed a problem with task execution during restrictions, thank you @bamarayne for pointing it out
  *	 7/16/2016 >>> v0.1.11a.20160716 - Beta M1 - Introducing the Do piston. Extending max condition depth to 5 levels
  *	 7/14/2016 >>> v0.1.119.20160714 - Beta M1 - Improvements and fixes for command optimization disabed option
@@ -108,6 +109,8 @@ preferences {
 	page(name: "pageConditionGroupL1")
 	page(name: "pageConditionGroupL2")
 	page(name: "pageConditionGroupL3")
+	page(name: "pageConditionGroupL4")
+	page(name: "pageConditionGroupL5")
 	page(name: "pageConditionVsTrigger")
 	page(name: "pageActionGroup")
 	page(name: "pageAction")
