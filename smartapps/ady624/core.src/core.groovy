@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.119.20160714" }
+def version() {	return "v0.1.11a.20160716" }
 /*
+ *	 7/16/2016 >>> v0.1.11a.20160716 - Beta M1 - Introducing the Do piston. Extending max condition depth to 5 levels
  *	 7/14/2016 >>> v0.1.119.20160714 - Beta M1 - Improvements and fixes for command optimization disabed option
  *	 7/13/2016 >>> v0.1.118.20160713 - Beta M1 - Implemented 2 recovery stages for CoRE - It kicks pistons once in a while to ensure they're still alive
  *	 7/13/2016 >>> v0.1.117.20160713 - Beta M1 - Improved variable import - parsing through JSON collections and creating variables for sub-values using the . character to denote a child
@@ -492,10 +493,12 @@ private pageMainCoREPiston() {
 		def currentState = state.currentState
 		section() {
 			def enabled = !!state.config.app.enabled
-			def pistonModes = ["Basic", "Simple", "Latching", "And-If", "Or-If"]
+			def pistonModes = ["Do", "Basic", "Simple", "Latching", "And-If", "Or-If"]
 			if (!getConditionTriggerCount(state.config.app.otherConditions)) pistonModes += ["Then-If", "Else-If"]
+			if (listActions(0).size() || getConditionCount(state.config.app)) pistonModes.remove("Do")
 			if (listActions(-2).size()) pistonModes.remove("Basic")
 			if (listActions(-1).size()) {
+				pistonModes.remove("Do")
 				pistonModes.remove("Basic")
 				pistonModes.remove("Simple")
 			} else pistonModes.add("Follow-Up")
@@ -511,62 +514,64 @@ private pageMainCoREPiston() {
 				break
 			}
 		}
-		section() {
-			href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
-			buildIfContent()
-		}
+        if (state.config.app.mode != "Do") {
+            section() {
+                href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
+                buildIfContent()
+            }
 
-		section() {
-			def actions = listActions(0)
-			def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
-			href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
-			if (actions.size()) {
-				for (action in actions) {
-					href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
-				}
-			}
-		}
+            section() {
+                def actions = listActions(0)
+                def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
+                href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
+                if (actions.size()) {
+                    for (action in actions) {
+                        href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                    }
+                }
+            }
 
-		def title = ""
-		switch (settings.mode) {
-			case "Latching":
-			title = "But if..."
-			break
-			case "And-If":
-			title = "And if..."
-			break
-			case "Or-If":
-			title = "Or if..."
-			break
-			case "Then-If":
-			title = "Then if..."
-			break
-			case "Else-If":
-			title = "Else if..."
-			break
-		}
-		if (title) {
-			section() {
-				href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
-				buildIfOtherContent()
-			}
-			section() {
-				def actions = listActions(-1)
-				def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
-				href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
-				if (actions.size()) {
-					for (action in actions) {
-						href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
-					}
-				}
-			}
-		}
+            def title = ""
+            switch (settings.mode) {
+                case "Latching":
+                title = "But if..."
+                break
+                case "And-If":
+                title = "And if..."
+                break
+                case "Or-If":
+                title = "Or if..."
+                break
+                case "Then-If":
+                title = "Then if..."
+                break
+                case "Else-If":
+                title = "Else if..."
+                break
+            }
+            if (title) {
+                section() {
+                    href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
+                    buildIfOtherContent()
+                }
+                section() {
+                    def actions = listActions(-1)
+                    def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
+                    href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
+                    if (actions.size()) {
+                        for (action in actions) {
+                            href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+                        }
+                    }
+                }
+            }
+        }
 
 		if (!(state.config.app.mode in ["Basic", "Latching"])) {
 			section() {
 				def actions = listActions(-2)
 				def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
-				href "pageActionGroup", params:[conditionId: -2], title: "Else...", description: desc, state: null, submitOnChange: false
+				href "pageActionGroup", params:[conditionId: -2], title: state.config.app.mode == "Do" ? "Do" : "Else...", description: desc, state: null, submitOnChange: false
 				if (actions.size()) {
 					for (action in actions) {
 						href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
@@ -665,6 +670,14 @@ def pageConditionGroupL3(params) {
 	pageConditionGroup(params, 3)
 }
 
+def pageConditionGroupL4(params) {
+	pageConditionGroup(params, 4)
+}
+
+def pageConditionGroupL5(params) {
+	pageConditionGroup(params, 5)
+}
+
 //helper function for condition group paging
 def pageConditionGroup(params, level) {
 	state.run = "config"
@@ -729,7 +742,7 @@ private getConditionGroupPageContent(params, condition) {
 			}
 			section() {
 				href "pageCondition", params:["command": "add", "parentConditionId": id], title: "Add a condition", description: "A condition watches the state of one or multiple similar devices", state: "complete", submitOnChange: true
-				if (nextLevel <= 3) {
+				if (nextLevel <= 5) {
 					href "pageConditionGroupL${nextLevel}", params:["command": "add", "parentConditionId": id], title: "Add a group", description: "A group is a container for multiple conditions and/or triggers, allowing for more complex logical operations, such as evaluating [A AND (B OR C)]", state: "complete", submitOnChange: true
 				}
 			}
@@ -1221,6 +1234,7 @@ def pageActionGroup(params) {
 	def block = conditionId > 0 ? "WHEN ${onState ? "TRUE" : "FALSE"}, DO ..." : "IF"
 	if (conditionId < 0) {
 		switch (settings.mode) {
+			case "Do":
 			case "Basic":
 			case "Simple":
 			case "Follow-Up":
@@ -1666,6 +1680,9 @@ def pageSimulate() {
 		section("") {
 			paragraph "Preparing to simulate piston..."
 			paragraph "Current piston state is: ${state.currentState}"
+            if (!state.config.app.enabled) {
+				paragraph "Piston is currently PAUSED", state: null, required: true
+            }
 		}
 		state.sim = [ evals: [], cmds: [] ]
 		def error
@@ -2291,7 +2308,9 @@ def initializeCoRE() {
 	refreshPistons()
 	subscribe(location, "CoRE", coreHandler)
 	subscribe(location, "askAlexa", askAlexaHandler)
-    
+//    subscribe(null, "intrusion", intrusionHandler, [filterEvents: false])
+//    subscribe(null, "newIncident", intrusionHandler, [filterEvents: false])
+//    subscribe(null, "newMessage", intrusionHandler, [filterEvents: false])
     switch (settings["recovery#1"]) {
     	case "Disabled":
         	unschedule(recovery1)
@@ -2333,6 +2352,11 @@ def initializeCoRE() {
         	schedule("$sch2 1/1 * ? *", recovery2)
             break
     }
+}
+
+def intrusionHandler(evt) {
+	log.trace "GOT AN INTRUSION!"
+    log.trace evt.messageArgs
 }
 
 def initializeCoREStore() {
@@ -3645,11 +3669,21 @@ private broadcastEvent(evt, primary, secondary) {
 				//some piston modes require evaluation of secondary conditions regardless of eligibility - we use force then
 				def force = false
 				def mode = app.mode
-				if (mode in ["And-If", "Or-If"]) {
-					//these two modes always evaluate both blocks
-					primary = true
-					secondary = true
-					force = true
+				switch (mode) {
+                	case "And-If":
+                    case "Or-If":
+                        //these two modes always evaluate both blocks
+                        primary = true
+                        secondary = true
+                        force = true
+                        break
+                    case "Do":
+                    	primary = false
+                        secondary = false
+                        force = false
+                        result1 = false
+                        result2 = false
+                        break
 				}
 				//override eligibility concerns when dealing with Follow-Up pistons, or when dealing with "execute" and "simulate" events
 				force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
@@ -3707,6 +3741,11 @@ private broadcastEvent(evt, primary, secondary) {
 								stateMsg = "♦ Latching Piston changed state to false ♦"
 							}
 						}
+						break
+                    case "Do":
+                    	state.currentState = false
+                    	state.currentStateSince = now()
+	                    stateMsg = "♦ $mode Piston changed state to $result1 ♦"
 						break
 					case "Basic":
 					case "Simple":
@@ -3771,10 +3810,14 @@ private broadcastEvent(evt, primary, secondary) {
 					resumeTasks(currentState)
 				}
 				//execute the DO EVERY TIME actions
-				if (result1) scheduleActions(0, stateChanged)
-				if (result2) scheduleActions(-1, stateChanged)
+                if (mode != "Do") {
+                    if (result1) scheduleActions(0, stateChanged)
+                    if (result2) scheduleActions(-1, stateChanged)
+                }
+                log.trace "HERE WITH $mode and $currentState"
 				if (!(mode in ["Basic", "Latching"]) && (!currentState)) {
 					//execute the else branch
+                    log.trace "RUNNING -2"
 					scheduleActions(-2, stateChanged)
 				}
 			}
