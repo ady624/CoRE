@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.11c.20160716" }
+def version() {	return "v0.1.11d.20160718" }
 /*
+ *	 7/18/2016 >>> v0.1.11d.20160718 - Beta M1 - Added $httpStatusCode, $httpStatusOk (true or false), $iftttStatusCode and $iftttStatusOk (true or false) for http and ifttt requests. StatusCode represents the HTTP code for the last request, whereas StatusOk is a boolean (statusCode == 200)
  *	 7/16/2016 >>> v0.1.11c.20160716 - Beta M1 - Fixed a problem with condition levels beyond 3
  *	 7/16/2016 >>> v0.1.11b.20160716 - Beta M1 - Fixed a problem with task execution during restrictions, thank you @bamarayne for pointing it out
  *	 7/16/2016 >>> v0.1.11a.20160716 - Beta M1 - Introducing the Do piston. Extending max condition depth to 5 levels
@@ -6795,7 +6796,10 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 		return false
 	}
 	def event = params[0].d
-	httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey())
+	httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey()){ response ->
+        setVariable("\$iftttStatusCode", response.status, true)            
+        setVariable("\$iftttStatusOk", response.status == 200, true)
+    }
 	return true
 }
 
@@ -6853,6 +6857,8 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
         }
         if (func) {
 			"$func"(requestParams) { response ->
+				setVariable("\$httpStatusCode", response.status, true)            
+				setVariable("\$httpStatusOk", response.status == 200, true)            
             	if (importData && (response.status == 200) && response.data) {
                 	try {
                     	def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
@@ -9917,6 +9923,10 @@ private initialSystemStore() {
         "\$nextSunset": 999999999999,
 		"\$time": "",
 		"\$time24": "",
+        "\$httpStatusCode": 0,
+        "\$httpStatusOk": true,
+        "\$iftttStatusCode": 0,
+        "\$iftttStatusOk": true
 	]
 }
 
