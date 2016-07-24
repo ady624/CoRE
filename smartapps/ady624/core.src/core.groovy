@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.11d.20160718" }
+def version() {	return "v0.1.11e.20160723" }
 /*
+ *	 7/23/2016 >>> v0.1.11e.20160723 - Beta M1 - Fixed a problem with caching events during restrictions, added the Time alias for the Date & Time capability
  *	 7/18/2016 >>> v0.1.11d.20160718 - Beta M1 - Added $httpStatusCode, $httpStatusOk (true or false), $iftttStatusCode and $iftttStatusOk (true or false) for http and ifttt requests. StatusCode represents the HTTP code for the last request, whereas StatusOk is a boolean (statusCode == 200)
  *	 7/16/2016 >>> v0.1.11c.20160716 - Beta M1 - Fixed a problem with condition levels beyond 3
  *	 7/16/2016 >>> v0.1.11b.20160716 - Beta M1 - Fixed a problem with task execution during restrictions, thank you @bamarayne for pointing it out
@@ -2970,6 +2971,7 @@ private updateCondition(condition) {
 			condition.attr = "ifttt"
 			condition.dev.push "location"
 			break
+		case "Time":
 		case "Date & Time":
 			condition.attr = "time"
 			condition.dev.push "time"
@@ -3645,24 +3647,24 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventValue", lastEvent.event.value, true)
     setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
     setVariable("\$currentEventDelay", lastEvent.delay, true)
+    if (!(evt.name in ["askAlexaMacro", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
+        def cache = atomicState.cache
+        cache = cache ? cache : [:]
+        def deviceId = evt.deviceId ? evt.deviceId : location.id
+        def cachedValue = cache[deviceId + '-' + evt.name]
+        def eventTime = evt.date.getTime()
+        cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+        atomicState.cache = cache
+        state.cache = cache
+        if (cachedValue) {
+            if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
+                //duplicate event
+                debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
+                evt = null
+            }
+        }
+    }
 	if (allowed) {
-		if (!(evt.name in ["askAlexaMacro", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
-			def cache = atomicState.cache
-			cache = cache ? cache : [:]
-			def deviceId = evt.deviceId ? evt.deviceId : location.id
-			def cachedValue = cache[deviceId + '-' + evt.name]
-			def eventTime = evt.date.getTime()
-			cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
-			atomicState.cache = cache
-            state.cache = cache
-			if (cachedValue) {
-				if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
-					//duplicate event
-					debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
-					evt = null
-				}
-			}
-		}
 		try {
 			if (evt) {
 				//broadcast to primary IF block
@@ -6983,7 +6985,12 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 				def v = value
 				if (parts.size() == 2) {
 					v = cast(v, parts[1])
-				}
+				} else {
+                    def attr = getAttributeByName(attribute)
+                    if (attr) {
+                    	v = cast(v, attr.type)
+                    }
+                }
 				if (attribute == "hue") {
 					v = cast(v, "decimal") / 3.6
 				}                
@@ -8308,7 +8315,7 @@ private _cleanUpCondition(condition, deleteGroups) {
 	if (condition.id > 0) {
 		if (condition.children == null) {
 			//if regular condition
-			if (!(condition.cap in ["Ask Alexa Macro", "IFTTT", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
+			if (!(condition.cap in ["Ask Alexa Macro", "IFTTT", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
 				deleteCondition(condition.id);
 				return true
 			//} else {
@@ -9435,6 +9442,7 @@ private capabilities() {
 		[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	multiple: true,			],
 		[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		multiple: true,			],
 		[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "orientation",				multiple: true,			devices: "three axis sensors",	],
+		[ name: "dateAndTime",						display: "Time",							attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "time", name: "time"],		virtualDeviceName: "Date & Time"	],
 		[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			devices: "timed sessions"],
 		[ name: "tone",								display: "Tone Generator",					commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
 		[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						multiple: true,			],
@@ -10087,7 +10095,9 @@ private getColorByName(name, ownerId = null, taskId = null) {
 	if (name == "Random") {    	
 		//randomize the color
         def valName = "$ownerId-$taskId"
-        def result = getRandomValue(valName) ?: colors()[6 + Math.round(Math.random() * (colors().size() - 7)) as Integer]
+        def randomIndex = 6 + Math.round(Math.random() * (colors().size() - 7)) as Integer
+        //log.trace "Random color index is $randomIndex, cached random color is ${getRandomValue(valName)}"
+        def result = getRandomValue(valName) ?: colors()[randomIndex]
         setRandomValue(valName, result)
 		return result
 	}
