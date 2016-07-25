@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.11e.20160723" }
+def version() {	return "v0.1.11f.20160725" }
 /*
+ *	 7/25/2016 >>> v0.1.11f.20160725 - Beta M1 - DO NOT INSTALL THIS VERSION UNLESS ASKED TO - Implemented code to rebuild pistons from settings in case of state corruption
  *	 7/23/2016 >>> v0.1.11e.20160723 - Beta M1 - Fixed a problem with caching events during restrictions, added the Time alias for the Date & Time capability
  *	 7/18/2016 >>> v0.1.11d.20160718 - Beta M1 - Added $httpStatusCode, $httpStatusOk (true or false), $iftttStatusCode and $iftttStatusOk (true or false) for http and ifttt requests. StatusCode represents the HTTP code for the last request, whereas StatusOk is a boolean (statusCode == 200)
  *	 7/16/2016 >>> v0.1.11c.20160716 - Beta M1 - Fixed a problem with condition levels beyond 3
@@ -2764,12 +2765,11 @@ def initializeCoREPistonStore() {
 /* prepare configuration version of app */
 private configApp() {
 	initializeCoREPistonStore()
-	if (!state.app) state.app = [:]
 	if (!state.config) {
 		//initiate config app, since we have no running version yet (not yet installed)
 		state.config = [:]
 		state.config.conditionId = 0
-		state.config.app = state.app ? state.app : null
+		state.config.app = state.app ?: null
 		if (!state.config.app) {
 			state.config.app = [:]
 			//create the root condition
@@ -2781,6 +2781,8 @@ private configApp() {
 			state.config.app.enabled = true
             state.config.app.created = now()
             state.config.app.version = version()
+            rebuildConditions()
+            rebuildActions()
 		}
 	}
 	//get expert savvy
@@ -2788,6 +2790,7 @@ private configApp() {
 	state.config.app.mode = settings.mode ? settings.mode : "Basic"
 	state.config.app.description = settings.description
 	state.config.app.enabled = !!state.config.app.enabled
+	if (!state.app) state.app = [:]    
 }
 
 private subscribeToAll(app) {
@@ -2928,10 +2931,11 @@ private createCondition(group) {
 }
 
 //creates a condition and adds it to a parent
-private createCondition(parentConditionId, group) {
+private createCondition(parentConditionId, group, conditionId = null) {
 	def parent = getCondition(parentConditionId)
 	if (parent) {
 		def condition = createCondition(group)
+        if (conditionId != null) condition.id = conditionId
 		//preserve the parentId so we can rebuild the app from settings
 		condition.parentId = parent ? (int) parent.id : null
 		//calculate depth for new condition
@@ -3099,10 +3103,10 @@ private getLastConditionId(parent) {
 
 
 //creates a condition (grouped or not)
-private createAction(parentId, onState = true) {
+private createAction(parentId, onState = true, actionId = null) {
 	def action = [:]
 	//give the new condition an id
-	action.id = (int) getNextActionId()
+	action.id = (int) actionId == null ? getNextActionId() : actionId
 	action.pid = (int) parentId
 	action.rs = !!onState
 	state.config.app.actions.push(action)
@@ -8280,6 +8284,60 @@ private getConditionConditionCount(condition) {
 
 private getConditionCount(app) {
 	return getConditionConditionCount(app.conditions) + (!(settings.mode in ["Basic", "Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0)
+}
+
+def rebuildPiston() {
+	configApp()
+	rebuildConditions()
+    rebuildActions()
+    updated()
+}
+
+private rebuildConditions() {
+	def conditions = settings.findAll{it.key.startsWith("condParent")}.sort{ it.key.replace("condParent", "").toInteger() }
+    boolean keepGoing = true
+    while (keepGoing) {
+    	keepGoing = false
+        for(condition in conditions) {
+        	if (condition.value != null) {
+        		def parentId = condition.value.toInteger()
+        		def conditionId = condition.key.replace("condParent", "").toInteger()
+            	parentId = conditionId == parentId ? 0 : parentId
+            	log.trace "GOT CONDITION $conditionId with parent $parentId"
+                def parentCondition = getCondition(parentId)
+                if (parentCondition != null) {   	           
+                	log.trace "WE FOUND THE PARENT! YEEEY!"
+                    //let's see if it's a group
+                    def c = null
+                    if (settings["condGrouping${conditionId}"]) {
+                    	//group
+                        c = createCondition(parentId, true, conditionId)
+                    } else {
+                    	//condition
+                        c = createCondition(parentId, false, conditionId)
+                    }
+                    if (c) updateCondition(c)
+	                keepGoing = true
+                	condition.value = null
+                }
+            }
+        }
+    }
+    cleanUpConditions(true)
+}
+
+private rebuildActions() {
+	def actions = settings.findAll{it.key.startsWith("actParent")}.sort{ it.key.replace("actParent", "").toInteger() }
+        for(action in actions) {
+        	if (action.value != null) {
+        		def parentId = action.value.toInteger()
+        		def actionId = action.key.replace("actParent", "").toInteger()
+                def rs = !!settings["actRState${actionId}"]
+                def a = createAction(parentId, rs, actionId)
+                if (a) updateAction(a)
+            }
+        }
+    cleanUpActions()
 }
 
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
