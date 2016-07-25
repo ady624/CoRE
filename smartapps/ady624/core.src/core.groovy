@@ -2769,7 +2769,7 @@ private configApp() {
 		//initiate config app, since we have no running version yet (not yet installed)
 		state.config = [:]
 		state.config.conditionId = 0
-		state.config.app = state.app ?: null
+		state.config.app = state.app && (state.app.conditions != null) && (state.app.otherConditions != null) && (state.app.actions != null) ? state.app : null
 		if (!state.config.app) {
 			state.config.app = [:]
 			//create the root condition
