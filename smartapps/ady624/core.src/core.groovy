@@ -8331,11 +8331,14 @@ private rebuildConditions() {
                     def c = null
                     if (settings["condGrouping${conditionId}"]) {
                     	//group
+                        log.trace "Recreating group condition $conditionId in parent $parentId"
                         c = createCondition(parentId, true, conditionId)
                     } else {
                     	//condition
+                        log.trace "Recreating condition $conditionId in parent $parentId"
                         c = createCondition(parentId, false, conditionId)
                     }
+                    log.trace "Updating recreated condition $c"
                     if (c) updateCondition(c)
 	                keepGoing = true
                 	condition.value = null
@@ -8343,6 +8346,7 @@ private rebuildConditions() {
             }
         }
     }
+    log.trace "Done with rebuilding conditions, cleaning up"
     cleanUpConditions(true)
 }
 
@@ -8353,10 +8357,13 @@ private rebuildActions() {
         		def parentId = action.value.toInteger()
         		def actionId = action.key.replace("actParent", "").toInteger()
                 def rs = !!settings["actRState${actionId}"]
+                log.trace "Recreating action $actiondId with parent $parentId"
                 def a = createAction(parentId, rs, actionId)
+                log.trace "Updating recreated action $a"
                 if (a) updateAction(a)
             }
         }
+    log.trace "Done with rebuilding actions, cleaning up"
     cleanUpActions()
 }
 
