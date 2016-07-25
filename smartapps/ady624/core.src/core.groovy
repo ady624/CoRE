@@ -121,6 +121,7 @@ preferences {
 	page(name: "pageVariables")
 	page(name: "pageSetVariable")
 	page(name: "pageSimulate")
+    page(name: "pageRebuild")
 	page(name: "pageToggleEnabled")
 	page(name: "pageInitializeVariable")
 	page(name: "pageInitializedVariable")
@@ -641,8 +642,10 @@ private pageMainCoREPiston() {
 				input "log#error", "bool", title: "Log error messages", defaultValue: true
 			}
 			input "disableCO", "bool", title: "Disable command optimizations", defaultValue: false
+			href "pageRebuild", title: "Rebuild this CoRE piston", description: "Only use this option if your piston has been corrupted."
 		}
-		section("Remove piston") {
+        
+		section("Rebuild or remove piston") {
 			href "pageRemove", title: "", description: "Remove this CoRE piston"
 		}
 	}
@@ -1760,6 +1763,18 @@ def pageSimulate() {
 		}
 
 	}
+}
+
+def pageRebuild() {
+	dynamicPage(name: "pageRebuild", title: "", uninstall: false, install: false) {
+		section("") {
+			paragraph "Rebuilding piston..."
+            rebuildPiston()
+            configApp()
+            state.run = "config"
+			paragraph "Rebuilding is now finished. Please tap Done to go back."
+		}
+    }
 }
 
 def pageToggleEnabled() {
@@ -8287,8 +8302,13 @@ private getConditionCount(app) {
 }
 
 def rebuildPiston() {
-	configApp()
-	rebuildConditions()
+	configApp()    
+    state.config.app.conditions = createCondition(true)
+    state.config.app.conditions.id = 0
+    state.config.app.otherConditions = createCondition(true)
+    state.config.app.otherConditions.id = -1
+    state.config.app.actions = []
+    rebuildConditions()
     rebuildActions()
     updated()
 }
