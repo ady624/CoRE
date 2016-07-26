@@ -2330,6 +2330,7 @@ def initializeCoRE() {
 	refreshPistons()
 	subscribe(location, "CoRE", coreHandler)
 	subscribe(location, "askAlexa", askAlexaHandler)
+    subscribe(app, appTouchHandler)
 //    subscribe(null, "intrusion", intrusionHandler, [filterEvents: false])
 //    subscribe(null, "newIncident", intrusionHandler, [filterEvents: false])
 //    subscribe(null, "newMessage", intrusionHandler, [filterEvents: false])
@@ -2411,6 +2412,9 @@ def askAlexaHandler(evt) {
 	}
 }
 
+def appTouchHandler(evt) {
+	recovery()
+}
 
 def childUninstalled() {
 	refreshPistons()
@@ -2955,9 +2959,10 @@ private createCondition(parentConditionId, group, conditionId = null) {
 		condition.parentId = parent ? (int) parent.id : null
 		//calculate depth for new condition
 		condition.level = (parent.level ? parent.level : 0) + 1
-			//add the new condition to its parent, if any
+        //add the new condition to its parent, if any
 		//set the parent for upwards traversal
-			parent.children.push(condition)
+        if (!parent.children) parent = getCondition(0)
+        parent.children.push(condition)
 		//return the newly created condition
 		return condition
 	}
@@ -8320,8 +8325,8 @@ private rebuildConditions() {
     	keepGoing = false
         for(condition in conditions) {
         	if (condition.value != null) {
-        		def parentId = condition.value.toInteger()
-        		def conditionId = condition.key.replace("condParent", "").toInteger()
+        		int parentId = condition.value.toInteger()
+        		int conditionId = condition.key.replace("condParent", "").toInteger()
             	parentId = conditionId == parentId ? 0 : parentId
             	log.trace "GOT CONDITION $conditionId with parent $parentId"
                 def parentCondition = getCondition(parentId)
@@ -8329,7 +8334,7 @@ private rebuildConditions() {
                 	log.trace "WE FOUND THE PARENT! YEEEY!"
                     //let's see if it's a group
                     def c = null
-                    if (settings["condGrouping${conditionId}"] || settings.find{ it.key.startsWith("condParent") && it.key != "condParent${conditionId}" && it.value == conditionId }) {
+                    if (settings["condGrouping${conditionId}"] || settings.find{ it.key.startsWith("condParent") && it.key != "condParent${conditionId}" && (it.value.toInteger() == conditionId) }) {
                     	//group
                         log.trace "Recreating group condition $conditionId in parent $parentId"
                         c = createCondition(parentId, true, conditionId)
