@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.11f.20160725" }
+def version() {	return "v0.1.120.20160725" }
 /*
+ *	 7/25/2016 >>> v0.1.120.20160725 - Beta M1 - Pistons can now be "rebuilt", should the state be lost. Just check under each piston's Advanced Options. Also added app touch > it will manually kick all pistons, in case ST missed time events.
  *	 7/25/2016 >>> v0.1.11f.20160725 - Beta M1 - DO NOT INSTALL THIS VERSION UNLESS ASKED TO - Implemented code to rebuild pistons from settings in case of state corruption
  *	 7/23/2016 >>> v0.1.11e.20160723 - Beta M1 - Fixed a problem with caching events during restrictions, added the Time alias for the Date & Time capability
  *	 7/18/2016 >>> v0.1.11d.20160718 - Beta M1 - Added $httpStatusCode, $httpStatusOk (true or false), $iftttStatusCode and $iftttStatusOk (true or false) for http and ifttt requests. StatusCode represents the HTTP code for the last request, whereas StatusOk is a boolean (statusCode == 200)
@@ -2961,7 +2962,7 @@ private createCondition(parentConditionId, group, conditionId = null) {
 		condition.level = (parent.level ? parent.level : 0) + 1
         //add the new condition to its parent, if any
 		//set the parent for upwards traversal
-        if (!parent.children) parent = getCondition(0)
+        //if (!parent.children) parent = getCondition(0)
         parent.children.push(condition)
 		//return the newly created condition
 		return condition
@@ -8306,7 +8307,7 @@ private getConditionCount(app) {
 	return getConditionConditionCount(app.conditions) + (!(settings.mode in ["Basic", "Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0)
 }
 
-def rebuildPiston() {
+def rebuildPiston(update = false) {
 	configApp()    
     state.config.app.conditions = createCondition(true)
     state.config.app.conditions.id = 0
@@ -8315,7 +8316,8 @@ def rebuildPiston() {
     state.config.app.actions = []
     rebuildConditions()
     rebuildActions()
-    updated()
+    log.trace "Rebuilt piston, updating SmartApp..."
+    if (update) updated()
 }
 
 private rebuildConditions() {
@@ -8331,10 +8333,9 @@ private rebuildConditions() {
             	log.trace "GOT CONDITION $conditionId with parent $parentId"
                 def parentCondition = getCondition(parentId)
                 if (parentCondition != null) {   	           
-                	log.trace "WE FOUND THE PARENT! YEEEY!"
                     //let's see if it's a group
                     def c = null
-                    if (settings["condGrouping${conditionId}"] || settings.find{ it.key.startsWith("condParent") && it.key != "condParent${conditionId}" && (it.value.toInteger() == conditionId) }) {
+                    if (settings["condGrouping${conditionId}"] || conditions.find{ (it.key != "condParent${conditionId}") && it.value != null && (it.value.toInteger() == conditionId) }) {
                     	//group
                         log.trace "Recreating group condition $conditionId in parent $parentId"
                         c = createCondition(parentId, true, conditionId)
