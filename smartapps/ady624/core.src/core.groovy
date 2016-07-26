@@ -8329,7 +8329,7 @@ private rebuildConditions() {
                 	log.trace "WE FOUND THE PARENT! YEEEY!"
                     //let's see if it's a group
                     def c = null
-                    if (settings["condGrouping${conditionId}"]) {
+                    if (settings["condGrouping${conditionId}"] || settings.find{ it.key.startsWith("condParent") && it.key != "condParent${conditionId}" && it.value == conditionId }) {
                     	//group
                         log.trace "Recreating group condition $conditionId in parent $parentId"
                         c = createCondition(parentId, true, conditionId)
