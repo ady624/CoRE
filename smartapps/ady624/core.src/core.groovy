@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.120.20160725" }
+def version() {	return "v0.1.121.20160726" }
 /*
+ *	 7/26/2016 >>> v0.1.121.20160726 - Beta M1 - Support for multiple button count attributes, numberOfButtons as well as numButtons
  *	 7/25/2016 >>> v0.1.120.20160725 - Beta M1 - Pistons can now be "rebuilt", should the state be lost. Just check under each piston's Advanced Options. Also added app touch > it will manually kick all pistons, in case ST missed time events.
  *	 7/25/2016 >>> v0.1.11f.20160725 - Beta M1 - DO NOT INSTALL THIS VERSION UNLESS ASKED TO - Implemented code to rebuild pistons from settings in case of state corruption
  *	 7/23/2016 >>> v0.1.11e.20160723 - Beta M1 - Fixed a problem with caching events during restrictions, added the Time alias for the Date & Time capability
@@ -9103,11 +9104,16 @@ private listCommonDeviceAttributes(devices) {
 }
 
 
-private listCommonDeviceSubDevices(devices, countAttribute, prefix = "") {
+private listCommonDeviceSubDevices(devices, countAttributes, prefix = "") {
 	def result = []
 	def subDeviceCount = null
 	def hasMainSubDevice = false
 	//get supported attributes
+    if (countAttributes) {
+    	countAttributes = "$countAttributes".tokenize(",")
+    } else {
+    	countAttributes = []
+    }
 	for (device in devices) {
 		def cnt = 4
 		switch (device.name) {
@@ -9117,10 +9123,15 @@ private listCommonDeviceSubDevices(devices, countAttribute, prefix = "") {
 				cnt = 4
 				break
 		}
-		if (device.hasAttribute(countAttribute)) {
-			def c = cast(device.currentValue(countAttribute), "number")
-			cnt = c ? c : cnt
-		}
+        if (countAttributes.size()) {
+            for(countAttribute in countAttributes) {
+				def c = cast(device.currentValue(countAttribute), "number")
+                if (c) {                
+					cnt = c
+                    break
+                }
+            }
+        }
 		if (cnt instanceof String) {
 			cnt = cnt.isInteger() ? cnt.toInteger() : 0
 		}
@@ -9472,7 +9483,7 @@ private capabilities() {
 		[ name: "battery",							display: "Battery",							attribute: "battery",					multiple: true,			devices: "battery powered devices",	],
 		[ name: "beacon",							display: "Beacon",							attribute: "presence",					multiple: true,			devices: "beacons",	],
 		[ name: "switch",							display: "Bulb",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
-		[ name: "button",							display: "Button",							attribute: "button",					multiple: true,			devices: "buttons",			count: "numberOfButtons", data: "buttonNumber", momentary: true],
+		[ name: "button",							display: "Button",							attribute: "button",					multiple: true,			devices: "buttons",			count: "numberOfButtons,numButtons", data: "buttonNumber", momentary: true],
 		[ name: "imageCapture",						display: "Camera",							attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras",			],
 		[ name: "carbonDioxideMeasurement",			display: "Carbon Dioxide Measurement",		attribute: "carbonDioxide",				multiple: true,			devices: "carbon dioxide sensors",	],
 		[ name: "carbonMonoxideDetector",			display: "Carbon Monoxide Detector",		attribute: "carbonMonoxide",			multiple: true,			devices: "carbon monoxide detectors",	],
