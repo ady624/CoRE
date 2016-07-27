@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.124.20160727" }
+def version() {	return "v0.1.125.20160727" }
 /*
+ *	 7/27/2016 >>> v0.1.125.20160727 - Beta M1 - Fixed a problem with action restrictions...
  *	 7/27/2016 >>> v0.1.124.20160727 - Beta M1 - Added task day of week restrictions, @bamarayne made me do it, or else...
  *	 7/27/2016 >>> v0.1.123.20160727 - Beta M1 - Added action day of week and time restrictions, minor fixes and improvements
  *	 7/27/2016 >>> v0.1.122.20160727 - Beta M1 - Split Runtime Statistics onto two different pages. Too many pistons made it timeout
@@ -1573,17 +1574,17 @@ def pageAction(params) {
 						input "actRComparison$id", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
 						input "actRValue$id", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
 					}
-                    input "actRDOW", "enum", options: timeDayOfWeekOptions(), title: "Only execute on these days", description: "Any week day", required: false, multiple: true
-                    def timeFrom = settings["actRTimeFrom"]
-                    input "actRTimeFrom", "enum", title: (timeFrom ? "Only execute if time is between" : "Only execute during this time interval"), options: timeComparisonOptionValues(false, false), required: false, multiple: false, submitOnChange: true
+                    input "actRDOW$id", "enum", options: timeDayOfWeekOptions(), title: "Only execute on these days", description: "Any week day", required: false, multiple: true
+                    def timeFrom = settings["actRTimeFrom$id"]
+                    input "actRTimeFrom$id", "enum", title: (timeFrom ? "Only execute if time is between" : "Only execute during this time interval"), options: timeComparisonOptionValues(false, false), required: false, multiple: false, submitOnChange: true
                     if (timeFrom) {
                         if (timeFrom.contains("custom")) {
-                            input "actRTimeFromCustom", "time", title: "Custom time", required: true, multiple: false
+                            input "actRTimeFromCustom$id", "time", title: "Custom time", required: true, multiple: false
                         }
-                        def timeTo = settings["actRTimeTo"]
-                        input "actRTimeTo", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
+                        def timeTo = settings["actRTimeTo$id"]
+                        input "actRTimeTo$id", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
                         if (timeTo && (timeTo.contains("custom"))) {
-                            input "actRTimeToCustom", "time", title: "Custom time", required: true, multiple: false
+                            input "actRTimeToCustom$id", "time", title: "Custom time", required: true, multiple: false
                         }
                     }
 					if (action.pid > 0) {
@@ -3221,11 +3222,11 @@ private updateAction(action) {
 	action.rv = settings["actRVariable$id"]
 	action.rvc = settings["actRComparison$id"]
 	action.rvv = settings["actRValue$id"] != null ? settings["actRValue$id"] : ""
-    action.rw = settings["actRDOW"]
-	action.rtf = settings["actRTimeFrom"]
-	action.rtfc = settings["actRTimeFromCustom"]
-	action.rtt = settings["actRTimeTo"]
-	action.rttc = settings["actRTimeToCustom"]
+    action.rw = settings["actRDOW$id"]
+	action.rtf = settings["actRTimeFrom$id"]
+	action.rtfc = settings["actRTimeFromCustom$id"]
+	action.rtt = settings["actRTimeTo$id"]
+	action.rttc = settings["actRTimeToCustom$id"]
 
 	action.tos = settings["actTOS$id"]
 	action.tcp = settings["actTCP$id"]
