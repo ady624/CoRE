@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.121.20160726" }
+def version() {	return "v0.1.122.20160727" }
 /*
+ *	 7/27/2016 >>> v0.1.122.20160727 - Beta M1 - Split Runtime Statistics onto two different pages. Too many pistons made it timeout.
  *	 7/26/2016 >>> v0.1.121.20160726 - Beta M1 - Support for multiple button count attributes, numberOfButtons as well as numButtons
  *	 7/25/2016 >>> v0.1.120.20160725 - Beta M1 - Pistons can now be "rebuilt", should the state be lost. Just check under each piston's Advanced Options. Also added app touch > it will manually kick all pistons, in case ST missed time events.
  *	 7/25/2016 >>> v0.1.11f.20160725 - Beta M1 - DO NOT INSTALL THIS VERSION UNLESS ASKED TO - Implemented code to rebuild pistons from settings in case of state corruption
@@ -99,6 +100,7 @@ preferences {
 	//CoRE pages
 	page(name: "pageInitializeDashboard")
 	page(name: "pageStatistics")
+	page(name: "pagePistonStatistics")
 	page(name: "pageChart")
 	page(name: "pageGlobalVariables")
 	page(name: "pageGeneralSettings")
@@ -380,47 +382,11 @@ def pageStatistics() {
 
 		def i = 0
 		if (apps && apps.size()) {
-			for (app in apps) {
-				def mode = app.getMode()
-				def version = app.version()
-				def currentState = app.getCurrentState()
-				def stateSince = app.getCurrentStateSince()
-				def runStats = app.getRunStats()
-				def conditionStats = app.getConditionStats()
-				def subscribedDevices = app.getDeviceSubscriptionCount()
-				stateSince = stateSince ? formatLocalTime(stateSince) : null
-				def description = "Piston mode: ${mode ? mode : "unknown"}"
-				description += "\nPiston version: $version"
-				description += "\nSubscribed devices: $subscribedDevices"
-				description += "\nCondition count: ${conditionStats.conditions}"
-				description += "\nTrigger count: ${conditionStats.triggers}"
-				description += "\n\nCurrent state: ${currentState == null ? "unknown" : currentState}"
-				description += "\nSince: " + (stateSince ?  stateSince : "(never run)")
-				description += "\n\nMemory usage: " + app.mem()
-				if (runStats) {
-					def executionSince = runStats.executionSince ? formatLocalTime(runStats.executionSince) : null
-					description += "\n\nEvaluated: ${runStats.executionCount} time${runStats.executionCount == 1 ? "" : "s"}"
-					description += "\nSince: " + (executionSince ?  executionSince : "(unknown)")
-					description += "\n\nTotal evaluation time: ${Math.round(runStats.executionTime / 1000)}s"
-					description += "\nLast evaluation time: ${runStats.lastExecutionTime}ms"
-					if (runStats.executionCount > 0) {
-						description += "\nMin evaluation time: ${runStats.minExecutionTime}ms"
-						description += "\nAvg evaluation time: ${Math.round(runStats.executionTime / runStats.executionCount)}ms"
-						description += "\nMax evaluation time: ${runStats.maxExecutionTime}ms"
-					}
-					if (runStats.eventDelay) {
-						description += "\n\nLast event delay: ${runStats.lastEventDelay}ms"
-						if (runStats.executionCount > 0) {
-							description += "\nMin event delay time: ${runStats.minEventDelay}ms"
-							description += "\nAvg event delay time: ${Math.round(runStats.eventDelay / runStats.executionCount)}ms"
-							description += "\nMax event delay time: ${runStats.maxEventDelay}ms"
-						}
-					}
-				}
-				section(title: i++ == 0 ? "Pistons" : "") {
-					paragraph description, title: app.label ? app.label : app.name, required: currentState != null, state: currentState ? "complete" : null
-				}
-			}
+        	section("Pistons") {
+                for (app in apps.sort{ it.label }) {
+                    href "pagePistonStatistics", params: [pistonId: app.id], title: app.label ?: app.name
+                }
+            }
 		} else {
 			section() {
 				paragraph "No pistons running"
@@ -429,9 +395,66 @@ def pageStatistics() {
 	}
 }
 
+def pagePistonStatistics(params) {
+	def pistonId = params?.pistonId ?: state.pistonId
+    state.pistonId = pistonId
+    log.trace "Piston id is $pistonId"
+
+	dynamicPage(name: "pagePistonStatistics", title: "", install: false, uninstall: false) {
+    	def app = getChildApps().find{ it.id == pistonId }
+        if (app) {
+            def mode = app.getMode()
+            def version = app.version()
+            def currentState = app.getCurrentState()
+            def stateSince = app.getCurrentStateSince()
+            def runStats = app.getRunStats()
+            def conditionStats = app.getConditionStats()
+            def subscribedDevices = app.getDeviceSubscriptionCount()
+            stateSince = stateSince ? formatLocalTime(stateSince) : null
+            def description = "Piston mode: ${mode ? mode : "unknown"}"
+            description += "\nPiston version: $version"
+            description += "\nSubscribed devices: $subscribedDevices"
+            description += "\nCondition count: ${conditionStats.conditions}"
+            description += "\nTrigger count: ${conditionStats.triggers}"
+            description += "\n\nCurrent state: ${currentState == null ? "unknown" : currentState}"
+            description += "\nSince: " + (stateSince ?  stateSince : "(never run)")
+            description += "\n\nMemory usage: " + app.mem()
+            if (runStats) {
+                def executionSince = runStats.executionSince ? formatLocalTime(runStats.executionSince) : null
+                description += "\n\nEvaluated: ${runStats.executionCount} time${runStats.executionCount == 1 ? "" : "s"}"
+                description += "\nSince: " + (executionSince ?  executionSince : "(unknown)")
+                description += "\n\nTotal evaluation time: ${Math.round(runStats.executionTime / 1000)}s"
+                description += "\nLast evaluation time: ${runStats.lastExecutionTime}ms"
+                if (runStats.executionCount > 0) {
+                    description += "\nMin evaluation time: ${runStats.minExecutionTime}ms"
+                    description += "\nAvg evaluation time: ${Math.round(runStats.executionTime / runStats.executionCount)}ms"
+                    description += "\nMax evaluation time: ${runStats.maxExecutionTime}ms"
+                }
+                if (runStats.eventDelay) {
+                    description += "\n\nLast event delay: ${runStats.lastEventDelay}ms"
+                    if (runStats.executionCount > 0) {
+                        description += "\nMin event delay time: ${runStats.minEventDelay}ms"
+                        description += "\nAvg event delay time: ${Math.round(runStats.eventDelay / runStats.executionCount)}ms"
+                        description += "\nMax event delay time: ${runStats.maxEventDelay}ms"
+                    }
+                }
+            }
+            section(app.label ?: app.name) {
+                paragraph description, required: currentState != null, state: currentState ? "complete" : null
+            }
+        } else {
+        	section() {
+            	paragraph "Sorry, the piston you selected cannot be found"
+            }
+        }
+    }
+}
+
 def pageChart(params) {
-	def chartName = params?.chart
-	def chartTitle = params?.title
+	def chartName = params?.chart ?: state.chartName
+	def chartTitle = params?.title ?: state.chartTitle
+    state.chartName = chartName
+    state.chartTitle = chartTitle
 	dynamicPage(name: "pageChart", title: "", install: false, uninstall: false) {
 		if (chartName) {
 			updateChart(chartName, null)
@@ -9500,6 +9523,7 @@ private capabilities() {
 		[ name: "ifttt",							display: "IFTTT",							attribute: "ifttt",						commands: [],																		multiple: false,		virtualDevice: location,	virtualDeviceName: "IFTTT"	],
 		[ name: "illuminanceMeasurement",			display: "Illuminance Measurement",			attribute: "illuminance",				multiple: true,			devices: "illuminance sensors",	],
 		[ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
+		[ name: "indicator",						display: "Indicator",						attribute: "indicatorStatus",			multiple: true,			devices: "indicator devices"],
 		[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						multiple: true,			devices: "leak sensors",	],
 		[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
 		[ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
@@ -9511,6 +9535,7 @@ private capabilities() {
 		[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
 		[ name: "notification",						display: "Notification",					commands: ["deviceNotification"],													multiple: true,			devices: "notification devices",	],
 		[ name: "pHMeasurement",					display: "pH Measurement",					attribute: "pH",						multiple: true,			devices: "pH sensors",	],
+		[ name: "occupancy",						display: "Occupancy",						attribute: "occupancy",					multiple: true,			devices: "occupancy detectors",	],
 		[ name: "switch",							display: "Outlet",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "outlets",			],
 		[ name: "piston",							display: "Piston",							attribute: "piston",					commands: ["executePiston"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Piston"	],
 		[ name: "polling",							display: "Polling",							commands: ["poll"],																	multiple: true,			devices: "pollable devices",	],
@@ -9830,6 +9855,7 @@ private attributes() {
 		[ name: "door",						type: "enum",			options: ["unknown", "closed", "open", "closing", "opening"],	interactive: true,	],
 		[ name: "energy",					type: "decimal",		range: "0..*",			unit: "kWh",	],
 		[ name: "energy*",					type: "decimal",		range: "0..*",			unit: "kWh",	],
+		[ name: "indicatorStatus",			type: "enum",			options: ["when off", "when on", "never"],	],
 		[ name: "illuminance",				type: "number",			range: "0..*",			unit: "lux",	],
 		[ name: "image",					type: "image",			],
 		[ name: "lock",						type: "enum",			options: ["locked", "unlocked"],	interactive: true,	],
@@ -9841,6 +9867,7 @@ private attributes() {
 		[ name: "pH",						type: "decimal",		range: "0..14",	],
 		[ name: "power",					type: "decimal",		range: "0..*",			unit: "W",	],
 		[ name: "power*",					type: "decimal",		range: "0..*",			unit: "W",	],
+		[ name: "occupancy",				type: "enum",			options: ["occupied", "not occupied"],	],
 		[ name: "presence",					type: "enum",			options: ["present", "not present"],	],
 		[ name: "humidity",					type: "number",			range: "0..100",		unit: "%",	],
 		[ name: "shock",					type: "enum",			options: ["detected", "clear"],	],
