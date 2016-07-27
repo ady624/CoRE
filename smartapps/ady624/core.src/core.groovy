@@ -18,9 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.122.20160727" }
+def version() {	return "v0.1.123.20160727" }
 /*
- *	 7/27/2016 >>> v0.1.122.20160727 - Beta M1 - Split Runtime Statistics onto two different pages. Too many pistons made it timeout.
+ *	 7/27/2016 >>> v0.1.123.20160727 - Beta M1 - Added action day of week and time restrictions, minor fixes and improvements
+ *	 7/27/2016 >>> v0.1.122.20160727 - Beta M1 - Split Runtime Statistics onto two different pages. Too many pistons made it timeout
  *	 7/26/2016 >>> v0.1.121.20160726 - Beta M1 - Support for multiple button count attributes, numberOfButtons as well as numButtons
  *	 7/25/2016 >>> v0.1.120.20160725 - Beta M1 - Pistons can now be "rebuilt", should the state be lost. Just check under each piston's Advanced Options. Also added app touch > it will manually kick all pistons, in case ST missed time events.
  *	 7/25/2016 >>> v0.1.11f.20160725 - Beta M1 - DO NOT INSTALL THIS VERSION UNLESS ASKED TO - Implemented code to rebuild pistons from settings in case of state corruption
@@ -398,8 +399,6 @@ def pageStatistics() {
 def pagePistonStatistics(params) {
 	def pistonId = params?.pistonId ?: state.pistonId
     state.pistonId = pistonId
-    log.trace "Piston id is $pistonId"
-
 	dynamicPage(name: "pagePistonStatistics", title: "", install: false, uninstall: false) {
     	def app = getChildApps().find{ it.id == pistonId }
         if (app) {
@@ -1262,8 +1261,9 @@ def pageVariables() {
 
 def pageActionGroup(params) {
 	state.run = "config"
-	def conditionId = params?.conditionId != null ? (int) params?.conditionId : (int) state.config.conditionId
+	def conditionId = params?.conditionId != null ? (int) params?.conditionId : (int) state.config.actionConditionId
 	def onState = conditionId > 0 ? (params?.onState != null ? (boolean) params?.onState : (boolean) state.config.onState) : true
+    state.config.actionConditionId = conditionId
 	state.config.onState = (boolean) onState
 	def value = conditionId < -1 ? false : true
 	def block = conditionId > 0 ? "WHEN ${onState ? "TRUE" : "FALSE"}, DO ..." : "IF"
@@ -1560,7 +1560,7 @@ def pageAction(params) {
 			}
 
 			if (actionUsed) {
-				section(title: "Action restrictions") {
+				section(title: "Action Restrictions") {
 					input "actRStateChange$id", "bool", title: action.pid > 0 ? "Only execute on condition state change" : "Only execute on piston state change", required: false
 					input "actRMode$id", "mode", title: "Only execute in these modes", description: "Any location mode", required: false, multiple: true
 					input "actRAlarm$id", "enum", options: getAlarmSystemStatusOptions(), title: "Only execute during these alarm states", description: "Any alarm state", required: false, multiple: true
@@ -1571,6 +1571,19 @@ def pageAction(params) {
 						input "actRComparison$id", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
 						input "actRValue$id", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
 					}
+                    input "actRDOW", "enum", options: timeDayOfWeekOptions(), title: "Only execute on these days", description: "Any week day", required: false, multiple: true
+                    def timeFrom = settings["actRTimeFrom"]
+                    input "actRTimeFrom", "enum", title: (timeFrom ? "Only execute if time is between" : "Only execute during this time interval"), options: timeComparisonOptionValues(false, false), required: false, multiple: false, submitOnChange: true
+                    if (timeFrom) {
+                        if (timeFrom.contains("custom")) {
+                            input "actRTimeFromCustom", "time", title: "Custom time", required: true, multiple: false
+                        }
+                        def timeTo = settings["actRTimeTo"]
+                        input "actRTimeTo", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
+                        if (timeTo && (timeTo.contains("custom"))) {
+                            input "actRTimeToCustom", "time", title: "Custom time", required: true, multiple: false
+                        }
+                    }
 					if (action.pid > 0) {
 						input "actRState$id", "enum", options:["true", "false"], defaultValue: action.rs == false ? "false" : "true", title: action.pid > 0 ? "Only execute when condition state is" : "Only execute on piston state change", required: true
 					}
@@ -3206,6 +3219,11 @@ private updateAction(action) {
 	action.rv = settings["actRVariable$id"]
 	action.rvc = settings["actRComparison$id"]
 	action.rvv = settings["actRValue$id"] != null ? settings["actRValue$id"] : ""
+    action.rw = settings["actRDOW"]
+	action.rtf = settings["actRTimeFrom"]
+	action.rtfc = settings["actRTimeFromCustom"]
+	action.rtt = settings["actRTimeTo"]
+	action.rttc = settings["actRTimeToCustom"]
 
 	action.tos = settings["actTOS$id"]
 	action.tcp = settings["actTCP$id"]
@@ -3369,6 +3387,12 @@ private getActionDescription(action) {
 	if (action.rv) {
 		result += "® If {${action.rv}} ${action.rvc} ${action.rvv}...\n"
 	}
+	if (action.rw) {
+		result += "® If day is ${buildNameList(action.rw, "or")}...\n"
+	}
+	if (action.rtf && action.rtt) {   
+		result += "® If time is between ${action.rtf == "custom time" ? formatTime(action.rtfc) : action.rtf} and ${action.rtt == "custom time" ? formatTime(action.rttc) : action.rtt}...\n"
+    }
 	result += (result ? "\n" : "") + "Using " + buildDeviceNameList(devices, "and")+ "..."
 	state.taskIndent = 0
 	def tasks = action.t.sort{it.i}
@@ -5071,6 +5095,8 @@ private scheduleActions(conditionId, stateChanged = false, currentState = true) 
 		if (action.rm && action.rm.size() && !(location.mode in action.rm)) continue
 		if (action.ra && action.ra.size() && !(getAlarmSystemStatus() in action.ra)) continue
 		if (action.rv && !(checkVariableCondition(action.rv, action.rvc, action.rvv))) continue
+        if (action.rw && action.rw.size() && !(getDayOfWeekName() in action.rw)) continue
+		if (action.rtf && action.rtt && !(checkTimeCondition(action.rtf, action.rtfc, action.rtt, action.rttc))) continue
 		//we survived all restrictions, pfew
 		scheduleAction(action)
 	}
@@ -8340,7 +8366,7 @@ def rebuildPiston(update = false) {
     state.config.app.actions = []
     rebuildConditions()
     rebuildActions()
-    log.trace "Rebuilt piston, updating SmartApp..."
+    debug "Rebuilt piston, updating SmartApp...", null, "trace"
     if (update) updated()
 }
 
@@ -8354,21 +8380,17 @@ private rebuildConditions() {
         		int parentId = condition.value.toInteger()
         		int conditionId = condition.key.replace("condParent", "").toInteger()
             	parentId = conditionId == parentId ? 0 : parentId
-            	log.trace "GOT CONDITION $conditionId with parent $parentId"
                 def parentCondition = getCondition(parentId)
                 if (parentCondition != null) {   	           
                     //let's see if it's a group
                     def c = null
                     if (settings["condGrouping${conditionId}"] || conditions.find{ (it.key != "condParent${conditionId}") && it.value != null && (it.value.toInteger() == conditionId) }) {
                     	//group
-                        log.trace "Recreating group condition $conditionId in parent $parentId"
                         c = createCondition(parentId, true, conditionId)
                     } else {
                     	//condition
-                        log.trace "Recreating condition $conditionId in parent $parentId"
                         c = createCondition(parentId, false, conditionId)
                     }
-                    log.trace "Updating recreated condition $c"
                     if (c) updateCondition(c)
 	                keepGoing = true
                 	condition.value = null
@@ -8376,7 +8398,6 @@ private rebuildConditions() {
             }
         }
     }
-    log.trace "Done with rebuilding conditions, cleaning up"
     cleanUpConditions(true)
 }
 
@@ -8387,13 +8408,10 @@ private rebuildActions() {
         		def parentId = action.value.toInteger()
         		def actionId = action.key.replace("actParent", "").toInteger()
                 def rs = !!settings["actRState${actionId}"]
-                log.trace "Recreating action $actiondId with parent $parentId"
                 def a = createAction(parentId, rs, actionId)
-                log.trace "Updating recreated action $a"
                 if (a) updateAction(a)
             }
         }
-    log.trace "Done with rebuilding actions, cleaning up"
     cleanUpActions()
 }
 
