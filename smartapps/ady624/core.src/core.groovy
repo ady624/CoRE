@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.125.20160727" }
+def version() {	return "v0.1.126.20160727" }
 /*
+ *	 7/27/2016 >>> v0.1.126.20160727 - Beta M1 - Always showing the Attribute field for the Thermostat capability
  *	 7/27/2016 >>> v0.1.125.20160727 - Beta M1 - Fixed a problem with action restrictions...
  *	 7/27/2016 >>> v0.1.124.20160727 - Beta M1 - Added task day of week restrictions, @bamarayne made me do it, or else...
  *	 7/27/2016 >>> v0.1.123.20160727 - Beta M1 - Added action day of week and time restrictions, minor fixes and improvements
@@ -985,7 +986,7 @@ def pageCondition(params) {
 									attribute = cleanUpAttribute(settings["condAttr$id"])
 									if (attribute == null) attribute = capability.attribute
 									//display the Attribute only in expert mode or in basic mode if it differs from the default capability attribute
-									if ((attribute != capability.attribute) || state.config.expertMode) {
+									if ((attribute != capability.attribute) || capability.showAttribute || state.config.expertMode) {
 										input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
 									}
 
@@ -9585,7 +9586,7 @@ private capabilities() {
 		[ name: "consumable",						display: "Stock Management",				attribute: "consumable",				multiple: true,			devices: "consumables",	],
 		[ name: "tamperAlert",						display: "Tamper Alert",					attribute: "tamper",					multiple: true,			devices: "tamper sensors",	],
 		[ name: "temperatureMeasurement",			display: "Temperature Measurement",			attribute: "temperature",				multiple: true,			devices: "temperature sensors",	],
-		[ name: "thermostat",						display: "Thermostat",						attribute: "temperature",				commands: ["setHeatingSetpoint", "setCoolingSetpoint", "off", "heat", "emergencyHeat", "cool", "setThermostatMode", "fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode", "auto"],	multiple: true,		devices: "thermostats"	],
+		[ name: "thermostat",						display: "Thermostat",						attribute: "temperature",				commands: ["setHeatingSetpoint", "setCoolingSetpoint", "off", "heat", "emergencyHeat", "cool", "setThermostatMode", "fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode", "auto"],	multiple: true,		devices: "thermostats",	showAttribute: true],
 		[ name: "thermostatCoolingSetpoint",		display: "Thermostat Cooling Setpoint",		attribute: "coolingSetpoint",			commands: ["setCoolingSetpoint"],													multiple: true,			],
 		[ name: "thermostatFanMode",				display: "Thermostat Fan Mode",				attribute: "thermostatFanMode",			commands: ["fanOn", "fanAuto", "fanCirculate", "setThermostatFanMode"],				multiple: true,			devices: "fans",	],
 		[ name: "thermostatHeatingSetpoint",		display: "Thermostat Heating Setpoint",		attribute: "heatingSetpoint",			commands: ["setHeatingSetpoint"],													multiple: true,			],
