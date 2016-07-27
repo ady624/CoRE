@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.123.20160727" }
+def version() {	return "v0.1.124.20160727" }
 /*
+ *	 7/27/2016 >>> v0.1.124.20160727 - Beta M1 - Added task day of week restrictions, @bamarayne made me do it, or else...
  *	 7/27/2016 >>> v0.1.123.20160727 - Beta M1 - Added action day of week and time restrictions, minor fixes and improvements
  *	 7/27/2016 >>> v0.1.122.20160727 - Beta M1 - Split Runtime Statistics onto two different pages. Too many pistons made it timeout
  *	 7/26/2016 >>> v0.1.121.20160726 - Beta M1 - Support for multiple button count attributes, numberOfButtons as well as numButtons
@@ -1530,6 +1531,7 @@ def pageAction(params) {
 									}
 									if (!command.flow) {
 										input "actParamMode$id#$tid", "enum", options: getLocationModeOptions(), title: "Only during these modes", description: "Any", required: false, multiple: true
+										input "actParamDOW$id#$tid", "enum", options: timeDayOfWeekOptions(), title: "Only on these days", description: "Any", required: false, multiple: true
 									}
 								} else if (custom) {
 									//custom command parameters... complicated stuff
@@ -3246,6 +3248,7 @@ private updateAction(action) {
 				task.c = cmd
 				task.p = []
 				task.m = settings["actParamMode$id#$tid"]
+				task.d = settings["actParamDOW$id#$tid"]
 				def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
 				def custom = (cmd && cmd.startsWith(customCommandPrefix()))
 				cmd = cleanUpCommand(cmd)
@@ -3490,7 +3493,7 @@ private getTaskDescription(task) {
 	def currentIndent = state.taskIndent + selfIndent
 	def prefix = "".padLeft(currentIndent > 0 ? currentIndent * 3 : 0, " ")
 	state.taskIndent = state.taskIndent + indent
-	return prefix + result + (task.m && task.m.size() ? " (only for ${buildNameList(task.m, "or")})" : "")
+	return prefix + result + (task.m && task.m.size() ? " (only for ${buildNameList(task.m, "or")})" : "") + (task.d && task.d.size() ? " (only on ${buildNameList(task.d, "or")})" : "")
 }
 
 
@@ -6319,6 +6322,8 @@ private processCommandTask(task) {
 	if (!t) return false
 	//only execute task in certain modes?
 	if (t.m && !(location.mode in t.m)) return false
+	//only execute task on certain days?
+	if (t.d && t.d.size() && !(getDayOfWeekName() in t.d)) return false
 	//found the actual task, let's figure out what command we're running
 	def cmd = t.c
 	def virtual = (cmd && cmd.startsWith(virtualCommandPrefix()))
