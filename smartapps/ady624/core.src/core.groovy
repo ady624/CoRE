@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.126.20160727" }
+def version() {	return "v0.1.127.20160727" }
 /*
+ *	 7/27/2016 >>> v0.1.127.20160727 - Beta M1 - Fixed a problem with immediate tasks and task restrictions
  *	 7/27/2016 >>> v0.1.126.20160727 - Beta M1 - Always showing the Attribute field for the Thermostat capability
  *	 7/27/2016 >>> v0.1.125.20160727 - Beta M1 - Fixed a problem with action restrictions...
  *	 7/27/2016 >>> v0.1.124.20160727 - Beta M1 - Added task day of week restrictions, @bamarayne made me do it, or else...
@@ -5329,17 +5330,22 @@ private scheduleAction(action) {
 					x += 1
 					continue
 				} else if (command && command.immediate) {
-						def function = "cmd_${sanitizeCommandName(command.name)}"
-					def result = "$function"(action, task, time)
-					time = (result && result.time) ? result.time : time
-					command.delay = (result && result.delay) ? result.delay : 0
-					if (result && result.waitFor) {
-						waitFor = result.waitFor
-						waitSince = time
-					}
-					if (!result.schedule) {
-						command = null
-					}
+                	//only execute task in certain modes?
+                    //only execute task on certain days?
+                    def restricted = (task.m && !(location.mode in task.m)) || (task.d && task.d.size() && !(getDayOfWeekName() in task.d))
+                    def function = "cmd_${sanitizeCommandName(command.name)}"
+                    def result = "$function"(action, task, time)
+                    if (!restricted) {
+                        time = (result && result.time) ? result.time : time
+                        command.delay = (result && result.delay) ? result.delay : 0
+                        if (result && result.waitFor) {
+                            waitFor = result.waitFor
+                            waitSince = time
+                        }
+                    }
+                    if (!result.schedule) {
+                        command = null
+                    }
 				}
 			} else {
 				if (custom) {
@@ -5364,8 +5370,9 @@ private scheduleAction(action) {
 						//an aggregated command schedules one command task for the whole group
 						deviceId = null
 					}
-                    if ((!command.delay) && (time == rightNow) && (command.name == "setVariable") && (data.p) && (data.p.size() >= 3) && (data.p[2].d)) {
-                    	//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values                        
+                    def restricted = (task.m && !(location.mode in task.m)) || (task.d && task.d.size() && !(getDayOfWeekName() in task.d))
+                    if (!restricted && (!command.delay) && (time == rightNow) && (command.name == "setVariable") && (data.p) && (data.p.size() >= 3) && (data.p[2].d)) {
+                    	//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values
                         task_vcmd_setVariable(null, action, [data: data])
                     } else {
 						scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
