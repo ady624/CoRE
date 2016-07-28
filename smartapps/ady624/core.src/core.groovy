@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.127.20160727" }
+def version() {	return "v0.1.128.20160728" }
 /*
+ *	 7/28/2016 >>> v0.1.128.20160728 - Beta M1 - Fixed a problem with recurring triggers being reset by uses of Wait with a delay larger than 1 minute
  *	 7/27/2016 >>> v0.1.127.20160727 - Beta M1 - Fixed a problem with immediate tasks and task restrictions
  *	 7/27/2016 >>> v0.1.126.20160727 - Beta M1 - Always showing the Attribute field for the Thermostat capability
  *	 7/27/2016 >>> v0.1.125.20160727 - Beta M1 - Fixed a problem with action restrictions...
@@ -5755,8 +5756,12 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			//increment minutes
 			//we need to catch up with the present
 			def pastMinutes = (long) (Math.floor((currentTime.time - now.time) / 60000))
-			if (pastMinutes > 1) {
-				now = new Date(now.time + pastMinutes * 60000)
+			if (pastMinutes > interval) {
+            	if (interval > 0) {
+					now = new Date(now.time + interval * Math.floor(pastMinutes / interval) * 60000)
+                } else {
+					now = new Date(now.time + pastMinutes * 60000)
+                }
 			}
 			now = new Date(now.time + interval * 60000)
 			cycles = 1500 //up to 25 hours
@@ -5765,8 +5770,12 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			def m = now.minutes
 			def rm = (condition.m ? condition.m : "0").toInteger()
 			def pastHours = (long) (Math.floor((currentTime.time - now.time) / 3600000))
-			if (pastHours > 1) {
-				now = new Date(now.time + pastHours * 3600000)
+			if (pastHours > interval) {
+            	if (interval > 0) {
+					now = new Date(now.time + interval * Math.floor(pastHours / interval) * 60000)
+                } else {
+					now = new Date(now.time + pastHours * 60000)
+                }
 			}
 			now = new Date(now.time + (m < rm ? interval - 1 : interval) * 3600000)
 			now = new Date(now.year, now.month, now.date, now.hours, rm, 0)
