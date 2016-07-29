@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.12c.20160729" }
+def version() {	return "v0.1.12d.20160729" }
 /*
+ *	 7/29/2016 >>> v0.1.12d.20160729 - Beta M1 - Testing an intricate system of recovery, where each piston run can kickstart other past due pistons - recovery should be much leaner and much faster (as fast as the first next piston to run)
  *	 7/29/2016 >>> v0.1.12c.20160729 - Beta M1 - Added an improved (selective) piston recovery
  *	 7/29/2016 >>> v0.1.12b.20160729 - Beta M1 - Added "empty" modifiers to restore/capture state. Allows better control over which state is captured/restored
  *	 7/28/2016 >>> v0.1.12a.20160728 - Beta M1 - Fixed an error with type casting for time triggers
@@ -2520,28 +2521,33 @@ def childUninstalled() {
 	refreshPistons()
 }
 
-private recoverPistons(recoverAll = false) {
-	debug "Piston recovery initiated..."
+private recoverPistons(recoverAll = false, excludeAppId = null) {
+	if (recoverAll) debug "Piston recovery initiated...", null, "trace"
     int count = 0
 	def recovery = atomicState.recovery
 	if (!(recovery instanceof Map)) recovery = [:]
     def now = now()
     for(app in getChildApps()) {
-    	if (recoverAll || (recovery[app.id] && (recovery[app.id] < now))) {
+    	if ((recoverAll || (recovery[app.id] && (recovery[app.id] < now))) && (!excludeAppId || (excludeAppId != app.id))) {
         	count += 1
-        	debug "Recovering piston ${app.name}" + (recoverAll ? "" : " because it was about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due")
-        	app.recoveryHandler(false)
+        	debug "Recovering piston ${app.label ?: app.name}" + (recoverAll ? "" : " because it was about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due"), null, "trace"
+        	if (recoverAll || excludeAppId) {
+				sendLocationEvent(name: "CoRE Recovery [${app.id}]", value: "", displayed: true, linkText: "CoRE/${app.label} Recovery", isStateChange: true)
+            } else {
+        		app.recoveryHandler(null, false)
+            }
             subscribeToRecovery(app.id, 0)
         }
     }
-	debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered."
+	if (recoverAll || (count > 0)) debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered.", null, "trace"
 }
 
 def rebuildPistons() {
    	debug "Initializing piston rebuild...", null, trace
     for(app in getChildApps()) {
 	   	debug "Rebuilding piston ${app.label ?: app.name}", null, trace
-		app.rebuildPiston(true)
+		sendLocationEvent(name: "CoRE Recovery [${app.id}]", value: "", displayed: true, linkText: "CoRE/${app.label} Recovery", isStateChange: true, data: [rebuild: true])
+		//app.rebuildPiston(true)
     }
    	debug "Done rebuilding pistons.", null, trace
 }
@@ -2810,6 +2816,8 @@ def subscribeToRecovery(appId, recoveryTime) {
         recovery[appId] = recoveryTime
         atomicState.recovery = recovery
         state.recovery = recovery
+        //kick start all other dead pistons, use location events...
+        if (recoveryTime) recoverPistons(false, appId)
     }
 }
 
@@ -2955,17 +2963,17 @@ private configApp() {
 	if (!state.app) state.app = [:]    
 }
 
-private subscribeToAll(app) {
+private subscribeToAll(appData) {
 	debug "Initializing subscriptions...", 1
 	state.deviceSubscriptions = 0
-	def hasTriggers = getConditionHasTriggers(app.conditions)
+	def hasTriggers = getConditionHasTriggers(appData.conditions)
 		def hasLatchingTriggers = false
 		if (settings.mode in ["Latching", "And-If", "Or-If"]) {
 		//we really get the count
-		hasLatchingTriggers = getConditionHasTriggers(app.otherConditions)
+		hasLatchingTriggers = getConditionHasTriggers(appData.otherConditions)
 		//simulate subscribing to both lists
-		def subscriptions = subscribeToDevices(app.conditions, hasTriggers, null, null, null, null)
-		def latchingSubscriptions = subscribeToDevices(app.otherConditions, hasLatchingTriggers, null, null, null, null)
+		def subscriptions = subscribeToDevices(appData.conditions, hasTriggers, null, null, null, null)
+		def latchingSubscriptions = subscribeToDevices(appData.otherConditions, hasLatchingTriggers, null, null, null, null)
 		//we now have the two lists that we'd be subscribing to, let's figure out the common elements
 		def commonSubscriptions = [:]
 		for (subscription in subscriptions) {
@@ -2975,13 +2983,14 @@ private subscribeToAll(app) {
 			}
 		}
 		//perform subscriptions
-		subscribeToDevices(app.conditions, false, bothDeviceHandler, null, commonSubscriptions, null)
-		subscribeToDevices(app.conditions, hasTriggers, deviceHandler, null, null, commonSubscriptions)
-		subscribeToDevices(app.otherConditions, hasLatchingTriggers, latchingDeviceHandler, null, null, commonSubscriptions)
+		subscribeToDevices(appData.conditions, false, bothDeviceHandler, null, commonSubscriptions, null)
+		subscribeToDevices(appData.conditions, hasTriggers, deviceHandler, null, null, commonSubscriptions)
+		subscribeToDevices(appData.otherConditions, hasLatchingTriggers, latchingDeviceHandler, null, null, commonSubscriptions)
 	} else {
 		//simple IF case, no worries here
-		subscribeToDevices(app.conditions, hasTriggers, deviceHandler, null, null, null)
+		subscribeToDevices(appData.conditions, hasTriggers, deviceHandler, null, null, null)
 	}
+    subscribe(location, "CoRE Recovery [${app.id}]", recoveryHandler)
 	debug "Finished subscribing", -1
 }
 
@@ -3661,12 +3670,21 @@ def timeHandler() {
 	exitPoint(perf)
 }
 
-def recoveryHandler(showWarning = true) {
+def recoveryHandler(evt = null, showWarning = true) {
+	if (evt) {    
+		if (evt.jsonData && evt.jsonData.rebuild) {
+        	debug "Received a REBUILD request...", null, "info"
+    		rebuildPiston(true)
+        	return
+    	} else {
+        	debug "Received a RECOVER request...", null, "info"
+        }
+    }
 	entryPoint()
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-	if (showWarning) debug "CAUTION: Received a recovery event", 1, "warn"
+	if (!evt && showWarning) debug "CAUTION: Received a recovery event", 1, "warn"
 	//reset markers for all tasks, the owner of the task probably crashed :)
 	def tasks = atomicState.tasks
 	for(task in tasks.findAll{ it.value.marker != null }) {
@@ -8513,8 +8531,10 @@ def rebuildPiston(update = false) {
     state.config.app.actions = []
     rebuildConditions()
     rebuildActions()
-    debug "Rebuilt piston, updating SmartApp...", null, "trace"
-    if (update) updated()
+    if (update) {
+	    debug "Finished rebuilding piston, updating SmartApp...", null, "trace"
+	    updated()
+    }
 }
 
 private rebuildConditions() {
