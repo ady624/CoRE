@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.12d.20160729" }
+def version() {	return "v0.1.12e.20160729" }
 /*
+ *	 7/29/2016 >>> v0.1.12e.20160729 - Beta M1 - Added notification support for CoRE recovery
  *	 7/29/2016 >>> v0.1.12d.20160729 - Beta M1 - Testing an intricate system of recovery, where each piston run can kickstart other past due pistons - recovery should be much leaner and much faster (as fast as the first next piston to run)
  *	 7/29/2016 >>> v0.1.12c.20160729 - Beta M1 - Added an improved (selective) piston recovery
  *	 7/29/2016 >>> v0.1.12b.20160729 - Beta M1 - Added "empty" modifiers to restore/capture state. Allows better control over which state is captured/restored
@@ -318,6 +319,8 @@ def pageGeneralSettings(params) {
         	paragraph "Recovery allows pistons that have been left behind by missed ST events to recover and resume their work"
             input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours"
             input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day"
+            input "recoveryNotifications", "bool", title: "Send recovery notifications via ST UI"
+            input "recoveryPushNotifications", "bool", title: "Send recovery notifications via PUSH"
 			href "pageRecoverAllPistons", title: "Recover all pistons", description: "Use this option when you have pistons displaying large 'past due' times in the dashboard."
 			href "pageRebuildAllPistons", title: "Rebuild all pistons", description: "Use this option if there is a problem with your pistons, including when the dashboard is no longer working (blank)."
         }
@@ -2526,20 +2529,34 @@ private recoverPistons(recoverAll = false, excludeAppId = null) {
     int count = 0
 	def recovery = atomicState.recovery
 	if (!(recovery instanceof Map)) recovery = [:]
-    def now = now()
+    def threshold = now() - 30000
     for(app in getChildApps()) {
-    	if ((recoverAll || (recovery[app.id] && (recovery[app.id] < now))) && (!excludeAppId || (excludeAppId != app.id))) {
+    	if ((recoverAll || (recovery[app.id] && (recovery[app.id] < threshold))) && (!excludeAppId || (excludeAppId != app.id))) {
         	count += 1
         	debug "Recovering piston ${app.label ?: app.name}" + (recoverAll ? "" : " because it was about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due"), null, "trace"
         	if (recoverAll || excludeAppId) {
 				sendLocationEvent(name: "CoRE Recovery [${app.id}]", value: "", displayed: true, linkText: "CoRE/${app.label} Recovery", isStateChange: true)
             } else {
+            	def message = "Found CoRE Piston '${app.label ?: app.name}' about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due, attempting recovery"
+                int n = (int) (settings["recoveryNotifications"] ? 1 : 0) + (int) (settings["recoveryPushNotifications"] ? 2 : 0)
+                switch (n) {
+                	case 1:
+                    	sendNotificationEvent(message)
+                        break
+                	case 2:
+						sendPushMessage(message)
+                        break
+                	case 3:
+                    	sendPush(message)
+                        break
+                }
         		app.recoveryHandler(null, false)
             }
-            subscribeToRecovery(app.id, 0)
+            subscribeToRecovery(app.id, null)
         }
     }
 	if (recoverAll || (count > 0)) debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered.", null, "trace"
+    return true
 }
 
 def rebuildPistons() {
@@ -2812,12 +2829,12 @@ def subscribeToRecovery(appId, recoveryTime) {
     } else {
         def recovery = atomicState.recovery
         if (!(recovery instanceof Map)) recovery = [:]
-        if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now())/1000)} seconds", null, "info"
+        if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now() + 30000)/1000)} seconds", null, "info"
         recovery[appId] = recoveryTime
         atomicState.recovery = recovery
         state.recovery = recovery
         //kick start all other dead pistons, use location events...
-        if (recoveryTime) recoverPistons(false, appId)
+        if (recoveryTime != null) recoverPistons(false, appId)
     }
 }
 
@@ -6331,7 +6348,7 @@ private processTasks() {
 				setVariable("\$nextScheduledTime", null, true)
 				state.nextScheduledTime = null
 			}
-            parent.subscribeToRecovery(app.id, state.nextScheduledTime + 30000)
+            parent.subscribeToRecovery(app.id, state.nextScheduledTime ?: 0)
 
 			//we're done with the scheduling, let's do some real work, if we have any
 			if (immediateTasks) {
