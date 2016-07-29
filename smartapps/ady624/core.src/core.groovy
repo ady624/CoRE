@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.12b.20160729" }
+def version() {	return "v0.1.12c.20160729" }
 /*
+ *	 7/29/2016 >>> v0.1.12c.20160729 - Beta M1 - Added an improved (selective) piston recovery
  *	 7/29/2016 >>> v0.1.12b.20160729 - Beta M1 - Added "empty" modifiers to restore/capture state. Allows better control over which state is captured/restored
  *	 7/28/2016 >>> v0.1.12a.20160728 - Beta M1 - Fixed an error with type casting for time triggers
  *	 7/28/2016 >>> v0.1.129.20160728 - Beta M1 - Added an advanced setLevel - sets the level if the switch is in a certain state (on/off)
@@ -117,6 +118,8 @@ preferences {
 	page(name: "pageIntegrateIFTTTConfirm")
 	page(name: "pageResetSecurityToken")
 	page(name: "pageResetSecurityTokenConfirm")
+    page(name: "pageRecoverAllPistons")
+    page(name: "pageRebuildAllPistons")
 
 	//Piston pages
 	page(name: "pageIf")
@@ -310,10 +313,13 @@ def pageGeneralSettings(params) {
 			href "pageIntegrateIFTTT", title: "IFTTT", description: iftttConnected ? "Connected" : "Not configured", state: (iftttConnected ? "complete" : null), submitOnChange: true
 		}
 
-		section("Schedule Recovery") {
+		section("Piston Recovery") {
+        	paragraph "Recovery allows pistons that have been left behind by missed ST events to recover and resume their work"
             input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours"
             input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day"
-		}
+			href "pageRecoverAllPistons", title: "Recover all pistons", description: "Use this option when you have pistons displaying large 'past due' times in the dashboard."
+			href "pageRebuildAllPistons", title: "Rebuild all pistons", description: "Use this option if there is a problem with your pistons, including when the dashboard is no longer working (blank)."
+        }
 
 		section("Security") {
 			href "pageResetSecurityToken", title: "", description: "Reset security token"
@@ -543,6 +549,24 @@ def pageResetSecurityTokenConfirm() {
 	return dynamicPage(name: "pageResetSecurityTokenConfirm", title: "CoRE Security Token") {
 		section() {
 			paragraph "Your security token has been reset. Please make sure to update it wherever needed."
+		}
+	}
+}
+
+def pageRecoverAllPistons() {
+	return dynamicPage(name: "pageRecoverAllPistons", title: "Recover all pistons") {
+		section() {
+			recoverPistons(true)
+			paragraph "Done. All your pistons have been sent a recovery request."
+		}
+	}
+}
+
+def pageRebuildAllPistons() {
+	return dynamicPage(name: "pageRebuildAllPistons", title: "Rebuild all pistons") {
+		section() {
+			rebuildPistons()
+			paragraph "Done. All your pistons have been sent a rebuild request."
 		}
 	}
 }
@@ -2412,13 +2436,13 @@ def initializeCoRE() {
 //    subscribe(null, "newMessage", intrusionHandler, [filterEvents: false])
     switch (settings["recovery#1"]) {
     	case "Disabled":
-        	unschedule(recovery1)
+        	unschedule(recovery1Handler)
             break
     	case "Every 1 hour":
-        	runEvery1Hour(recovery1)
+        	runEvery1Hour(recovery1Handler)
             break
         default:
-        	runEvery3Hours(recovery1)
+        	runEvery3Hours(recovery1Handler)
             break
     }
 
@@ -2430,25 +2454,25 @@ def initializeCoRE() {
         	unschedule(recovery2)
             break            
     	case "Every 2 hours":
-        	schedule("$sch 0/2 1/1 * ? *", recovery2)
+        	schedule("$sch 0/2 1/1 * ? *", recovery2Handler)
             break
     	case "Every 4 hours":
-        	schedule("$sch 0/4 1/1 * ? *", recovery2)
+        	schedule("$sch 0/4 1/1 * ? *", recovery2Handler)
             break
     	case "Every 6 hours":
-        	schedule("$sch 0/6 1/1 * ? *", recovery2)
+        	schedule("$sch 0/6 1/1 * ? *", recovery2Handler)
             break
     	case "Every 12 hours":
-        	schedule("$sch 0/12 1/1 * ? *", recovery2)
+        	schedule("$sch 0/12 1/1 * ? *", recovery2Handler)
             break
     	case "Every 2 days":
-        	schedule("$sch2 1/2 * ? *", recovery2)
+        	schedule("$sch2 1/2 * ? *", recovery2Handler)
             break
     	case "Every 3 days":
-        	schedule("$sch2 1/3 * ? *", recovery2)
+        	schedule("$sch2 1/3 * ? *", recovery2Handler)
             break
         default:
-        	schedule("$sch2 1/1 * ? *", recovery2)
+        	schedule("$sch2 1/1 * ? *", recovery2Handler)
             break
     }
 }
@@ -2489,27 +2513,57 @@ def askAlexaHandler(evt) {
 }
 
 def appTouchHandler(evt) {
-	recovery()
+	recoverPistons()
 }
 
 def childUninstalled() {
 	refreshPistons()
 }
 
-private recovery() {
+private recoverPistons(recoverAll = false) {
+	debug "Piston recovery initiated..."
+    int count = 0
+	def recovery = atomicState.recovery
+	if (!(recovery instanceof Map)) recovery = [:]
+    def now = now()
     for(app in getChildApps()) {
-        app.recoveryHandler(false)
+    	if (recoverAll || (recovery[app.id] && (recovery[app.id] < now))) {
+        	count += 1
+        	debug "Recovering piston ${app.name}" + (recoverAll ? "" : " because it was about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due")
+        	app.recoveryHandler(false)
+            subscribeToRecovery(app.id, 0)
+        }
     }
+	debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered."
 }
 
+def rebuildPistons() {
+   	debug "Initializing piston rebuild...", null, trace
+    for(app in getChildApps()) {
+	   	debug "Rebuilding piston ${app.label ?: app.name}", null, trace
+		app.rebuildPiston(true)
+    }
+   	debug "Done rebuilding pistons.", null, trace
+}
+
+
+//temporary - to be removed after 2018/01/01
 def recovery1() {
-	debug "Received a recovery stage 1 event", null, "trace"
-	recovery()
+	recovery1Handler()
+}
+//temporary
+def recovery2() {
+	recovery2Handler()
 }
 
-def recovery2() {
+def recovery1Handler() {
+	debug "Received a recovery stage 1 event", null, "trace"
+	recoverPistons()
+}
+
+def recovery2Handler() {
 	debug "Received a recovery stage 2 event", null, "trace"
-	recovery()
+	recoverPistons()
 }
 
 private initializeCoREEndpoint() {
@@ -2744,6 +2798,19 @@ def updateChart(name, value) {
 		//state.charts = charts
 	}
 		return null
+}
+
+def subscribeToRecovery(appId, recoveryTime) {
+	if (parent) {
+    	parent.subscribeToRecovery(appId, recoveryTime);
+    } else {
+        def recovery = atomicState.recovery
+        if (!(recovery instanceof Map)) recovery = [:]
+        if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now())/1000)} seconds", null, "info"
+        recovery[appId] = recoveryTime
+        atomicState.recovery = recovery
+        state.recovery = recovery
+    }
 }
 
 def generatePistonName() {
@@ -6090,7 +6157,7 @@ private processTasks() {
 	//pfew, off to process tasks
 	//first, we make a variable to help us pick up where we left off
 	state.rerunSchedule = false
-    def app = state.run == "config" ? state.config.app : state.app
+    def appData = state.run == "config" ? state.config.app : state.app
 	def tasks = null
 	def perf = now()
 	def marker = now()
@@ -6101,7 +6168,7 @@ private processTasks() {
 
         //find out if we need to execute the tasks
         def restricted = (checkPistonRestriction() != null)
-        def executeTasks = !app.restrictions?.pe || !restricted
+        def executeTasks = !appData.restrictions?.pe || !restricted
 
 		//let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
 		def threshold = 2000
@@ -6244,7 +6311,9 @@ private processTasks() {
 				debug "Scheduling ST job to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
 			} else {
 				setVariable("\$nextScheduledTime", null, true)
+				state.nextScheduledTime = null
 			}
+            parent.subscribeToRecovery(app.id, state.nextScheduledTime + 30000)
 
 			//we're done with the scheduling, let's do some real work, if we have any
 			if (immediateTasks) {
