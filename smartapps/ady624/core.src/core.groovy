@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.12a.20160728" }
+def version() {	return "v0.1.12b.20160729" }
 /*
+ *	 7/29/2016 >>> v0.1.12b.20160729 - Beta M1 - Added "empty" modifiers to restore/capture state. Allows better control over which state is captured/restored
  *	 7/28/2016 >>> v0.1.12a.20160728 - Beta M1 - Fixed an error with type casting for time triggers
  *	 7/28/2016 >>> v0.1.129.20160728 - Beta M1 - Added an advanced setLevel - sets the level if the switch is in a certain state (on/off)
  *	 7/28/2016 >>> v0.1.128.20160728 - Beta M1 - Fixed a problem with recurring triggers being reset by uses of Wait with a delay larger than 1 minute
@@ -114,6 +115,8 @@ preferences {
 	page(name: "pageGeneralSettings")
 	page(name: "pageIntegrateIFTTT")
 	page(name: "pageIntegrateIFTTTConfirm")
+	page(name: "pageResetSecurityToken")
+	page(name: "pageResetSecurityTokenConfirm")
 
 	//Piston pages
 	page(name: "pageIf")
@@ -286,8 +289,11 @@ def pageGeneralSettings(params) {
 			paragraph app.version(), title: "CoRE Version"
 		}
 
-		section(title: "", hideable: !settings.expertMode && !settings.debugging, hidden: true) {
+		section(title: "Expert Features") {
 			input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true
+        }
+        
+        section(title: "Debugging") {
 			input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
 			def debugging = settings.debugging
 			if (debugging) {
@@ -307,6 +313,10 @@ def pageGeneralSettings(params) {
 		section("Schedule Recovery") {
             input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours"
             input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day"
+		}
+
+		section("Security") {
+			href "pageResetSecurityToken", title: "", description: "Reset security token"
 		}
 
 		section("Remove CoRE") {
@@ -513,6 +523,26 @@ def pageIntegrateIFTTTConfirm() {
 			section(){
 				paragraph "Sorry, the credentials you provided for IFTTT are invalid. Please go back and try again."
 			}
+		}
+	}
+}
+
+
+def pageResetSecurityToken() {
+	return dynamicPage(name: "pageResetSecurityToken", title: "CoRE Security Token") {
+		section() {
+			paragraph "CAUTION: Resetting the security token is an ireversible action. Once done, any integrations that rely on the security token, such as the CoRE Dashboard, the IFTTT Maker channel used as an action, etc. will STOP working and will require your attention. You will need to update the security token everywhere you are currently using it.", required: true
+			href "pageResetSecurityTokenConfirm", title: "", description: "Reset security token", required: true
+		}
+	}
+}
+
+def pageResetSecurityTokenConfirm() {
+	state.endpoint = null
+	initializeCoREEndpoint()
+	return dynamicPage(name: "pageResetSecurityTokenConfirm", title: "CoRE Security Token") {
+		section() {
+			paragraph "Your security token has been reset. Please make sure to update it wherever needed."
 		}
 	}
 }
@@ -7066,10 +7096,11 @@ private task_vcmd_loadState(device, action, task, simulate = false) {
 
 private task_vcmd_loadStateLocally(device, action, task, simulate = false, global = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (!device || !device.id || (params.size() != 1)) {
+	if (!device || !device.id || (params.size() < 1) || (params.size() > 2)) {
 		return false
 	}
 	def attributes = params[0].d
+    def emptyState = params.size() == 2 ? !!params[1].d : false
 	def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
 	debug "Load from state: attributes are $attributes, values are $values"
 	if (values instanceof Map) {
@@ -7081,6 +7112,9 @@ private task_vcmd_loadStateLocally(device, action, task, simulate = false, globa
 			}
 		}
 	}
+    if (emptyState) {
+		setStateVariable("${ global ? "@" : "" }:::${device.id}:::", null)
+    }
 	return true
 }
 
@@ -7193,10 +7227,16 @@ private task_vcmd_saveState(devices, action, task, simulate = false) {
 
 private task_vcmd_saveStateLocally(device, action, task, simulate = false, global = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (!device || !device.id || (params.size() != 1)) {
+	if (!device || !device.id || (params.size() < 1) || (params.size() > 2)) {
 		return false
 	}
 	def attributes = params[0].d
+    def needsEmptyState = params.size() == 2 ? !!params[1].d : false
+    if (needsEmptyState) {
+    	//check to ensure state is empty
+        def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
+        if (!(values instanceof Map) || values.size()) return false
+    }
 	def values = [:]
 	for (attribute in attributes) {
 			def cleanAttribute = cleanUpAttribute(attribute)
@@ -9851,12 +9891,12 @@ private virtualCommands() {
 		[ name: "setVariable",		display: "Set variable", 					parameters: ["Variable:var"],																				varEntry: 0, 						location: true,																	aggregated: true,	],
 		[ name: "saveAttribute",	display: "Save attribute to variable", 		parameters: ["Attribute:attribute","Aggregation:aggregation","?Convert to data type:dataType","Save to variable:string"],					varEntry: 3,		description: "Save attribute '{0}' to variable |[{3}]|'",			aggregated: true,	],
 		[ name: "saveState",		display: "Save state to variable",			parameters: ["Attributes:attributes","Aggregation:aggregation","?Convert to data type:dataType","Save to state variable:string"],			stateVarEntry: 3,	description: "Save state of attributes {0} to variable |[{3}]|'",	aggregated: true,	],
-		[ name: "saveStateLocally",	display: "Capture state to local store",	parameters: ["Attributes:attributes"],																															description: "Capture state of attributes {0} to local store",		],
-		[ name: "saveStateGlobally",display: "Capture state to global store",	parameters: ["Attributes:attributes"],																															description: "Capture state of attributes {0} to global store",	],
+		[ name: "saveStateLocally",	display: "Capture state to local store",	parameters: ["Attributes:attributes","?Only if state is empty:bool"],																															description: "Capture state of attributes {0} to local store",		],
+		[ name: "saveStateGlobally",display: "Capture state to global store",	parameters: ["Attributes:attributes","?Only if state is empty:bool"],																															description: "Capture state of attributes {0} to global store",	],
 		[ name: "loadAttribute",	display: "Load attribute from variable",	parameters: ["Attribute:attribute","Load from variable:variable","Allow translations:bool","Negate translation:bool"],											description: "Load attribute '{0}' from variable |[{1}]|",	],
 		[ name: "loadState",		display: "Load state from variable",		parameters: ["Attributes:attributes","Load from state variable:stateVariable","Allow translations:bool","Negate translation:bool"],								description: "Load state of attributes {0} from variable |[{1}]|"				],
-		[ name: "loadStateLocally",	display: "Restore state from local store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from local store",			],
-		[ name: "loadStateGlobally",display: "Restore state from global store",	parameters: ["Attributes:attributes"],																															description: "Restore state of attributes {0} from global store",			],
+		[ name: "loadStateLocally",	display: "Restore state from local store",	parameters: ["Attributes:attributes","?Empty the state:bool"],																															description: "Restore state of attributes {0} from local store",			],
+		[ name: "loadStateGlobally",display: "Restore state from global store",	parameters: ["Attributes:attributes","?Empty the state:bool"],																															description: "Restore state of attributes {0} from global store",			],
 		[ name: "setLocationMode",	display: "Set location mode",				parameters: ["Mode:mode"],																														location: true,	description: "Set location mode to '{0}'",		aggregated: true,	],
 		[ name: "setAlarmSystemStatus",display: "Set Smart Home Monitor status",	parameters: ["Status:alarmSystemStatus"],																										location: true,	description: "Set SHM alarm to '{0}'",			aggregated: true,	],
 		[ name: "sendNotification",	display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}' in notifications page",			aggregated: true,	],
