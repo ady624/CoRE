@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.129.20160728" }
+def version() {	return "v0.1.12a.20160728" }
 /*
+ *	 7/28/2016 >>> v0.1.12a.20160728 - Beta M1 - Fixed an error with type casting for time triggers
  *	 7/28/2016 >>> v0.1.129.20160728 - Beta M1 - Added an advanced setLevel - sets the level if the switch is in a certain state (on/off)
  *	 7/28/2016 >>> v0.1.128.20160728 - Beta M1 - Fixed a problem with recurring triggers being reset by uses of Wait with a delay larger than 1 minute
  *	 7/27/2016 >>> v0.1.127.20160727 - Beta M1 - Fixed a problem with immediate tasks and task restrictions
@@ -1522,7 +1523,7 @@ def pageAction(params) {
 													def dataTypeOptions = ["boolean", "decimal", "number", "string"]
 													input "actParam$id#$tid-$i", "enum", options: dataTypeOptions, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
 												} else {
-													input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
+													input "actParam$id#$tid-$i", param.type, range: param.range, options: param.options, title: param.title, required: param.required, multiple: param.multiple, submitOnChange: param.last || (i == command.varEntry), capitalization: "none"
 												}
 												if (param.last && settings["actParam$id#$tid-$i"]) {
 													//this is the last parameter, if filled in
@@ -5759,7 +5760,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			def pastMinutes = (long) (Math.floor((currentTime.time - now.time) / 60000))
 			if (pastMinutes > interval) {
             	if (interval > 0) {
-					now = new Date(now.time + interval * Math.floor(pastMinutes / interval) * 60000)
+					now = new Date(now.time + interval * (long) Math.floor(pastMinutes / interval) * 60000)
                 } else {
 					now = new Date(now.time + pastMinutes * 60000)
                 }
@@ -5773,7 +5774,7 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			def pastHours = (long) (Math.floor((currentTime.time - now.time) / 3600000))
 			if (pastHours > interval) {
             	if (interval > 0) {
-					now = new Date(now.time + interval * Math.floor(pastHours / interval) * 60000)
+					now = new Date(now.time + interval * (long) Math.floor(pastHours / interval) * 60000)
                 } else {
 					now = new Date(now.time + pastHours * 60000)
                 }
@@ -9531,6 +9532,8 @@ private parseCommandParameter(parameter) {
 						return [title: title, type: dataType, range: tokens[1], required: required, last: last]
 					case "enum":
 						return [title: title, type: dataType, options: tokens[1].tokenize(","), required: required, last: last]
+					case "enums":
+						return [title: title, type: "enum", options: tokens[1].tokenize(","), required: required, last: last, multiple: true]
 				}
 				break
 		}
@@ -9789,6 +9792,8 @@ private virtualCommands() {
 		[ name: "waitVariable",		display: "Wait (variable)",					parameters: ["Time (variable):variable","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait |[{0}]| {1}",	],
 		[ name: "waitRandom",		display: "Wait (random)",					parameters: ["At least:number[1..1440]","At most:number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
 		[ name: "waitState",		display: "Wait for piston state change",	parameters: ["Change to:enum[any,false,true]"],															immediate: true,	location: true,						description: "Wait for {0} state"],
+		[ name: "waitTime",			display: "Wait for time",					parameters: ["Time:enum[midnight,sunrise,noon,sunset]","Days of week:enums[Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday]"],							immediate: true,	location: true,						description: "Wait for next {0}, on {1}"],
+		[ name: "waitCustomTime",	display: "Wait for custom time",			parameters: ["Time:time","Days of week:enums[Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday]"],							immediate: true,	location: true,						description: "Wait for {0}, on {1}"],
 		[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",		],
 		[ name: "toggle#1",				requires: ["on1", "off1"], 			display: "Toggle #1",		],
 		[ name: "toggle#2",				requires: ["on2", "off2"], 			display: "Toggle #2",		],
