@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.12e.20160729" }
+def version() {	return "v0.1.12f.20160730" }
 /*
+ *	 7/30/2016 >>> v0.1.12f.20160730 - Beta M1 - Minor bug fixes
  *	 7/29/2016 >>> v0.1.12e.20160729 - Beta M1 - Added notification support for CoRE recovery
  *	 7/29/2016 >>> v0.1.12d.20160729 - Beta M1 - Testing an intricate system of recovery, where each piston run can kickstart other past due pistons - recovery should be much leaner and much faster (as fast as the first next piston to run)
  *	 7/29/2016 >>> v0.1.12c.20160729 - Beta M1 - Added an improved (selective) piston recovery
@@ -2244,7 +2245,9 @@ def setStateVariable(name, value, global = false) {
 	} else {
 		debug "Storing state variable $name with value $value"
 		if (parent) {
-			state.stateStore[name] = value
+			def store = atomicState.stateStore
+			store[name] = value
+			atomicState.stateStore = store
 		} else {
 			//using atomic state for globals
 			def store = atomicState.stateStore
@@ -2815,10 +2818,7 @@ def updateChart(name, value) {
 	}
 	if (modified) {
 		charts[name] = chart
-		//state.charts = charts
-		//atomicState.charts = charts
 		atomicState.charts = charts
-		//state.charts = charts
 	}
 		return null
 }
@@ -2829,12 +2829,21 @@ def subscribeToRecovery(appId, recoveryTime) {
     } else {
         def recovery = atomicState.recovery
         if (!(recovery instanceof Map)) recovery = [:]
-        if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now() + 30000)/1000)} seconds", null, "info"
+        if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now() + 30000)/1000)} seconds"
         recovery[appId] = recoveryTime
         atomicState.recovery = recovery
-        state.recovery = recovery
         //kick start all other dead pistons, use location events...
         if (recoveryTime != null) recoverPistons(false, appId)
+    }
+}
+
+private onChildExitPoint(appId, lastEvent, duration, nextScheduledTime) {
+	if (parent) {
+	    parent.onChildExitPoint(appId, lastEvent, duration, nextScheduledTime)
+    } else {
+	    if (lastEvent) updateChart("delay", lastEvent.delay)
+	    updateChart("exec", duration)
+	    subscribeToRecovery(app.id, nextScheduledTime ?: 0)
     }
 }
 
@@ -3793,10 +3802,9 @@ private exitPoint(milliseconds) {
 	setVariable("\$previousEventExecutionTime", milliseconds, true)
 	state.lastExecutionTime = milliseconds
 	try {
-		if (lastEvent) parent.updateChart("delay", lastEvent.delay)
-		parent.updateChart("exec", milliseconds)
+    	parent.onChildExitPoint(app.id, lastEvent, milliseconds, state.nextScheduledTime)        
 	} catch(e) {
-		debug "ERROR: Could not update charts: $e", null, "error"
+		debug "ERROR: Could not update parent app: $e", null, "error"
 	}
 	atomicState.runStats = runStats
 
@@ -3813,6 +3821,7 @@ private exitPoint(milliseconds) {
 	//to avoid race conditions
 	state.cache = atomicState.cache
 	state.tasks = atomicState.tasks
+	state.stateStore = atomicState.stateStore
 	state.runStats = atomicState.runStats
 	state.temp = null
 	state.sim = null
@@ -6348,7 +6357,6 @@ private processTasks() {
 				setVariable("\$nextScheduledTime", null, true)
 				state.nextScheduledTime = null
 			}
-            parent.subscribeToRecovery(app.id, state.nextScheduledTime ?: 0)
 
 			//we're done with the scheduling, let's do some real work, if we have any
 			if (immediateTasks) {
@@ -7339,12 +7347,12 @@ private task_vcmd_saveStateLocally(device, action, task, simulate = false, globa
     if (needsEmptyState) {
     	//check to ensure state is empty
         def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
-        if (!(values instanceof Map) || values.size()) return false
+        if (values != null) return false
     }
 	def values = [:]
 	for (attribute in attributes) {
-			def cleanAttribute = cleanUpAttribute(attribute)
-		values[cleanAttribute] = cleanAttribute == "hue" ? device.currentValue(cleanAttribute) * 3.6 : device.currentValue(cleanAttribute)
+        def cleanAttribute = cleanUpAttribute(attribute)
+        values[cleanAttribute] = cleanAttribute == "hue" ? device.currentValue(cleanAttribute) * 3.6 : device.currentValue(cleanAttribute)
 	}
 	debug "Save to state: attributes are $attributes, values are $values"
 	setStateVariable("${ global ? "@" : "" }:::${device.id}:::", values)
