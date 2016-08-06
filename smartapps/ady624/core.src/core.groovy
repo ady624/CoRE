@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.130.20160805" }
+def version() {	return "v0.1.131.20160805" }
 /*
+ *	 8/05/2016 >>> v0.1.131.20160805 - Beta M1 - Added the Audio Notification capability and removed the duration parameter from playTrackAndResume and playTrackAndRestore - if you use them already, you may have to revisit those actions.
  *	 8/05/2016 >>> v0.1.130.20160805 - Beta M1 - Fixed a bug with CoRE recovery, the play button now kicks all pistons to run
  *	 7/30/2016 >>> v0.1.12f.20160730 - Beta M1 - Minor bug fixes
  *	 7/29/2016 >>> v0.1.12e.20160729 - Beta M1 - Added notification support for CoRE recovery
@@ -9715,6 +9716,7 @@ private capabilities() {
 		[ name: "accelerationSensor",				display: "Acceleration Sensor",				attribute: "acceleration",				multiple: true,			devices: "acceleration sensors",	],
 		[ name: "alarm",							display: "Alarm",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
 		[ name: "askAlexaMacro",					display: "Ask Alexa Macro",					attribute: "askAlexaMacro",				commands: [],																		multiple: true,			virtualDevice: location,	virtualDeviceName: "Ask Alexa Macro"	],
+		[ name: "audioNotification",				display: "Audio Notification",				commands: ["playText", "playSoundAndTrack", "playText", "playTextAndResume", "playTextAndRestore", "playTrack", "playTrackAndResume", "playTrackAndRestore", "playTrackAtVolume"],	multiple: true,			devices: "audio notification devices", ],
 		[ name: "doorControl",						display: "Automatic Door",					attribute: "door",						commands: ["open", "close"],														multiple: true,			devices: "doors",			],
 		[ name: "garageDoorControl",				display: "Automatic Garage Door",			attribute: "door",						commands: ["open", "close"],														multiple: true,			devices: "garage doors",		],
 		[ name: "battery",							display: "Battery",							attribute: "battery",					multiple: true,			devices: "battery powered devices",	],
@@ -9866,13 +9868,13 @@ private commands() {
 		[ name: "mute",										category: "Entertainment",				group: "Control [devices]",			display: "Mute",	],
 		[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",	],
 		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], description: "Set volume to {0}%",	],
-		[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string"], description: "Speak text \"{0}\"", ],
+		[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string", "?Volume:level"], description: "Speak text \"{0}\" at volume {1}", ],
 		[ name: "playTextAndRestore",	display: "Speak text and restore",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and restore", ],
 		[ name: "playTextAndResume",	display: "Speak text and resume",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and resume", ],
-		[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: ["Track URI:string"],				description: "Play track \"{0}\"",	],
+		[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: ["Track URI:string","?Volume:level"],				description: "Play track \"{0}\" at volume {1}",	],
 		[ name: "playTrackAtVolume",	display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
-		[ name: "playTrackAndRestore",	display: "Play track and restore",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
-		[ name: "playTrackAndResume",	display: "Play track and resume",		parameters: ["Track URI:string","Duration:number[1..*]","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
+		[ name: "playTrackAndRestore",	display: "Play track and restore",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
+		[ name: "playTrackAndResume",	display: "Play track and resume",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
 		[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			parameters: ["Track URI:string"],	display: "Set track to '{0}'",					],
 		[ name: "setLocalLevel",display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
 		[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				],
