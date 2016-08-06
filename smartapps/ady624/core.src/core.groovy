@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.12f.20160730" }
+def version() {	return "v0.1.130.20160805" }
 /*
+ *	 8/05/2016 >>> v0.1.130.20160805 - Beta M1 - Fixed a bug with CoRE recovery, the play button now kicks all pistons to run
  *	 7/30/2016 >>> v0.1.12f.20160730 - Beta M1 - Minor bug fixes
  *	 7/29/2016 >>> v0.1.12e.20160729 - Beta M1 - Added notification support for CoRE recovery
  *	 7/29/2016 >>> v0.1.12d.20160729 - Beta M1 - Testing an intricate system of recovery, where each piston run can kickstart other past due pistons - recovery should be much leaner and much faster (as fast as the first next piston to run)
@@ -2520,7 +2521,7 @@ def askAlexaHandler(evt) {
 }
 
 def appTouchHandler(evt) {
-	recoverPistons()
+	recoverPistons(true)
 }
 
 def childUninstalled() {
@@ -2584,12 +2585,12 @@ def recovery2() {
 
 def recovery1Handler() {
 	debug "Received a recovery stage 1 event", null, "trace"
-	recoverPistons()
+	recoverPistons(true)
 }
 
 def recovery2Handler() {
 	debug "Received a recovery stage 2 event", null, "trace"
-	recoverPistons()
+	recoverPistons(true)
 }
 
 private initializeCoREEndpoint() {
@@ -2843,7 +2844,7 @@ private onChildExitPoint(appId, lastEvent, duration, nextScheduledTime) {
     } else {
 	    if (lastEvent) updateChart("delay", lastEvent.delay)
 	    updateChart("exec", duration)
-	    subscribeToRecovery(app.id, nextScheduledTime ?: 0)
+	    subscribeToRecovery(appId, nextScheduledTime ?: 0)
     }
 }
 
@@ -4619,7 +4620,8 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 		}
 
 		//add one minute if we're within 3 seconds of the next minute
-		def rightNow = time.time - time.time.mod(60000) + (time.seconds >= 57 ? 60000 : 0)
+        def rightNow = adjustTime()
+		rightNow = rightNow.time - rightNow.time.mod(60000) + (rightNow.seconds >= 57 ? 60000 : 0)
 		def lastMidnight =  rightNow - rightNow.mod(86400000)
 		def nextMidnight =  lastMidnight + 86400000
 
