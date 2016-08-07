@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.131.20160805" }
+def version() {	return "v0.1.132.20160806" }
 /*
+ *	 8/06/2016 >>> v0.1.132.20160806 - Beta M1 - Added $randomSaturation
  *	 8/05/2016 >>> v0.1.131.20160805 - Beta M1 - Added the Audio Notification capability and removed the duration parameter from playTrackAndResume and playTrackAndRestore - if you use them already, you may have to revisit those actions.
  *	 8/05/2016 >>> v0.1.130.20160805 - Beta M1 - Fixed a bug with CoRE recovery, the play button now kicks all pistons to run
  *	 7/30/2016 >>> v0.1.12f.20160730 - Beta M1 - Minor bug fixes
@@ -2097,12 +2098,16 @@ def getVariable(name) {
         	def result = getRandomValue(name) ?: getColorByName("Random").name
             setRandomValue(name, result)
             return result
+        case "\$randomLevel":
+        	def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
+            setRandomValue(name, result)
+            return result
         case "\$randomHue":
         	def result = getRandomValue(name) ?: (int)Math.round(360 * Math.random())
             setRandomValue(name, result)
             return result
-        case "\$randomLevel":
-        	def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
+        case "\$randomSaturation":
+        	def result = getRandomValue(name) ?: (int)Math.round(50 + (50 * Math.random()))
             setRandomValue(name, result)
             return result
         case "\$midnight":
@@ -6578,13 +6583,13 @@ private processCommandTask(task) {
 							//lightness
 							def name = params[0]
 							def hex = params[1]
-							def hue = params[2] instanceof Integer ? params[2] / 3.6 : 0
+							def hue = (int) Math.round(params[2] instanceof Integer ? params[2] / 3.6 : 0)
 							def saturation = params[3]
 							def lightness = params[4]
 							def p = [:]
 							if (name) {
 								def color = getColorByName(name, task.ownerId, task.taskId)
-								p.hue = color.h / 3.6
+								p.hue = (int) Math.round(color.h / 3.6)
 								p.saturation = color.s
 								//ST wrongly calls this level - it's lightness
 								p.level = color.l
@@ -9873,8 +9878,8 @@ private commands() {
 		[ name: "playTextAndResume",	display: "Speak text and resume",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and resume", ],
 		[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: ["Track URI:string","?Volume:level"],				description: "Play track \"{0}\" at volume {1}",	],
 		[ name: "playTrackAtVolume",	display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
-		[ name: "playTrackAndRestore",	display: "Play track and restore",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and restore", ],
-		[ name: "playTrackAndResume",	display: "Play track and resume",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" with duratino {1}s, at volume {2} and resume", ],
+		[ name: "playTrackAndRestore",	display: "Play track and restore",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" at volume {1} and restore", ],
+		[ name: "playTrackAndResume",	display: "Play track and resume",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" at volume {1} and resume", ],
 		[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			parameters: ["Track URI:string"],	display: "Set track to '{0}'",					],
 		[ name: "setLocalLevel",display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
 		[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				],
@@ -10269,6 +10274,8 @@ private initialSystemStore() {
 		"\$randomColor": "#FFFFFF",
 		"\$randomColorName": "White",
 		"\$randomLevel": 0,
+		"\$randomSaturation": 0,
+		"\$randomHue": 0,
         "\$midnight": 999999999999,
         "\$noon": 999999999999,
         "\$sunrise": 999999999999,
