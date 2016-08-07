@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.132.20160806" }
+def version() {	return "v0.1.133.20160806" }
 /*
+ *	 8/06/2016 >>> v0.1.133.20160806 - Beta M1 - Added support for custom CoRE main app name
  *	 8/06/2016 >>> v0.1.132.20160806 - Beta M1 - Added $randomSaturation
  *	 8/05/2016 >>> v0.1.131.20160805 - Beta M1 - Added the Audio Notification capability and removed the duration parameter from playTrackAndResume and playTrackAndRestore - if you use them already, you may have to revisit those actions.
  *	 8/05/2016 >>> v0.1.130.20160805 - Beta M1 - Fixed a bug with CoRE recovery, the play button now kicks all pistons to run
@@ -296,6 +297,7 @@ def pageGeneralSettings(params) {
 	dynamicPage(name: "pageGeneralSettings", title: "General Settings", install: false, uninstall: false) {
 		section("About") {
 			paragraph app.version(), title: "CoRE Version"
+			label name: "name", title: "Name", required: true, state: (name ? "complete" : null), defaultValue: app.name
 		}
 
 		section(title: "Expert Features") {
