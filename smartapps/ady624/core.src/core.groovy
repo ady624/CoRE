@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.134.20160808" }
+def version() {	return "v0.1.135.20160809" }
 /*
+ *	 8/09/2016 >>> v0.1.135.20160808 - Beta M1 - Fixed a problem where the tasking mechanism could get stuck and cause critical piston failures
  *	 8/08/2016 >>> v0.1.134.20160808 - Beta M1 - Added variable versions for setLevel, setHue, setSaturation, fadeLevel, fadeHue, fadeSaturation, adjustLevel, adjustHue, adjustSaturation
  *	 8/06/2016 >>> v0.1.133.20160806 - Beta M1 - Added support for custom CoRE main app name
  *	 8/06/2016 >>> v0.1.132.20160806 - Beta M1 - Added $randomSaturation
@@ -3788,7 +3789,8 @@ private entryPoint() {
 	state.sim = null
 	state.debugLevel = 0
 	state.globalVars = [:]
-	state.tasker = state.tasker ? state.tasker : []
+    state.tasker = []
+	//state.tasker = state.tasker ? state.tasker : []
 }
 
 private exitPoint(milliseconds) {
