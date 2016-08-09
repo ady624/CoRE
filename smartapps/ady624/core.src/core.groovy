@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.133.20160806" }
+def version() {	return "v0.1.134.20160808" }
 /*
+ *	 8/08/2016 >>> v0.1.134.20160808 - Beta M1 - Added variable versions for setLevel, setHue, setSaturation, fadeLevel, fadeHue, fadeSaturation, adjustLevel, adjustHue, adjustSaturation
  *	 8/06/2016 >>> v0.1.133.20160806 - Beta M1 - Added support for custom CoRE main app name
  *	 8/06/2016 >>> v0.1.132.20160806 - Beta M1 - Added $randomSaturation
  *	 8/05/2016 >>> v0.1.131.20160805 - Beta M1 - Added the Audio Notification capability and removed the duration parameter from playTrackAndResume and playTrackAndRestore - if you use them already, you may have to revisit those actions.
@@ -6760,14 +6761,18 @@ private task_vcmd_fadeLevelHW(device, action, task, suffix = "") {
 	return true
 }
 
-private task_vcmd_fadeLevel(device, action, task, suffix = "") {
+
+private task_vcmd_fadeLevelVariable(device, action, task, suffix = "") {
+	return task_vcmd_fadeLevel(device, action, task, suffix, true)
+}
+private task_vcmd_fadeLevel(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 3)) {
 		return false
 	}
-    def currentLevel = cast(params[0].d, params[0].t)
+    def currentLevel = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
     if (currentLevel == null) currentLevel = cast(device.currentValue('level'), "number")
-	def level = cast(params[1].d, params[1].t)
+	def level = variables? cast(getVariable(params[1].d), "number") : cast(params[1].d, params[1].t)
 	def duration = cast(params[2].d, params[2].t)
 	def delta = level - currentLevel
 	if (delta == 0) return
@@ -6804,29 +6809,59 @@ private task_vcmd_setLevelIf(device, action, task, suffix = "") {
 	return true
 }
 
-private task_vcmd_adjustLevel(device, action, task, suffix = "") {
+private task_vcmd_adjustLevelVariable(device, action, task, suffix = "") {
+	return task_vcmd_adjustLevel(device, action, task, suffix, true)
+}
+private task_vcmd_adjustLevel(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 1)) {
 		return false
 	}
     def currentLevel = cast(device.currentValue('level'), "number")
-    def level = currentLevel + cast(params[0].d, params[0].t)
+    def level = currentLevel + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
     level = (level < 0 ? 0 : (level > 100 ? 100 : level))
 	if (level == currentLevel) return
 	device."setLevel$suffix"(level)
 	return true
 }
 
+private task_vcmd_setLevelVariable(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 1)) {
+		return false
+	}
+    def level = cast(getVariable(params[0].d), "number")
+    level = (level < 0 ? 0 : (level > 100 ? 100 : level))
+	device."setLevel$suffix"(level)
+	return true
+}
 
-private task_vcmd_fadeSaturation(device, action, task, suffix = "") {
+private task_vcmd_setSaturationVariable(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 1)) {
+		return false
+	}
+    def saturation = cast(getVariable(params[0].d), "number")
+    saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
+	device."setSaturation$suffix"(level)
+	return true
+}
+
+
+private task_vcmd_fadeSaturationVariable(device, action, task, suffix = "") {
+	return task_vcmd_fadeSaturation(device, action, task, suffix, true)
+}
+
+private task_vcmd_fadeSaturation(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 3)) {
 		return false
 	}
-    def currentSaturation = cast(params[0].d, params[0].t)
+    
+    def currentSaturation = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
     if (currentSaturation == null) currentSaturation = cast(device.currentValue('saturation'), "number")
-	def saturation = cast(params[1].d, params[1].t)
-	def duration = cast(params[2].d, params[2].t)
+	def saturation = variables? cast(getVariable(params[1].d), "number") : cast(params[1].d, params[1].t)
+   	def duration = cast(params[2].d, params[2].t)
 	def delta = saturation - currentSaturation
 	if (delta == 0) return
 	//we try to achieve 10 steps
@@ -6849,29 +6884,34 @@ private task_vcmd_fadeSaturation(device, action, task, suffix = "") {
 }
 
 
-private task_vcmd_adjustSaturation(device, action, task, suffix = "") {
+private task_vcmd_adjustSaturationVariable(device, action, task, suffix = "") {
+	return task_vcmd_adjustSaturation(device, action, task, suffix, true)
+}
+private task_vcmd_adjustSaturation(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 1)) {
 		return false
 	}
     def currentSaturation = cast(device.currentValue('saturation'), "number")
-    def saturation = currentSaturation + cast(params[0].d, params[0].t)
+    def saturation = currentSaturation + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
     saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
 	if (saturation == currentSaturation) return
 	device."setSaturation$suffix"(saturation)
 	return true
 }
 
+private task_vcmd_fadeHueVariable(device, action, task, suffix = "") {
+	return task_vcmd_fadeHue(device, action, task, suffix, true)
+}
 
-
-private task_vcmd_fadeHue(device, action, task, suffix = "") {
+private task_vcmd_fadeHue(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (!device || !device.hasCommand("setHueel$suffix") || (params.size() != 3)) {
+	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 3)) {
 		return false
 	}
-    def currentHue = cast(params[0].d, params[0].t)
-    if (currentHue == null) currentHue = cast(device.currentValue('hue'), "decimal") * 3.6
-	def hue = cast(params[1].d, params[1].t)
+    def currentHue = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
+    if (currentHue == null) currentHue = (int) Math.round(cast(device.currentValue('hue'), "number") * 3.6)
+	def hue = variables ? cast(getVariable(params[1].d), "number") : cast(params[1].d, params[1].t)
 	def duration = cast(params[2].d, params[2].t)
 	def delta = hue - currentHue
 	if (delta == 0) return
@@ -6886,7 +6926,7 @@ private task_vcmd_fadeHue(device, action, task, suffix = "") {
 		for(def i = 1; i <= steps; i++) {
 			def newHue = Math.round(currentHue + delta * i / steps)
 			if (oldHue != newHue) {
-				device."setHue$suffix"(newHue / 3.6, [delay: i * interval])
+				device."setHue$suffix"((int) Math.round(newHue / 3.6), [delay: i * interval])
 			}
 			oldHue = newHue
 		}
@@ -6895,17 +6935,33 @@ private task_vcmd_fadeHue(device, action, task, suffix = "") {
 }
 
 
-private task_vcmd_adjustHue(device, action, task, suffix = "") {
+private task_vcmd_adjustHueVariable(device, action, task, suffix = "") {
+	return task_vcmd_adjustHue(device, action, task, suffix, true)
+}
+
+private task_vcmd_adjustHue(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 1)) {
 		return false
 	}
     def currentHue = cast(device.currentValue('hue'), "decimal") * 3.6
-    def hue = currentHue + cast(params[0].d, params[0].t)
+    def hue = currentHue + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
     while (hue < 0) hue += 360
     while (hue >= 360) hue -= 360 
 	if (hue == currentHue) return
-	device."setHue$suffix"(hue / 3.6)
+	device."setHue$suffix"((int) Math.round(hue / 3.6))
+	return true
+}
+
+private task_vcmd_setHueVariable(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 1)) {
+		return false
+	}
+    def hue = cast(getVariable(params[0].d), "number")
+    while (hue < 0) hue += 360
+    while (hue >= 360) hue -= 360 
+	device."setHue$suffix"((int) Math.round(hue / 3.6))
 	return true
 }
 
@@ -9836,8 +9892,8 @@ private commands() {
 		[ name: "toggle6",									display: "Toggle #1",	],
 		[ name: "toggle7",									display: "Toggle #1",	],
 		[ name: "toggle8",									display: "Toggle #1",	],
-		[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",		attribute: "level",		value: "*|number",	],
 		[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], 	attribute: "color",		value: "*|color",	],
+		[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",		attribute: "level",		value: "*|number",	],
 		[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	attribute: "hue",		value: "*|number",	],
 		[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], description: "Set saturation to {0}%",	attribute: "saturation",		value: "*|number",	],
 		[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], description: "Set color temperature to {0}°K",	attribute: "colorTemperature",		value: "*|number",	],
@@ -9910,7 +9966,7 @@ private commands() {
 		[ name: "setLoopTime",	display: "Set loop duration",			parameters: ["Duration [s]:number[1..*]"], description: "Set loop duration to {0}s"],
 		[ name: "setDirection",	display: "Switch loop direction",		description: "Set loop duration to {0}s"],
 		[ name: "alert",		display: "Alert with lights",			parameters: ["Method:enum[Blink,Breathe,Okay,Stop]"], description: "Alert with lights: {0}"],
-		[ name: "setAdjustedColor",display: "Transition to color",			parameters: ["Color:color","Duration [s]:number[1..60]"], description: "Transition to color in {1}s"],
+		[ name: "setAdjustedColor",display: "Transition to color",			parameters: ["Color:color","Duration [s]:number[1..60]"], description: "Transition to color {0} in {1}s"],
 		//harmony
 		[ name: "allOn",		display: "Turn all on",					],
 		[ name: "allOff",		display: "Turn all off",				],
@@ -9996,14 +10052,23 @@ private virtualCommands() {
 		[ name: "delayedToggle#6",		requires: ["on6", "off6"], 			display: "Toggle #6 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #6 after {0}ms",	],
 		[ name: "delayedToggle#7",		requires: ["on7", "off7"], 			display: "Toggle #7 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #7 after {0}ms",	],
 		[ name: "delayedToggle#8",		requires: ["on8", "off8"], 			display: "Toggle #8 (delayed)",				parameters: ["Delay (ms):number[1..60000]"],																													description: "Toggle #8 after {0}ms",	],
+		[ name: "setLevelVariable",		requires: ["setLevel"],				display: "Set level (variable)",						parameters: ["Level:variable"], description: "Set level to {0}%"],
+		[ name: "setSaturationVariable",		requires: ["setSaturation"],				display: "Set saturation (variable)",						parameters: ["Saturation:variable"], description: "Set saturation to {0}%"],
+		[ name: "setHueVariable",		requires: ["setHue"],				display: "Set hue (variable)",						parameters: ["Hue:variable"], description: "Set hue to {0}°"],
 		[ name: "fadeLevelHW",			requires: ["setLevel"], 			display: "Fade to level (hardware)",		parameters: ["Target level:level","Duration (ms):number[1..60000]"],																							description: "Fade to {0}% in {1}ms",				],
 		[ name: "fadeLevel",			requires: ["setLevel"], 			display: "Fade to level",					parameters: ["?Start level (optional):level","Target level:level","Duration (seconds):number[1..600]"],															description: "Fade level from {0}% to {1}% in {2}s",				],
+		[ name: "fadeLevelVariable",	requires: ["setLevel"], 			display: "Fade to level (variable)",		parameters: ["?Start level (optional):variable","Target level:variable","Duration (seconds):number[1..600]"],															description: "Fade level from {0}% to {1}% in {2}s",				],
 		[ name: "setLevelIf",			category: "Convenience",			group: "Control [devices]",					display: "Set level (advanced)",					parameters: ["Level:level","Only if switch state is:enum[on,off]"], description: "Set level to {0}% if switch is {1}",		attribute: "level",		value: "*|number",	],
 		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Adjust level",					parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust level by {0}%",	],
-        [ name: "fadeSaturation",		requires: ["setSaturation"],		display: "Fade to saturation",				parameters: ["?Start saturation (optional):level","Target saturation:saturation","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
+		[ name: "adjustLevelVariable",			requires: ["setLevel"], 			display: "Adjust level (variable)",					parameters: ["Adjustment (+/-):variable"],																												description: "Adjust level by {0}%",	],
+        [ name: "fadeSaturation",		requires: ["setSaturation"],		display: "Fade to saturation",				parameters: ["?Start saturation (optional):saturation","Target saturation:saturation","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
+        [ name: "fadeSaturationVariable",requires: ["setSaturation"],		display: "Fade to saturation (variable)",				parameters: ["?Start saturation (optional):variable","Target saturation:variable","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
 		[ name: "adjustSaturation",		requires: ["setSaturation"],		display: "Adjust saturation",				parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust saturation by {0}%",	],
-		[ name: "fadeHue",				requires: ["setHue"], 				display: "Fade to hue",						parameters: ["?Start hue (optional):level","Target hue:hue","Duration (seconds):number[1..600]"],																description: "Fade hue from {0}° to {1}° in {2}s",				],
+		[ name: "adjustSaturationVariable",		requires: ["setSaturation"],		display: "Adjust saturation (variable)",				parameters: ["Adjustment (+/-):variable"],																												description: "Adjust saturation by {0}%",	],
+		[ name: "fadeHue",				requires: ["setHue"], 				display: "Fade to hue",						parameters: ["?Start hue (optional):hue","Target hue:hue","Duration (seconds):number[1..600]"],																description: "Fade hue from {0}° to {1}° in {2}s",				],
+		[ name: "fadeHueVariable",		requires: ["setHue"], 				display: "Fade to hue (variable)",			parameters: ["?Start hue (optional):variable","Target hue:variable","Duration (seconds):number[1..600]"],																description: "Fade hue from {0}° to {1}° in {2}s",				],
 		[ name: "adjustHue",			requires: ["setHue"], 				display: "Adjust hue",						parameters: ["Adjustment (+/-):number[-360..360]"],																												description: "Adjust hue by {0}°",	],
+		[ name: "adjustHueVariable",	requires: ["setHue"], 				display: "Adjust hue (variable)",			parameters: ["Adjustment (+/-):variable"],																												description: "Adjust hue by {0}°",	],
 		[ name: "flash",				requires: ["on", "off"], 			display: "Flash",							parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash {0}ms/{1}ms for {2} time(s)",		],
 		[ name: "flash#1",				requires: ["on1", "off1"], 			display: "Flash #1",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #1 {0}ms/{1}ms for {2} time(s)",	],
 		[ name: "flash#2",				requires: ["on2", "off2"], 			display: "Flash #2",						parameters: ["On interval (milliseconds):number[250..5000]","Off interval (milliseconds):number[250..5000]","Number of flashes:number[1..10]"],					description: "Flash #2 {0}ms/{1}ms for {2} time(s)",	],
