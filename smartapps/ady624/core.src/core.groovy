@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.136.20160810" }
+def version() {	return "v0.1.137.20160810" }
 /*
+ *	 8/10/2016 >>> v0.1.137.20160810 - Beta M1 - Added WakeOnLan (WOL) support, fixed a problem with negative offsets for piston/action time restrictions
  *	 8/10/2016 >>> v0.1.136.20160810 - Beta M1 - MAY BREAK THINGS! - Some speed improvements (washing out items from maps) and, due to HUGE popular demand (2-3 requests), added piston time restriction offsets, action time restriction offsets, and action switch restrictions
  *	 8/09/2016 >>> v0.1.135.20160809 - Beta M1 - Fixed a problem where the tasking mechanism could get stuck and cause critical piston failures
  *	 8/08/2016 >>> v0.1.134.20160808 - Beta M1 - Added variable versions for setLevel, setHue, setSaturation, fadeLevel, fadeHue, fadeSaturation, adjustLevel, adjustHue, adjustSaturation
@@ -704,14 +705,14 @@ private pageMainCoREPiston() {
 				if (timeFrom.contains("custom")) {
 					input "restrictionTimeFromCustom", "time", title: "Custom time", required: true, multiple: false
 				} else {
-					input "restrictionTimeFromOffset", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
+					input "restrictionTimeFromOffset", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
                 }
 				def timeTo = settings["restrictionTimeTo"]
 				input "restrictionTimeTo", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
 				if (timeTo && (timeTo.contains("custom"))) {
 					input "restrictionTimeToCustom", "time", title: "Custom time", required: true, multiple: false
 				} else {
-					input "restrictionTimeToOffset", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
+					input "restrictionTimeToOffset", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
 				}
 			}
 			input "restrictionSwitchOn", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
@@ -1654,14 +1655,14 @@ def pageAction(params) {
                         if (timeFrom.contains("custom")) {
                             input "actRTimeFromCustom$id", "time", title: "Custom time", required: true, multiple: false
                         } else {
-                            input "actRTimeFromOffset$id", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
+                            input "actRTimeFromOffset$id", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
                         }
                         def timeTo = settings["actRTimeTo$id"]
                         input "actRTimeTo$id", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
                         if (timeTo && (timeTo.contains("custom"))) {
                             input "actRTimeToCustom$id", "time", title: "Custom time", required: true, multiple: false
                         } else {
-                            input "actRTimeToOffset$id", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
+                            input "actRTimeToOffset$id", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
                         }
                     }
 					input "actRSwitchOn$id", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
@@ -7282,6 +7283,20 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 	return true
 }
 
+private task_vcmd_wolRequest(devices, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 2) return false
+	def mac = params[0].d ?: ""
+    def secureCode = params[1].d
+    mac = mac.replace(":", "").replace("-", "").replace(".", "").replace(" ", "").toLowerCase()
+    return new physicalgraph.device.HubAction (
+        "wake on lan $mac",
+        physicalgraph.device.Protocol.LAN,
+        null,
+        secureCode ? [secureCode: secureCode] : []
+    )
+}
+
 private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
 	state.rerunSchedule = true
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -10181,6 +10196,8 @@ private virtualCommands() {
 		[ name: "followUp",				display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
 		[ name: "executePiston",		display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
         [ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
+        [ name: "wolRequest",			display: "Wake a LAN device", parameters: ["MAC address:string","?Secure code:string"], location: true, description: "Wake LAN device at address {0} with secure code {1}", aggregated: true],
+        
 		//flow control commands
 		[ name: "beginSimpleForLoop",	display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:string"],																																										location: true,		description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
 		[ name: "beginForLoop",			display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:string","To value:string"],																													varEntry: 0,	location: true,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
