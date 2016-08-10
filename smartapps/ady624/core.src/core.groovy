@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.138.20160810" }
+def version() {	return "v0.1.139.20160810" }
 /*
+ *	 8/10/2016 >>> v0.1.139.20160810 - Beta M1 - Implemented "Wait for common time" - waits for sunrise, sunset, noon or midnight on specified days of the week and "Wait for custom time" - waits for custom defined time on specified days of the week
  *	 8/10/2016 >>> v0.1.138.20160810 - Beta M1 - Fixed a problem where WOL won't work if no secret code was given
  *	 8/10/2016 >>> v0.1.137.20160810 - Beta M1 - Added WakeOnLan (WOL) support, fixed a problem with negative offsets for piston/action time restrictions
  *	 8/10/2016 >>> v0.1.136.20160810 - Beta M1 - MAY BREAK THINGS! - Some speed improvements (washing out items from maps) and, due to HUGE popular demand (2-3 requests), added piston time restriction offsets, action time restriction offsets, and action switch restrictions
@@ -5883,6 +5884,57 @@ private cmd_waitRandom(action, task, time) {
 	return result
 }
 
+private cmd_waitTime(action, task, time) {
+	def result = [time: time]
+	if (task && task.p && task.p.size() == 3) {
+    	def t = cast(task.p[0].d, "string")
+        def offset = cast(task.p[1].d, "number")
+        def days = task.p[2].d
+        if (!days || !days.size()) {
+        	return result
+        }
+        def newTime = getVariable("\$next" + t.capitalize())
+        def rightNow = now()
+        newTime += offset * 60000
+        def date = adjustTime(newTime)
+        def count = 10
+        while ((newTime < rightNow) || (newTime < time) || !(getDayOfWeekName(date) in days)) {
+        	newTime += 86400000
+            date = adjustTime(newTime)
+            count -= 1
+            if (count == 0) {
+            	return result
+            }
+        }
+        result.time = newTime
+	}
+	return result
+}
+
+private cmd_waitCustomTime(action, task, time) {
+	def result = [time: time]
+	if (task && task.p && task.p.size() == 2) {
+    	def newTime = convertDateToUnixTime(adjustTime(task.p[0].d))
+        def days = task.p[1].d
+        if (!days || !days.size()) {
+        	return result
+        }
+        def date = adjustTime(newTime)
+        def rightNow = now()
+        def count = 10
+        while ((newTime < rightNow) || (newTime < time) || !(getDayOfWeekName(date) in days)) {
+        	newTime += 86400000
+            date = adjustTime(newTime)
+            count -= 1
+            if (count == 0) {
+            	return result
+            }
+        }
+        result.time = newTime
+	}
+	return result
+}
+
 private cmd_waitState(action, task, time) {
 	def result = [:]
 	if (task && task.p && task.p.size() == 1) {
@@ -10112,7 +10164,7 @@ private virtualCommands() {
 		[ name: "waitVariable",		display: "Wait (variable)",					parameters: ["Time (variable):variable","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait |[{0}]| {1}",	],
 		[ name: "waitRandom",		display: "Wait (random)",					parameters: ["At least:number[1..1440]","At most:number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
 		[ name: "waitState",		display: "Wait for piston state change",	parameters: ["Change to:enum[any,false,true]"],															immediate: true,	location: true,						description: "Wait for {0} state"],
-		[ name: "waitTime",			display: "Wait for time",					parameters: ["Time:enum[midnight,sunrise,noon,sunset]","Days of week:enums[Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday]"],							immediate: true,	location: true,						description: "Wait for next {0}, on {1}"],
+		[ name: "waitTime",			display: "Wait for common time",			parameters: ["Time:enum[midnight,sunrise,noon,sunset]","?Offset [minutes]:number[-1440..1440]","Days of week:enums[Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday]"],							immediate: true,	location: true,						description: "Wait for next {0} (offset {1} min), on {2}"],
 		[ name: "waitCustomTime",	display: "Wait for custom time",			parameters: ["Time:time","Days of week:enums[Monday,Tuesday,Wednesday,Thursday,Friday,Saturday,Sunday]"],							immediate: true,	location: true,						description: "Wait for {0}, on {1}"],
 		[ name: "toggle",				requires: ["on", "off"], 			display: "Toggle",		],
 		[ name: "toggle#1",				requires: ["on1", "off1"], 			display: "Toggle #1",		],
