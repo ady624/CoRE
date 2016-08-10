@@ -18,9 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.135.20160809" }
+def version() {	return "v0.1.136.20160810" }
 /*
- *	 8/09/2016 >>> v0.1.135.20160808 - Beta M1 - Fixed a problem where the tasking mechanism could get stuck and cause critical piston failures
+ *	 8/10/2016 >>> v0.1.136.20160810 - Beta M1 - MAY BREAK THINGS! - Some speed improvements (washing out items from maps) and, due to HUGE popular demand (2-3 requests), added piston time restriction offsets, action time restriction offsets, and action switch restrictions
+ *	 8/09/2016 >>> v0.1.135.20160809 - Beta M1 - Fixed a problem where the tasking mechanism could get stuck and cause critical piston failures
  *	 8/08/2016 >>> v0.1.134.20160808 - Beta M1 - Added variable versions for setLevel, setHue, setSaturation, fadeLevel, fadeHue, fadeSaturation, adjustLevel, adjustHue, adjustSaturation
  *	 8/06/2016 >>> v0.1.133.20160806 - Beta M1 - Added support for custom CoRE main app name
  *	 8/06/2016 >>> v0.1.132.20160806 - Beta M1 - Added $randomSaturation
@@ -619,6 +620,7 @@ private pageMainCoREPiston() {
 				break
 			}
 		}
+        
         if (state.config.app.mode != "Do") {
             section() {
                 href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
@@ -671,7 +673,6 @@ private pageMainCoREPiston() {
                 }
             }
         }
-
 		if (!(state.config.app.mode in ["Basic", "Latching"])) {
 			section() {
 				def actions = listActions(-2)
@@ -684,8 +685,6 @@ private pageMainCoREPiston() {
 				}
 			}
 		}
-
-
 
 		def hasRestrictions = settings["restrictionMode"] || settings["restrictionAlarm"] || settings["restrictionVariable"] || settings["restrictionDOW"] || settings["restrictionTimeFrom"] || settings["restrictionSwitchOn"] || settings["restrictionSwitchOff"]
 		section(title: "Piston Restrictions", hideable: true, hidden: !hasRestrictions) {
@@ -704,11 +703,15 @@ private pageMainCoREPiston() {
 			if (timeFrom) {
 				if (timeFrom.contains("custom")) {
 					input "restrictionTimeFromCustom", "time", title: "Custom time", required: true, multiple: false
-				}
+				} else {
+					input "restrictionTimeFromOffset", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
+                }
 				def timeTo = settings["restrictionTimeTo"]
 				input "restrictionTimeTo", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
 				if (timeTo && (timeTo.contains("custom"))) {
 					input "restrictionTimeToCustom", "time", title: "Custom time", required: true, multiple: false
+				} else {
+					input "restrictionTimeToOffset", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
 				}
 			}
 			input "restrictionSwitchOn", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
@@ -727,7 +730,6 @@ private pageMainCoREPiston() {
 			paragraph mem(), title: "Memory Usage"
 			href "pageVariables", title: "Local Variables"
 		}
-
 		section(title: "Advanced Options", hideable: !settings.debugging, hidden: true) {
 			input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
 			def debugging = settings.debugging
@@ -1651,13 +1653,19 @@ def pageAction(params) {
                     if (timeFrom) {
                         if (timeFrom.contains("custom")) {
                             input "actRTimeFromCustom$id", "time", title: "Custom time", required: true, multiple: false
+                        } else {
+                            input "actRTimeFromOffset$id", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
                         }
                         def timeTo = settings["actRTimeTo$id"]
                         input "actRTimeTo$id", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
                         if (timeTo && (timeTo.contains("custom"))) {
                             input "actRTimeToCustom$id", "time", title: "Custom time", required: true, multiple: false
+                        } else {
+                            input "actRTimeToOffset$id", "number", title: "Offset (+/- minutes)", required: true, multiple: false, defaultValue: 0
                         }
                     }
+					input "actRSwitchOn$id", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
+					input "actRSwitchOff$id", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true
 					if (action.pid > 0) {
 						input "actRState$id", "enum", options:["true", "false"], defaultValue: action.rs == false ? "false" : "true", title: action.pid > 0 ? "Only execute when condition state is" : "Only execute on piston state change", required: true
 					}
@@ -2496,8 +2504,7 @@ def initializeCoRE() {
 }
 
 def intrusionHandler(evt) {
-	log.trace "GOT AN INTRUSION!"
-    log.trace evt.messageArgs
+	//not working yet
 }
 
 def initializeCoREStore() {
@@ -2912,7 +2919,6 @@ def initializeCoREPiston() {
 	// TODO: subscribe to attributes, devices, locations, etc.
 	//move app to production
 	state.run = "config"
-	state.temp = null
 	state.debugLevel = 0
 	debug "Initializing app...", 1
 	cleanUpConditions(true)
@@ -2922,7 +2928,7 @@ def initializeCoREPiston() {
     state.app.debugging = settings.debugging
     state.app.disableCO = settings.disableCO
 	state.app.description = settings.description
-	state.app.restrictions = [
+	state.app.restrictions = cleanUpMap([
 		a: settings["restrictionAlarm"],
 		m: settings["restrictionMode"],
 		v: settings["restrictionVariable"],
@@ -2930,23 +2936,27 @@ def initializeCoREPiston() {
 		vv: settings["restrictionValue"] != null ? settings["restrictionValue"] : "",
 		tf: settings["restrictionTimeFrom"],
 		tfc: settings["restrictionTimeFromCustom"],
+		tfo: settings["restrictionTimeFromOffset"],
 		tt: settings["restrictionTimeTo"],
 		ttc: settings["restrictionTimeToCustom"],
+		tto: settings["restrictionTimeToOffset"],
         w: settings["restrictionDOW"],
         s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
         s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
         pe: settings["restrictionPreventTaskExecution"],
-	]
+	])
     state.lastInitialized = now()
 	setVariable("\$lastInitialized", state.lastInitialized, true)
 	setVariable("\$currentState", state.currentState, true)
 	setVariable("\$currentStateSince", state.currentStateSince, true)
-	state.remove("config")
 
 	if (state.app.enabled) {
     	resume()
     }
-    
+
+	state.remove("config")
+	state.remove("temp")
+
 	debug "Done", -1
 	parent.refreshPistons()
 	//we need to finalize to write atomic state
@@ -2956,7 +2966,7 @@ def initializeCoREPiston() {
 
 
 def initializeCoREPistonStore() {
-	state.temp = [:]
+	state.temp = state.temp ?: [:]
 	state.cache = [:]
 	state.tasks = state.tasks ? state.tasks : [:]
 	state.store = state.store ? state.store : [:]
@@ -3373,9 +3383,14 @@ private updateAction(action) {
     action.rw = settings["actRDOW$id"]
 	action.rtf = settings["actRTimeFrom$id"]
 	action.rtfc = settings["actRTimeFromCustom$id"]
+	action.rtfo = settings["actRTimeFromOffset$id"]
 	action.rtt = settings["actRTimeTo$id"]
 	action.rttc = settings["actRTimeToCustom$id"]
-
+	action.rtto = settings["actRTimeToOffset$id"]
+	action.rs1 = []
+    for (device in settings["actRSwitchOn$id"]) { action.rs1.push(device.id) }
+	action.rs0 = []
+    for (device in settings["actRSwitchOff$id"]) { action.rs0.push(device.id) }
 	action.tos = settings["actTOS$id"]
 	action.tcp = settings["actTCP$id"]
 
@@ -3493,7 +3508,19 @@ private cleanUpActions() {
 	for(action in state.config.app.actions) {
 		updateAction(action)
 	}
-		def dirty = true
+    def washer = []
+    for(action in state.config.app.actions) {
+        if (!((action.d && action.d.size()) || action.l)) {
+            washer.push(action)
+        }
+    }
+    for (action in washer) {
+    	state.config.app.actions.remove(action)
+    }
+    washer = null
+    
+    /*    
+    def dirty = true
 	while (dirty) {
 		dirty = false
 		for(action in state.config.app.actions) {
@@ -3504,6 +3531,7 @@ private cleanUpActions() {
 			}
 		}
 	}
+    */
 }
 
 private listActionDevices(actionId) {
@@ -3543,8 +3571,14 @@ private getActionDescription(action) {
 		result += "® If day is ${buildNameList(action.rw, "or")}...\n"
 	}
 	if (action.rtf && action.rtt) {   
-		result += "® If time is between ${action.rtf == "custom time" ? formatTime(action.rtfc) : action.rtf} and ${action.rtt == "custom time" ? formatTime(action.rttc) : action.rtt}...\n"
-    }
+		result += "® If time is between ${action.rtf == "custom time" ? formatTime(action.rtfc) : (action.rtfo ? (action.rtfo < 0 ? "${-action.rtfo} minutes before " : "${action.rtfo} minutes after ") : "") + action.rtf} and ${action.rtt == "custom time" ? formatTime(action.rttc) : (action.rtto ? (action.rtto < 0 ? "${-action.rtt} minutes before " : "${action.rtto} minutes after ") : "") + action.rtt}...\n"
+    }    
+    if (action.rs1) {
+    	result += "® If each of ${buildDeviceNameList(settings["actRSwitchOn${action.id}"], "and")} is on"
+	}    
+    if (action.rs0) {
+    	result += "® If each of ${buildDeviceNameList(settings["actRSwitchOff${action.id}"], "and")} is off"
+	}    
 	result += (result ? "\n" : "") + "Using " + buildDeviceNameList(devices, "and")+ "..."
 	state.taskIndent = 0
 	def tasks = action.t.sort{it.i}
@@ -4082,7 +4116,7 @@ private checkPistonRestriction() {
         restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
     } else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
         restriction = "a day of week mismatch"
-    } else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tt, app.restrictions.ttc))) {
+    } else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tfo, app.restrictions.tt, app.restrictions.ttc, app.restrictions.tto))) {
         restriction = "a time of day mismatch"
     } else {
         if (settings["restrictionSwitchOn"]) {
@@ -5259,7 +5293,27 @@ private scheduleActions(conditionId, stateChanged = false, currentState = true) 
 		if (action.ra && action.ra.size() && !(getAlarmSystemStatus() in action.ra)) continue
 		if (action.rv && !(checkVariableCondition(action.rv, action.rvc, action.rvv))) continue
         if (action.rw && action.rw.size() && !(getDayOfWeekName() in action.rw)) continue
-		if (action.rtf && action.rtt && !(checkTimeCondition(action.rtf, action.rtfc, action.rtt, action.rttc))) continue
+		if (action.rtf && action.rtt && !(checkTimeCondition(action.rtf, action.rtfc, action.rtfo, action.rtt, action.rttc, action.rtto))) continue
+		if (action.rs1) {
+        	def r = false
+            for(sw in settings["actRSwitchOn${action.id}"]) {
+                if (sw.currentValue("switch") != "on") {
+                    r = true
+                    break
+                }
+            }
+            if (r) continue
+        }
+		if (action.rs0) {
+        	def r = false
+            for(sw in settings["actRSwitchOff${action.id}"]) {
+                if (sw.currentValue("switch") != "off") {
+                    r = true
+                    break
+                }
+            }
+            if (r) continue
+        }
 		//we survived all restrictions, pfew
 		scheduleAction(action)
 	}
@@ -5589,7 +5643,7 @@ private checkFlowCaseCondition(value, caseValue) {
 	return checkValueCondition(value, "is_equal_to", caseValue)
 }
 
-private checkTimeCondition(timeFrom, timeFromCustom, timeTo, timeToCustom) {
+private checkTimeCondition(timeFrom, timeFromCustom, timeFromOffset, timeTo, timeToCustom, timeToOffset) {
 	def time = adjustTime()
 	//convert to minutes since midnight
 	def tc = time.hours * 60 + time.minutes
@@ -5603,6 +5657,11 @@ private checkTimeCondition(timeFrom, timeFromCustom, timeTo, timeToCustom) {
 		switch(i == 0 ? timeFrom : timeTo) {
 			case "custom time":
 				t = adjustTime(i == 0 ? timeFromCustom : timeToCustom)
+                if (i == 0) {
+                	timeFromOffset = 0
+                } else {
+                	timeToOffset = 0
+                }
 				break
 			case "sunrise":
 				t = getSunrise()
@@ -5625,14 +5684,19 @@ private checkTimeCondition(timeFrom, timeFromCustom, timeTo, timeToCustom) {
 		}
 		switch (i) {
 			case 0:
-				tf = h * 60 + m
+				tf = h * 60 + m + cast(timeFromOffset, "number")
 				break
 			case 1:
-				tt = h * 60 + m
+				tt = h * 60 + m + cast(timeFromOffset, "number")
 				break
 		}
 		i += 1
 	}
+   	//due to offsets, let's make sure all times are within 0-1440 minutes
+    while (tf < 0) tf += 1440
+    while (tf > 1440) tf -= 1440
+    while (tt < 0) tt += 1440
+    while (tt > 1440) tt -= 1440
 	if (tf < tt) {
 		return (tc >= tf) && (tc < tt)
 	} else {
@@ -6311,6 +6375,23 @@ private processTasks() {
 						tasks[n] = t
 					} else if (task.del) {
 						//delete a task
+                        def washer = []
+                        for (it in tasks) {
+                            if (
+                                (it.value?.type == task.del) &&
+                                (!task.ownerId || (it.value?.ownerId == task.ownerId)) &&
+                                //(task.ownerId || (task.deviceId != "location")) && //do not unschedule location commands unless an action Id is provided
+                                (!task.deviceId || (task.deviceId == it.value?.deviceId)) &&
+                                (!task.taskId || (task.taskId == it.value?.taskId))
+                            ) {
+                                washer.push(it.key)
+                            }
+                        }
+                        for (it in washer) {
+                        	tasks.remove(it)
+                        }
+                        washer = null
+						/*
 						def dirty = true
 						while (dirty) {
 							dirty = false
@@ -6328,6 +6409,7 @@ private processTasks() {
 								}
 							}
 						}
+                        */
 					}
 				}
 				//we save the tasks list atomically, ouch
@@ -8686,6 +8768,7 @@ private cleanUpConditions(deleteGroups) {
 
 //helper function for _cleanUpConditions
 private _cleanUpCondition(condition, deleteGroups) {
+	def perf = now()
 	def result = false
 
 	if (condition.children) {
@@ -9110,19 +9193,17 @@ private importVariables(collection, prefix) {
 }
 
 private cleanUpMap(map) {
-	def dirty = true
-	while (dirty) {
-		dirty = false
-		//we need to break the loop every time we removed an item
-		for(item in map) {
-			if (item.value == null) {
-				map.remove(item.key)
-				dirty = true
-				break
-			}
-		}
-	}
-	return map
+	def washer = []
+    //find dirty laundry
+    for (item in map) {
+    	if (item.value == null) washer.push(item.key)
+    }
+    //clean it
+    for (item in washer) {
+    	map.remove(item)
+    }
+    washer = null
+    return map
 }
 
 private cleanUpAttribute(attribute) {
@@ -10125,7 +10206,7 @@ private virtualCommands() {
 private attributes() {
 	if (state.temp && state.temp.attributes) return state.temp.attributes
 	def tempUnit = "°" + location.temperatureScale
-	state.temp = state.temp ? state.temp : [:]
+	state.temp = state.temp ?: [:]
 	state.temp.attributes = [
 		[ name: "acceleration",				type: "enum",			options: ["active", "inactive"],	],
 		[ name: "alarm",					type: "enum",			options: ["off", "strobe", "siren", "both"],	],
@@ -10520,7 +10601,6 @@ private getColorByName(name, ownerId = null, taskId = null) {
 		//randomize the color
         def valName = "$ownerId-$taskId"
         def randomIndex = 6 + Math.round(Math.random() * (colors().size() - 7)) as Integer
-        //log.trace "Random color index is $randomIndex, cached random color is ${getRandomValue(valName)}"
         def result = getRandomValue(valName) ?: colors()[randomIndex]
         setRandomValue(valName, result)
 		return result
