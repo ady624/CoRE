@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.137.20160810" }
+def version() {	return "v0.1.138.20160810" }
 /*
+ *	 8/10/2016 >>> v0.1.138.20160810 - Beta M1 - Fixed a problem where WOL won't work if no secret code was given
  *	 8/10/2016 >>> v0.1.137.20160810 - Beta M1 - Added WakeOnLan (WOL) support, fixed a problem with negative offsets for piston/action time restrictions
  *	 8/10/2016 >>> v0.1.136.20160810 - Beta M1 - MAY BREAK THINGS! - Some speed improvements (washing out items from maps) and, due to HUGE popular demand (2-3 requests), added piston time restriction offsets, action time restriction offsets, and action switch restrictions
  *	 8/09/2016 >>> v0.1.135.20160809 - Beta M1 - Fixed a problem where the tasking mechanism could get stuck and cause critical piston failures
@@ -7289,12 +7290,12 @@ private task_vcmd_wolRequest(devices, action, task, suffix = "") {
 	def mac = params[0].d ?: ""
     def secureCode = params[1].d
     mac = mac.replace(":", "").replace("-", "").replace(".", "").replace(" ", "").toLowerCase()
-    return new physicalgraph.device.HubAction (
+    return sendHubCommand(new physicalgraph.device.HubAction(
         "wake on lan $mac",
         physicalgraph.device.Protocol.LAN,
         null,
-        secureCode ? [secureCode: secureCode] : []
-    )
+        secureCode ? [secureCode: secureCode] : [:]
+    ))
 }
 
 private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
