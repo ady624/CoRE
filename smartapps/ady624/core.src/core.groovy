@@ -18,82 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.1.139.20160810" }
+def version() {	return "v0.2.13a.20160812" }
 /*
- *	 8/10/2016 >>> v0.1.139.20160810 - Beta M1 - Implemented "Wait for common time" - waits for sunrise, sunset, noon or midnight on specified days of the week and "Wait for custom time" - waits for custom defined time on specified days of the week
- *	 8/10/2016 >>> v0.1.138.20160810 - Beta M1 - Fixed a problem where WOL won't work if no secret code was given
- *	 8/10/2016 >>> v0.1.137.20160810 - Beta M1 - Added WakeOnLan (WOL) support, fixed a problem with negative offsets for piston/action time restrictions
- *	 8/10/2016 >>> v0.1.136.20160810 - Beta M1 - MAY BREAK THINGS! - Some speed improvements (washing out items from maps) and, due to HUGE popular demand (2-3 requests), added piston time restriction offsets, action time restriction offsets, and action switch restrictions
- *	 8/09/2016 >>> v0.1.135.20160809 - Beta M1 - Fixed a problem where the tasking mechanism could get stuck and cause critical piston failures
- *	 8/08/2016 >>> v0.1.134.20160808 - Beta M1 - Added variable versions for setLevel, setHue, setSaturation, fadeLevel, fadeHue, fadeSaturation, adjustLevel, adjustHue, adjustSaturation
- *	 8/06/2016 >>> v0.1.133.20160806 - Beta M1 - Added support for custom CoRE main app name
- *	 8/06/2016 >>> v0.1.132.20160806 - Beta M1 - Added $randomSaturation
- *	 8/05/2016 >>> v0.1.131.20160805 - Beta M1 - Added the Audio Notification capability and removed the duration parameter from playTrackAndResume and playTrackAndRestore - if you use them already, you may have to revisit those actions.
- *	 8/05/2016 >>> v0.1.130.20160805 - Beta M1 - Fixed a bug with CoRE recovery, the play button now kicks all pistons to run
- *	 7/30/2016 >>> v0.1.12f.20160730 - Beta M1 - Minor bug fixes
- *	 7/29/2016 >>> v0.1.12e.20160729 - Beta M1 - Added notification support for CoRE recovery
- *	 7/29/2016 >>> v0.1.12d.20160729 - Beta M1 - Testing an intricate system of recovery, where each piston run can kickstart other past due pistons - recovery should be much leaner and much faster (as fast as the first next piston to run)
- *	 7/29/2016 >>> v0.1.12c.20160729 - Beta M1 - Added an improved (selective) piston recovery
- *	 7/29/2016 >>> v0.1.12b.20160729 - Beta M1 - Added "empty" modifiers to restore/capture state. Allows better control over which state is captured/restored
- *	 7/28/2016 >>> v0.1.12a.20160728 - Beta M1 - Fixed an error with type casting for time triggers
- *	 7/28/2016 >>> v0.1.129.20160728 - Beta M1 - Added an advanced setLevel - sets the level if the switch is in a certain state (on/off)
- *	 7/28/2016 >>> v0.1.128.20160728 - Beta M1 - Fixed a problem with recurring triggers being reset by uses of Wait with a delay larger than 1 minute
- *	 7/27/2016 >>> v0.1.127.20160727 - Beta M1 - Fixed a problem with immediate tasks and task restrictions
- *	 7/27/2016 >>> v0.1.126.20160727 - Beta M1 - Always showing the Attribute field for the Thermostat capability
- *	 7/27/2016 >>> v0.1.125.20160727 - Beta M1 - Fixed a problem with action restrictions...
- *	 7/27/2016 >>> v0.1.124.20160727 - Beta M1 - Added task day of week restrictions, @bamarayne made me do it, or else...
- *	 7/27/2016 >>> v0.1.123.20160727 - Beta M1 - Added action day of week and time restrictions, minor fixes and improvements
- *	 7/27/2016 >>> v0.1.122.20160727 - Beta M1 - Split Runtime Statistics onto two different pages. Too many pistons made it timeout
- *	 7/26/2016 >>> v0.1.121.20160726 - Beta M1 - Support for multiple button count attributes, numberOfButtons as well as numButtons
- *	 7/25/2016 >>> v0.1.120.20160725 - Beta M1 - Pistons can now be "rebuilt", should the state be lost. Just check under each piston's Advanced Options. Also added app touch > it will manually kick all pistons, in case ST missed time events.
- *	 7/25/2016 >>> v0.1.11f.20160725 - Beta M1 - DO NOT INSTALL THIS VERSION UNLESS ASKED TO - Implemented code to rebuild pistons from settings in case of state corruption
- *	 7/23/2016 >>> v0.1.11e.20160723 - Beta M1 - Fixed a problem with caching events during restrictions, added the Time alias for the Date & Time capability
- *	 7/18/2016 >>> v0.1.11d.20160718 - Beta M1 - Added $httpStatusCode, $httpStatusOk (true or false), $iftttStatusCode and $iftttStatusOk (true or false) for http and ifttt requests. StatusCode represents the HTTP code for the last request, whereas StatusOk is a boolean (statusCode == 200)
- *	 7/16/2016 >>> v0.1.11c.20160716 - Beta M1 - Fixed a problem with condition levels beyond 3
- *	 7/16/2016 >>> v0.1.11b.20160716 - Beta M1 - Fixed a problem with task execution during restrictions, thank you @bamarayne for pointing it out
- *	 7/16/2016 >>> v0.1.11a.20160716 - Beta M1 - Introducing the Do piston. Extending max condition depth to 5 levels
- *	 7/14/2016 >>> v0.1.119.20160714 - Beta M1 - Improvements and fixes for command optimization disabed option
- *	 7/13/2016 >>> v0.1.118.20160713 - Beta M1 - Implemented 2 recovery stages for CoRE - It kicks pistons once in a while to ensure they're still alive
- *	 7/13/2016 >>> v0.1.117.20160713 - Beta M1 - Improved variable import - parsing through JSON collections and creating variables for sub-values using the . character to denote a child
- *	 7/13/2016 >>> v0.1.116.20160713 - Beta M1 - Added control over command optimizations - commands don't normally run if their requested value is already the current value
- *	 7/08/2016 >>> v0.1.115.20160708 - Beta M1 - Fixed a problem with "stays" triggers for Or-If and And-If pistons
- *	 7/06/2016 >>> v0.1.114.20160706 - Beta M1 - Some more minor bug fixes, including some piston restriction fixes
- *	 7/04/2016 >>> v0.1.113.20160704 - Beta M1 - Happy 4th of July! Some minor bug fixes
- *	 6/29/2016 >>> v0.1.112.20160629 - Beta M1 - WARNING: MAY BREAK A FEW THINGS. Added an option to not execute actions during restricted periods, even if scheduled while outside of restrictions.
- *	 6/25/2016 >>> v0.1.111.20160625 - Beta M1 - Added "Make web request" task. For the experts. :)
- *	 6/25/2016 >>> v0.1.110.20160625 - Beta M1 - Improved device comparison selections - using the condition capability for selection purposes, or switch/sensor if no physical capability selected
- *	 6/24/2016 >>> v0.1.10f.20160624 - Beta M1 - Fixed a problem with saving state globally (never worked) and the hue attribute 100/360 confusion. Philips Hue works, OSRAM Lightify seem to have an issue with retrieving the hue correctly, ST was informed.
- *	 6/22/2016 >>> v0.1.10e.20160622 - Beta M1 - Added the ability to use a variable in the Wait (variable) task
- *	 6/22/2016 >>> v0.1.10d.20160622 - Beta M1 - Added the ability to map event data to variables - will come in handy with IFTTT events, saving ingredients to variables.
- *	 6/22/2016 >>> v0.1.10c.20160622 - Beta M1 - Introducing the IFTTT capability. Have the IFTTT maker channel send an event to https://<<CoRE endpoint>>/ifttt/<event> where <event> is a string expected to execute in the IFTTT capability and you're set to go
- *	 6/22/2016 >>> v0.1.10b.20160622 - Beta M1 - Reverse IFTTT support - IFTTT can now trigger pistons - coming up next: The IFTTT capability
- *	 6/21/2016 >>> v0.1.10a.20160621 - Beta M1 - Added extra dashboard information
- *	 6/20/2016 >>> v0.1.109.20160620 - Beta M1 - Added $nextSunrise, $nextSunset, $midnight, $nextMidnight, $noon, and $nextNoon
- *	 6/20/2016 >>> v0.1.108.20160620 - Beta M1 - Improved time variables, using a custom time in a time variable will always yield today's date at the selected time
- *	 6/20/2016 >>> v0.1.107.20160620 - Beta M1 - Fixed a bug preventing the device cache from working properly
- *	 6/20/2016 >>> v0.1.106.20160620 - Beta M1 - Fixed a bug with time scheduling at end of between interval
- *	 6/20/2016 >>> v0.1.105.20160620 - Beta M1 - Fixed color "Random" to be the same color for all devices in a task, added an "Execute during evaluation stage" option for Set Variable - this allows immediate setting of the variable, making it available to following condition evaluations
- *	 6/20/2016 >>> v0.1.104.20160620 - Beta M1 - Added $randomHue, $sunrise, and $sunset system variables
- *	 6/20/2016 >>> v0.1.103.20160620 - Beta M1 - Added fade/adjust for saturation and hue. May come in handy...
- *	 6/20/2016 >>> v0.1.102.20160620 - Beta M1 - Fixed a problem with fadeLevel. Missed an s on "params"...
- *	 6/20/2016 >>> v0.1.101.20160620 - Beta M1 - Various bug fixes, removed the instant variable tasks introduced in v0.1.09e because they break anything like x = x + 1
- *	 6/17/2016 >>> v0.1.100.20160617 - Beta M1 - Allowing multiple variables in condition variable settings
- *	 6/17/2016 >>> v0.1.09f.20160617 - Beta M1 - Fixed a problem with time conditions/triggers that was preventing tasks to be completed after a piston save
- *	 6/17/2016 >>> v0.1.09e.20160617 - Beta M1 - Due to popular demand, we're bending the rules and allowing variables to be set immediately during condition evaluations - people expect these changes to affect the following conditions right away, not at next evaluation...
- *	 6/16/2016 >>> v0.1.09d.20160616 - Beta M1 - Fixed an issue with flow control tasks where IF blocks were not evaluating the condition correctly
- *	 6/16/2016 >>> v0.1.09c.20160616 - Beta M1 - Added "Adjust level". Modified "Fade to level" to include an optional start level - All "Fade to level" tasks need to be revisited and fixed.
- *	 6/16/2016 >>> v0.1.09b.20160616 - Beta M1 - Fixed a bug with variable triggers/conditions
- *	 6/16/2016 >>> v0.1.09a.20160616 - Beta M1 - Weird atomicState issues - trying to fix Waits and Set Variable (global)...
- *	 6/15/2016 >>> v0.1.099.20160615 - Beta M1 - Allowing setLevel to run if switch is different from what setLevel would set
- *	 6/15/2016 >>> v0.1.098.20160615 - Beta M1 - Bug fix - error while trying to prevent redundant requests to devices
- *	 6/15/2016 >>> v0.1.097.20160615 - Beta M1 - Dashboard improvements - capture piston is now completely self-contained, should work in embedded browser on Android
- *	 6/15/2016 >>> v0.1.096.20160615 - Beta M1 - Improved command execution, not executing commands if their associated attribute is already at expected value. Added "raises" and "drops" triggers
- *	 6/15/2016 >>> v0.1.095.20160615 - Beta M1 - Cleaned some code up, lowered file size by 21%, currently at 393425 bytes
- *	 6/15/2016 >>> v0.1.094.20160615 - Beta M1 - Concurrency issues fixes. Using atomicState for global CoRE, implemented markers to prevent tasks being executed by other processes running at the same time
- *	 6/14/2016 >>> v0.1.093.20160614 - Beta M1 - Yet another attempt at fixing global variable race conditions
- *	 6/14/2016 >>> v0.1.092.20160614 - Beta M1 - Another attempt at fixing global variable race conditions
- *	 6/14/2016 >>> v0.1.091.20160614 - Beta M1 - Fixed the $index variable during loops, attempted a more complex workaround fix for global variable race conditions, removed an extra "u" from the IFTTT page (ha ha)
- *	 6/13/2016 >>> v0.1.090.20160613 - Beta M1 - First beta release
+ *	 8/12/2016 >>> v0.2.13a.20160812 - Beta M2 - Initial release of Beta M2
  */
 
 /******************************************************************************/
