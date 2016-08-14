@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.13a.20160812" }
+def version() {	return "v0.2.13b.20160814" }
 /*
+ *	 8/14/2016 >>> v0.2.13b.20160814 - Beta M2 - Forced capability Sensor to show (no default attribute in documentation)
  *	 8/12/2016 >>> v0.2.13a.20160812 - Beta M2 - Initial release of Beta M2
  */
 
@@ -3008,6 +3009,7 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 									if (handler) {
 										//we only subscribe to the device if we're provided a handler (not simulating)
 										debug "Subscribing to events from $device for attribute $attribute, handler is $handler", null, "trace"
+										debug "Subscribing to events from $device for attribute $attribute, handler is $handler"
 										subscribe(device, attribute, handler)
 										state.deviceSubscriptions = state.deviceSubscriptions ? state.deviceSubscriptions + 1 : 1
 										//initialize the cache for the device - this will allow the triggers to work properly on first firing
@@ -3816,6 +3818,7 @@ private broadcastEvent(evt, primary, secondary) {
 	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"
 	def allowed = true
 	def restriction
+    def initialState = state.currentState
 	if (evt && app.restrictions) {
 		//check restrictions
         restriction = checkPistonRestriction()
@@ -3892,6 +3895,7 @@ private broadcastEvent(evt, primary, secondary) {
 				force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
 				if (primary) {
 					result1 = !!evaluateConditionSet(evt, true, force)
+	                log.trace "LOOKING FOR PRIMARY, result is $result1"
 					state.lastPrimaryEvaluationResult = result1
 					state.lastPrimaryEvaluationDate = now()
 					def msg = "Primary IF block evaluation result is $result1"
@@ -3915,6 +3919,7 @@ private broadcastEvent(evt, primary, secondary) {
 				//broadcast to secondary IF block
 				if (secondary) {
 					result2 = !!evaluateConditionSet(evt, false, force)
+                    log.trace "LOOKING FOR PRIMARY, result is $result2" 
 					state.lastSecondaryEvaluationResult = result2
 					state.lastSecondaryEvaluationDate = now()
 					def msg = "Secondary IF block evaluation result is $result2"
@@ -4007,6 +4012,7 @@ private broadcastEvent(evt, primary, secondary) {
 					setVariable("\$currentState", state.currentState, true)
 					setVariable("\$currentStateSince", state.currentStateSince, true)
 					//new state
+                    log.trace "setting currentState ($currentState) to state.currentState (${state.currentState})"
 					currentState = state.currentState
 					//resume all tasks that are waiting for a state change
 					cancelTasks(currentState)
@@ -4031,6 +4037,7 @@ private broadcastEvent(evt, primary, secondary) {
 		debug msg, null, "trace"
 	}
 	perf = now() - perf
+    log.trace "initialState was $initialState, currentState is ${state.currentState}"
 	if (evt) debug "Event processing took ${perf}ms", -1, "trace"
 }
 
@@ -4481,9 +4488,7 @@ private evaluateDeviceCondition(condition, evt) {
 	}
 
 	if (evt) {
-    	debug "Setting matching device list to $vm"
 		if (condition.vm) setVariable(condition.vm, buildNameList(vm, "and"))
-    	debug "Setting non-matching device list to $vn"
 		if (condition.vn) setVariable(condition.vn, buildNameList(vn, "and"))
 	}
 	return  result
@@ -9903,6 +9908,7 @@ private capabilities() {
 		[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					multiple: true,			devices: "humidity sensors",	],
 		[ name: "relaySwitch",						display: "Relay Switch",					attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "relays",			],
 		[ name: "routine",							display: "Routine",							attribute: "routineExecuted",			commands: ["executeRoutine"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Routine"	],
+		[ name: "sensor",							display: "Sensor",							attribute: "sensor",					multiple: true,			devices: "sensors",	],
 		[ name: "shockSensor",						display: "Shock Sensor",					attribute: "shock",						multiple: true,			devices: "shock sensors",	],
 		[ name: "signalStrength",					display: "Signal Strength",					attribute: "lqi",						multiple: true,			devices: "wireless devices",	],
 		[ name: "alarm",							display: "Siren",							attribute: "alarm",						commands: ["off", "strobe", "siren", "both"],										multiple: true,			devices: "sirens",			],
