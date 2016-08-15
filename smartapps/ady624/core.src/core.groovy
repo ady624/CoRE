@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.13b.20160814" }
+def version() {	return "v0.2.13c.20160814" }
 /*
+ *	 8/14/2016 >>> v0.2.13c.20160814 - Beta M2 - Minor fix regarding setting a number variable - allowing decimals during the calculus
  *	 8/14/2016 >>> v0.2.13b.20160814 - Beta M2 - Forced capability Sensor to show (no default attribute in documentation)
  *	 8/12/2016 >>> v0.2.13a.20160812 - Beta M2 - Initial release of Beta M2
  */
@@ -3801,6 +3802,8 @@ private exitPoint(milliseconds) {
 	state.tasks = atomicState.tasks
 	state.stateStore = atomicState.stateStore
 	state.runStats = atomicState.runStats
+    state.currentState = atomicState.currentState
+    state.currentStateSince = atomicState.currentStateSince
 	state.temp = null
 	state.sim = null
 }
@@ -3818,7 +3821,8 @@ private broadcastEvent(evt, primary, secondary) {
 	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"
 	def allowed = true
 	def restriction
-    def initialState = state.currentState
+    def initialState = atomicState.currentState
+    def initialStateSince = atomicState.currentStateSince
 	if (evt && app.restrictions) {
 		//check restrictions
         restriction = checkPistonRestriction()
@@ -3895,7 +3899,6 @@ private broadcastEvent(evt, primary, secondary) {
 				force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
 				if (primary) {
 					result1 = !!evaluateConditionSet(evt, true, force)
-	                log.trace "LOOKING FOR PRIMARY, result is $result1"
 					state.lastPrimaryEvaluationResult = result1
 					state.lastPrimaryEvaluationDate = now()
 					def msg = "Primary IF block evaluation result is $result1"
@@ -3919,81 +3922,80 @@ private broadcastEvent(evt, primary, secondary) {
 				//broadcast to secondary IF block
 				if (secondary) {
 					result2 = !!evaluateConditionSet(evt, false, force)
-                    log.trace "LOOKING FOR PRIMARY, result is $result2" 
 					state.lastSecondaryEvaluationResult = result2
 					state.lastSecondaryEvaluationDate = now()
 					def msg = "Secondary IF block evaluation result is $result2"
 					if (state.sim) state.sim.evals.push(msg)
 					debug msg
 				}
-				def currentState = state.currentState
-				def currentStateSince = state.currentStateSince
+				def currentState = initialState
+				def currentStateSince = initialStateSince
 
 				def stateMsg = null
 
 				switch (mode) {
 					case "Latching":
-						if (currentState in [null, false]) {
+						if (initialState in [null, false]) {
 							if (result1) {
 								//flip on
-								state.currentState = true
-								state.currentStateSince = now()
+								currentState = true
+								currentStateSince = now()
 								stateMsg = "♦ Latching Piston changed state to true ♦"
 							}
 						}
-						if (currentState in [null, true]) {
+						if (initialState in [null, true]) {
 							if (result2) {
 								//flip off
-								state.currentState = false
-								state.currentStateSince = now()
+								currentState = false
+								currentStateSince = now()
 								stateMsg = "♦ Latching Piston changed state to false ♦"
 							}
 						}
 						break
                     case "Do":
-                    	state.currentState = false
-                    	state.currentStateSince = now()
+                    	currentState = false
+                    	currentStateSince = now()
 	                    stateMsg = "♦ $mode Piston changed state to $result1 ♦"
 						break
 					case "Basic":
 					case "Simple":
 					case "Follow-Up":
 						result2 = !result1
-						if (currentState != result1) {
-							state.currentState = result1
-							state.currentStateSince = now()
+						if (initialState != result1) {
+							currentState = result1
+							currentStateSince = now()
 							stateMsg = "♦ $mode Piston changed state to $result1 ♦"
 						}
 						break
 					case "And-If":
 						def newState = result1 && result2
-						if (currentState != newState) {
-							state.currentState = newState
-							state.currentStateSince = now()
+						if (initialState != newState) {
+							currentState = newState
+							currentStateSince = now()
 							stateMsg = "♦ And-If Piston changed state to $newState ♦"
 						}
 						break
 					case "Or-If":
 						def newState = result1 || result2
-						if (currentState != newState) {
-							state.currentState = newState
-							state.currentStateSince = now()
+						if (initialState != newState) {
+							currentState = newState
+							currentStateSince = now()
 							stateMsg = "♦ Or-If Piston changed state to $newState ♦"
 						}
 						break
 					case "Then-If":
 						def newState = result1 && result2
-						if (currentState != newState) {
-							state.currentState = newState
-							state.currentStateSince = now()
+						if (initialState != newState) {
+							currentState = newState
+							currentStateSince = now()
 							stateMsg = "♦ Then-If Piston changed state to $newState ♦"
 						}
 						break
 					case "Else-If":
 						def newState = result1 || result2
-						if (currentState != newState) {
-							state.currentState = newState
-							state.currentStateSince = now()
+						if (initialState != newState) {
+							currentState = newState
+							currentStateSince = now()
 							stateMsg = "♦ Else-If Piston changed state to $newState ♦"
 						}
 						break
@@ -4003,17 +4005,19 @@ private broadcastEvent(evt, primary, secondary) {
 					debug stateMsg, null, "info"
 				}
 				def stateChanged = false
-				if (currentState != state.currentState) {
+				if (currentState != initialState) {
 					stateChanged = true
 					//we have a state change
-					setVariable("\$previousState", currentState, true)
-					setVariable("\$previousStateSince", currentStateSince, true)
-					setVariable("\$previousStateDuration", state.currentStateSince && currentStateSince ? state.currentStateSince - currentStateSince : null, true)
-					setVariable("\$currentState", state.currentState, true)
-					setVariable("\$currentStateSince", state.currentStateSince, true)
+					setVariable("\$previousState", initialState, true)
+					setVariable("\$previousStateSince", initialStateSince, true)
+					setVariable("\$previousStateDuration", initialStateSince && currentStateSince ? currentStateSince - initialStateSince : null, true)
+					setVariable("\$currentState", currentState, true)
+					setVariable("\$currentStateSince", currentStateSince, true)
 					//new state
-                    log.trace "setting currentState ($currentState) to state.currentState (${state.currentState})"
-					currentState = state.currentState
+                    atomicState.currentState = currentState
+                    atomicState.currentStateSince = currentStateSince
+                    state.currentState = currentState
+                    state.currentStateSince = currentStateSince
 					//resume all tasks that are waiting for a state change
 					cancelTasks(currentState)
 					resumeTasks(currentState)
@@ -4037,7 +4041,6 @@ private broadcastEvent(evt, primary, secondary) {
 		debug msg, null, "trace"
 	}
 	perf = now() - perf
-    log.trace "initialState was $initialState, currentState is ${state.currentState}"
 	if (evt) debug "Event processing took ${perf}ms", -1, "trace"
 }
 
@@ -7656,7 +7659,7 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
         def groupingOperation = null
         def previousOperation = null
         def operation = null
-        def subDataType = dataType
+        def subDataType = dataType == "number" ? "decimal" : "number"
         def idx = 0
         while (true) {
             def value = params[i].d
@@ -7808,7 +7811,9 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
 		result = formatMessage(result)
 	} else if (dataType in ["time"]) {
 		result = simulate ? formatLocalTime(convertTimeToUnixTime(result)) : convertTimeToUnixTime(result)
-	}
+	} else {
+    	result = cast(result, dataType)
+    }
 	if (!simulate) {
 		setVariable(name, result)
 	} else {
