@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.13d.20160815" }
+def version() {	return "v0.2.13e.20160816" }
 /*
+ *	 8/16/2016 >>> v0.2.13e.20160816 - Beta M2 - Minor fixes for the dashboard, progress on the experimental dashboard
  *	 8/15/2016 >>> v0.2.13d.20160815 - Beta M2 - Fixed a bug affecting variables (introduced with v0.2.13c), made some dashboard improvements (speed)
  *	 8/14/2016 >>> v0.2.13c.20160814 - Beta M2 - Minor fix regarding setting a number variable - allowing decimals during the calculus
  *	 8/14/2016 >>> v0.2.13b.20160814 - Beta M2 - Forced capability Sensor to show (no default attribute in documentation)
@@ -2584,7 +2585,7 @@ def api_dashboard() {
 
 def api_getDashboardData() {
 	def result = [ pistons: [] ]
-    def pistons = atomicState.pistons
+    def pistons = state.pistons
     if (!pistons) {
     	refreshPistons(false)
         pistons = atomicState.pistons
@@ -2851,7 +2852,6 @@ def refreshPistons(event = true) {
     	pistons[app.id] = app.getSummary()
 	}
     atomicState.pistons = pistons
-    state.pistons = pistons
 }
 
 def listAskAlexaMacros() {
