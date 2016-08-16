@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.13c.20160814" }
+def version() {	return "v0.2.13d.20160815" }
 /*
+ *	 8/15/2016 >>> v0.2.13d.20160815 - Beta M2 - Fixed a bug affecting variables (introduced with v0.2.13c), made some dashboard improvements (speed)
  *	 8/14/2016 >>> v0.2.13c.20160814 - Beta M2 - Minor fix regarding setting a number variable - allowing decimals during the calculus
  *	 8/14/2016 >>> v0.2.13b.20160814 - Beta M2 - Forced capability Sensor to show (no default attribute in documentation)
  *	 8/12/2016 >>> v0.2.13a.20160812 - Beta M2 - Initial release of Beta M2
@@ -123,10 +124,10 @@ def pageViewVariable(params) {
 		dynamicPage(name: "pageViewVariable", title: "", uninstall: false, install: false) {
 		if (var) {
 			section() {
-				paragraph var, title: "Variable name"
+				paragraph var, title: "Variable name", required: false
 				def value = getVariable(var)
 				if (value == null) {
-					paragraph "Undefined value (null)", title: "Oh-oh"
+					paragraph "Undefined value (null)", title: "Oh-oh", required: false
 				} else {
 					def type = "string"
 					if (value instanceof Boolean) {
@@ -138,18 +139,18 @@ def pageViewVariable(params) {
 					} else if ((value instanceof Integer) || ((value instanceof String) && value.isInteger())) {
 						type = "number"
 					}
-					paragraph "$type", title: "Data type"
-					paragraph "$value", title: "Raw value"
+					paragraph "$type", title: "Data type", required: false
+					paragraph "$value", title: "Raw value", required: false
 					value = getVariable(var, true)
-					paragraph "$value", title: "Display value"
+					paragraph "$value", title: "Display value", required: false
 				}
 				if (!var.startsWith("\$")) {
-					href "pageDeleteVariable", title: "Delete variable", description: "CAUTION: Tapping here will delete this variable and its value", params: [var: var]
+					href "pageDeleteVariable", title: "Delete variable", description: "CAUTION: Tapping here will delete this variable and its value", params: [var: var], required: false
 				}
 			}
 		} else {
 			section() {
-				paragraph "Sorry, variable not found."
+				paragraph "Sorry, variable not found.", required: false
 			}
 		}
 	}
@@ -161,11 +162,11 @@ def pageDeleteVariable(params) {
 		if (var != null) {
 			section() {
 				deleteVariable(var)
-				paragraph "Variable {$var} was successfully deleted.\n\nPlease tap < or Done to continue.", title: "Success"
+				paragraph "Variable {$var} was successfully deleted.\n\nPlease tap < or Done to continue.", title: "Success", required: false
 			}
 		} else {
 			section() {
-				paragraph "Sorry, variable not found."
+				paragraph "Sorry, variable not found.", required: false
 			}
 		}
 	}
@@ -188,13 +189,13 @@ private pageMainCoRE() {
 	dynamicPage(name: "pageMain", title: "", install: true, uninstall: false) {
 		section() {
 			if (!state.endpoint) {
-				href "pageInitializeDashboard", title: "CoRE Dashboard", description: "Tap here to initialize the CoRE dashboard", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png"
+				href "pageInitializeDashboard", title: "CoRE Dashboard", description: "Tap here to initialize the CoRE dashboard", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png", required: false
 			} else {
 				//reinitialize endpoint
 				initializeCoREEndpoint()
 				def url = "${state.endpoint}dashboard"
 				debug "Dashboard URL: $url *** DO NOT SHARE THIS LINK WITH ANYONE ***", null, "info"
-				href "", title: "CoRE Dashboard", style: "external", url: url, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png"
+				href "", title: "CoRE Dashboard", style: "external", url: url, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png", required: false
 			}
 		}
 
@@ -203,12 +204,12 @@ private pageMainCoRE() {
 		}
 
 		section(title:"Application Info") {
-			href "pageGlobalVariables", title: "Global Variables", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/variables.png"
-			href "pageStatistics", title: "Runtime Statistics", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/statistics.png"
+			href "pageGlobalVariables", title: "Global Variables", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/variables.png", required: false
+			href "pageStatistics", title: "Runtime Statistics", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/statistics.png", required: false
 		}
 
 		section(title:"") {
-			href "pageGeneralSettings", title: "Settings", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/settings.png"
+			href "pageGeneralSettings", title: "Settings", image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/settings.png", required: false
 		}
 
 	}
@@ -220,7 +221,7 @@ private pageInitializeDashboard() {
 	dynamicPage(name: "pageInitializeDashboard", title: "") {
 		section() {
 			if (success) {
-				paragraph "Success! Your CoRE dashboard is now enabled. Tap Done to continue"
+				paragraph "Success! Your CoRE dashboard is now enabled. Tap Done to continue", required: false
 			} else {
 				paragraph "Please go to your SmartThings IDE, select the My SmartApps section, click the 'Edit Properties' button of the CoRE app, open the OAuth section and click the 'Enable OAuth in Smart App' button. Click the Update button to finish.\n\nOnce finished, tap Done and try again.", title: "Please enable OAuth for CoRE", required: true, state: null
 			}
@@ -231,47 +232,51 @@ private pageInitializeDashboard() {
 def pageGeneralSettings(params) {
 	dynamicPage(name: "pageGeneralSettings", title: "General Settings", install: false, uninstall: false) {
 		section("About") {
-			paragraph app.version(), title: "CoRE Version"
-			label name: "name", title: "Name", required: true, state: (name ? "complete" : null), defaultValue: app.name
+			paragraph app.version(), title: "CoRE Version", required: false
+			label name: "name", title: "Name", state: (name ? "complete" : null), defaultValue: app.name, required: false
 		}
 
 		section(title: "Expert Features") {
-			input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true
+			input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true, required: false
         }
         
         section(title: "Debugging") {
-			input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true
+			input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true, required: false
 			def debugging = settings.debugging
 			if (debugging) {
-				input "log#info", "bool", title: "Log info messages", defaultValue: true
-				input "log#trace", "bool", title: "Log trace messages", defaultValue: true
-				input "log#debug", "bool", title: "Log debug messages", defaultValue: false
-				input "log#warn", "bool", title: "Log warning messages", defaultValue: true
-				input "log#error", "bool", title: "Log error messages", defaultValue: true
+				input "log#info", "bool", title: "Log info messages", defaultValue: true, required: false
+				input "log#trace", "bool", title: "Log trace messages", defaultValue: true, required: false
+				input "log#debug", "bool", title: "Log debug messages", defaultValue: false, required: false
+				input "log#warn", "bool", title: "Log warning messages", defaultValue: true, required: false
+				input "log#error", "bool", title: "Log error messages", defaultValue: true, required: false
 			}
 		}
 
 		section("CoRE Integrations") {
 			def iftttConnected = state.modules && state.modules["IFTTT"] && settings["iftttEnabled"] && state.modules["IFTTT"].connected
-			href "pageIntegrateIFTTT", title: "IFTTT", description: iftttConnected ? "Connected" : "Not configured", state: (iftttConnected ? "complete" : null), submitOnChange: true
+			href "pageIntegrateIFTTT", title: "IFTTT", description: iftttConnected ? "Connected" : "Not configured", state: (iftttConnected ? "complete" : null), submitOnChange: true, required: false
 		}
 
 		section("Piston Recovery") {
-        	paragraph "Recovery allows pistons that have been left behind by missed ST events to recover and resume their work"
-            input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours"
-            input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day"
-            input "recoveryNotifications", "bool", title: "Send recovery notifications via ST UI"
-            input "recoveryPushNotifications", "bool", title: "Send recovery notifications via PUSH"
-			href "pageRecoverAllPistons", title: "Recover all pistons", description: "Use this option when you have pistons displaying large 'past due' times in the dashboard."
-			href "pageRebuildAllPistons", title: "Rebuild all pistons", description: "Use this option if there is a problem with your pistons, including when the dashboard is no longer working (blank)."
+        	paragraph "Recovery allows pistons that have been left behind by missed ST events to recover and resume their work", required: false
+            input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours", required: false
+            input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day", required: false
+            input "recoveryNotifications", "bool", title: "Send recovery notifications via ST UI", required: false
+            input "recoveryPushNotifications", "bool", title: "Send recovery notifications via PUSH", required: false
+			href "pageRecoverAllPistons", title: "Recover all pistons", description: "Use this option when you have pistons displaying large 'past due' times in the dashboard.", required: false
+			href "pageRebuildAllPistons", title: "Rebuild all pistons", description: "Use this option if there is a problem with your pistons, including when the dashboard is no longer working (blank).", required: false
         }
 
 		section("Security") {
-			href "pageResetSecurityToken", title: "", description: "Reset security token"
+			href "pageResetSecurityToken", title: "", description: "Reset security token", required: false
+		}
+
+		section("Dashboard") {
+			input "dashboardTheme", "enum", options: ["Classic", "Experimental"], title: "Dashboard theme", defaultValue: "Classic", required: false
 		}
 
 		section("Remove CoRE") {
-			href "pageRemove", title: "", description: "Remove CoRE"
+			href "pageRemove", title: "", description: "Remove CoRE", required: false
 		}
 
 	}
@@ -280,7 +285,7 @@ def pageGeneralSettings(params) {
 def pageGlobalVariables() {
 	dynamicPage(name: "pageGlobalVariables", title: "Global Variables", install: false, uninstall: false) {
 		section("Initialize variables") {
-			href "pageInitializeVariable", title: "Initialize variables"
+			href "pageInitializeVariable", title: "Initialize variables", required: false
 		}
 		section() {
 			def cnt = 0
@@ -288,11 +293,11 @@ def pageGlobalVariables() {
 			if (!state.store) state.store = [:]
 			for (def variable in state.store.sort{ it.key }) {
 				def value = getVariable(variable.key, true)
-				href "pageViewVariable", description: "$value", title: "${variable.key}", params: [var: variable.key]
+				href "pageViewVariable", description: "$value", title: "${variable.key}", params: [var: variable.key], required: false
 				cnt++
 			}
 			if (!cnt) {
-				paragraph "No global variables yet"
+				paragraph "No global variables yet", required: false
 			}
 		}
 	}
@@ -303,10 +308,10 @@ def pageStatistics() {
 		def apps = getChildApps().sort{ it.label }
         def running = apps.findAll{ it.getPistonEnabled() }.size()
 		section(title: "CoRE") {
-			paragraph mem(), title: "Memory Usage"
-			paragraph "${running}", title: "Running pistons"
-			paragraph "${apps.size - running}", title: "Paused pistons"
-			paragraph "${apps.size}", title: "Total pistons"
+			paragraph mem(), title: "Memory Usage", required: false
+			paragraph "${running}", title: "Running pistons", required: false
+			paragraph "${apps.size - running}", title: "Paused pistons", required: false
+			paragraph "${apps.size}", title: "Total pistons", required: false
 		}
 
 		updateChart("delay", null)
@@ -353,12 +358,12 @@ def pageStatistics() {
 		if (apps && apps.size()) {
         	section("Pistons") {
                 for (app in apps.sort{ it.label }) {
-                    href "pagePistonStatistics", params: [pistonId: app.id], title: app.label ?: app.name
+                    href "pagePistonStatistics", params: [pistonId: app.id], title: app.label ?: app.name, required: false
                 }
             }
 		} else {
 			section() {
-				paragraph "No pistons running"
+				paragraph "No pistons running", required: false
 			}
 		}
 	}
@@ -411,7 +416,7 @@ def pagePistonStatistics(params) {
             }
         } else {
         	section() {
-            	paragraph "Sorry, the piston you selected cannot be found"
+            	paragraph "Sorry, the piston you selected cannot be found", required: false
             }
         }
     }
@@ -450,8 +455,8 @@ def pageChart(params) {
 def pageIntegrateIFTTT() {
 	return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT™ Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
 		section() {
-			paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. You will be provided with a key that needs to be entered below"
-			input "iftttEnabled", "bool", title: "Enable IFTTT", submitOnChange: true
+			paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. You will be provided with a key that needs to be entered below", required: false
+			input "iftttEnabled", "bool", title: "Enable IFTTT", submitOnChange: true, required: false
 			if (settings.iftttEnabled) href name: "", title: "IFTTT Maker channel", required: false, style: "external", url: "https://www.ifttt.com/maker", description: "tap to go to IFTTT™ and connect the Maker channel"
 		}
 		if (settings.iftttEnabled) {
@@ -2389,6 +2394,9 @@ def initializeCoRE() {
 	subscribe(location, "CoRE", coreHandler)
 	subscribe(location, "askAlexa", askAlexaHandler)
     subscribe(app, appTouchHandler)
+    /* temporary - remove old handlers */
+    unschedule(recovery1)
+    unschedule(recovery2)
 //    subscribe(null, "intrusion", intrusionHandler, [filterEvents: false])
 //    subscribe(null, "newIncident", intrusionHandler, [filterEvents: false])
 //    subscribe(null, "newMessage", intrusionHandler, [filterEvents: false])
@@ -2509,6 +2517,7 @@ private recoverPistons(recoverAll = false, excludeAppId = null) {
         }
     }
 	if (recoverAll || (count > 0)) debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered.", null, "trace"
+    refreshPistons(false)
     return true
 }
 
@@ -2569,13 +2578,19 @@ mappings {
 
 def api_dashboard() {
 	def cdn = "https://core.caramaliu.com/dashboard"
-	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/components/components.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/js/components/components.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
+    def theme = (settings["dashboardTheme"] ?: "classic").toLowerCase()
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/components/components.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/components/components.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
 
 def api_getDashboardData() {
 	def result = [ pistons: [] ]
-	for(app in getChildApps()) {
-		result.pistons.push app.getSummary()
+    def pistons = atomicState.pistons
+    if (!pistons) {
+    	refreshPistons(false)
+        pistons = atomicState.pistons
+    }
+	for(piston in pistons) {
+		result.pistons.push piston.value
 	}
 	//sort the pistons
 	result.pistons = result.pistons.sort { it.l }
@@ -2596,6 +2611,9 @@ def api_pause() {
 		def child = getChildApps()?.find { it.id == pistonId }
 		if (child) {
 			child.pause()
+            def pistons = atomicState.pistons ?: [:]
+            pistons[child.id] = child.getSummary()
+            atomicState.pistons = pistons            
 		}
 	}
 	return api_getDashboardData()
@@ -2630,6 +2648,9 @@ def api_resume() {
 		def child = getChildApps().find { it.id == pistonId }
 		if (child) {
 			child.resume()
+            def pistons = atomicState.pistons ?: [:]
+            pistons[child.id] = child.getSummary()
+            atomicState.pistons = pistons
 		}
 	}
 	return api_getDashboardData()
@@ -2787,13 +2808,16 @@ def subscribeToRecovery(appId, recoveryTime) {
     }
 }
 
-private onChildExitPoint(appId, lastEvent, duration, nextScheduledTime) {
+private onChildExitPoint(piston, lastEvent, duration, nextScheduledTime, summary) {
 	if (parent) {
-	    parent.onChildExitPoint(appId, lastEvent, duration, nextScheduledTime)
+	    parent.onChildExitPoint(piston, lastEvent, duration, nextScheduledTime, summary)
     } else {
 	    if (lastEvent) updateChart("delay", lastEvent.delay)
 	    updateChart("exec", duration)
-	    subscribeToRecovery(appId, nextScheduledTime ?: 0)
+	    subscribeToRecovery(piston.id, nextScheduledTime ?: 0)
+        def pistons = atomicState.pistons ?: [:]
+        pistons[piston.id] = summary
+        atomicState.pistons = pistons
     }
 }
 
@@ -2820,8 +2844,14 @@ def generatePistonName() {
 	}
 }
 
-def refreshPistons() {
-	sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, linkText: "CoRE Refresh", descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
+def refreshPistons(event = true) {
+	if (event) sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, linkText: "CoRE Refresh", descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
+    def pistons = [:]
+	for(app in getChildApps()) {
+    	pistons[app.id] = app.getSummary()
+	}
+    atomicState.pistons = pistons
+    state.pistons = pistons
 }
 
 def listAskAlexaMacros() {
@@ -3781,7 +3811,7 @@ private exitPoint(milliseconds) {
 	setVariable("\$previousEventExecutionTime", milliseconds, true)
 	state.lastExecutionTime = milliseconds
 	try {
-    	parent.onChildExitPoint(app.id, lastEvent, milliseconds, state.nextScheduledTime)        
+    	parent.onChildExitPoint(app, lastEvent, milliseconds, state.nextScheduledTime, getSummary())        
 	} catch(e) {
 		debug "ERROR: Could not update parent app: $e", null, "error"
 	}
@@ -5221,7 +5251,7 @@ private scheduleTimeTrigger(condition, data = null) {
 }
 
 private scheduleActions(conditionId, stateChanged = false, currentState = true) {
-	debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
+	//debug "Scheduling actions for condition #${conditionId}. State did${stateChanged ? "" : " NOT"} change."
 	def actions = listActions(conditionId).sort{ it.id }
 	for (action in actions) {
 		//restrict on state changed
@@ -7659,7 +7689,7 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
         def groupingOperation = null
         def previousOperation = null
         def operation = null
-        def subDataType = dataType == "number" ? "decimal" : "number"
+        def subDataType = dataType == "number" ? "decimal" : dataType
         def idx = 0
         while (true) {
             def value = params[i].d
