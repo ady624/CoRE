@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.13e.20160816" }
+def version() {	return "v0.2.13f.20160817" }
 /*
+ *	 8/17/2016 >>> v0.2.13f.20160817 - Beta M2 - Fixed a problem with caching old orientation values - triggers for orientation did not work correctly
  *	 8/16/2016 >>> v0.2.13e.20160816 - Beta M2 - Minor fixes for the dashboard, progress on the experimental dashboard
  *	 8/15/2016 >>> v0.2.13d.20160815 - Beta M2 - Fixed a bug affecting variables (introduced with v0.2.13c), made some dashboard improvements (speed)
  *	 8/14/2016 >>> v0.2.13c.20160814 - Beta M2 - Minor fix regarding setting a number variable - allowing decimals during the calculus
@@ -2585,7 +2586,7 @@ def api_dashboard() {
 
 def api_getDashboardData() {
 	def result = [ pistons: [] ]
-    def pistons = state.pistons
+    def pistons = atomicState.pistons
     if (!pistons) {
     	refreshPistons(false)
         pistons = atomicState.pistons
@@ -2596,7 +2597,7 @@ def api_getDashboardData() {
 	//sort the pistons
 	result.pistons = result.pistons.sort { it.l }
 	result.variables = [:]
-	for(variable in state.store) {
+	for(variable in atomicState.store) {
 		result.variables[variable.key] = getVariable(variable.key, true)
 	}
 	result.variables = result.variables.sort{ it.key }
@@ -3890,6 +3891,9 @@ private broadcastEvent(evt, primary, secondary) {
         def cachedValue = cache[deviceId + '-' + evt.name]
         def eventTime = evt.date.getTime()
         cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+        if (evt.name == "threeAxis") {
+	        cache[deviceId + '-orientation'] = [o: cachedValue ? cachedValue.v : null, v: getThreeAxisOrientation(evt.value), q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+        }
         atomicState.cache = cache
         state.cache = cache
         if (cachedValue) {
@@ -4396,7 +4400,7 @@ private evaluateDeviceCondition(condition, evt) {
 		if (comp) {
 			//if event is about the same device/attribute, use the event's value as the current value, otherwise, fetch the current value from the device
 			def deviceResult = false
-			def ownsEvent = evt && (eventDeviceId == device.id) && ((evt.name == attribute) || ((evt.name == "time") && (condition.id == evt.conditionId)))
+			def ownsEvent = evt && (eventDeviceId == device.id) && ((evt.name == attribute) || ((evt.name == "time") && (condition.id == evt.conditionId)) || ((evt.name == "threeAxis") && (attribute == "orientation")))
 			if (ownsEvent && (evt.name == "time") && (condition.id == evt.conditionId)) {
 				//stays trigger, we need to use the current device value
 				virtualCurrentValue = device.currentValue(attribute)
