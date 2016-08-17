@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.13f.20160817" }
+def version() {	return "v0.2.140.20160817" }
 /*
+ *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
  *	 8/17/2016 >>> v0.2.13f.20160817 - Beta M2 - Fixed a problem with caching old orientation values - triggers for orientation did not work correctly
  *	 8/16/2016 >>> v0.2.13e.20160816 - Beta M2 - Minor fixes for the dashboard, progress on the experimental dashboard
  *	 8/15/2016 >>> v0.2.13d.20160815 - Beta M2 - Fixed a bug affecting variables (introduced with v0.2.13c), made some dashboard improvements (speed)
@@ -3892,7 +3893,8 @@ private broadcastEvent(evt, primary, secondary) {
         def eventTime = evt.date.getTime()
         cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
         if (evt.name == "threeAxis") {
-	        cache[deviceId + '-orientation'] = [o: cachedValue ? cachedValue.v : null, v: getThreeAxisOrientation(evt.value), q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+	        cachedValue = cache[deviceId + '-orientation']
+	        cache[deviceId + '-orientation'] = [o: cachedValue ? cachedValue.v : null, v: getThreeAxisOrientation(evt.xyzValue), q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
         }
         atomicState.cache = cache
         state.cache = cache
@@ -8412,7 +8414,7 @@ private getThreeAxisDistance(coord1, coord2) {
 }
 
 private getThreeAxisOrientation(value, getIndex = false) {
-	if (value instanceof Map) {
+	if (value instanceof Map) {    
 		if ((value.x != null) && (value.y != null) && (value.z != null)) {
 			def orientations = threeAxisOrientations()
 			def x = Math.abs(value.x)
