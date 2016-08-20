@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.141.20160820" }
+def version() {	return "v0.2.142.20160820" }
 /*
+ *	 8/20/2016 >>> v0.2.142.20160820 - Beta M2 - Made setVariable use long numbers to avoid range overflows
  *	 8/20/2016 >>> v0.2.141.20160820 - Beta M2 - Fixed a problem with SWITCH-CASE which would, upon the end of a matching case, send the flow to the second following case's start, executing two cases
  *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
  *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
@@ -7689,6 +7690,9 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
 			result = adjustTime()
 			break
 		case "number":
+        	//we need to use long numbers
+        	dataType = "long"
+		case "long":
 		case "decimal":
 			result = 0
 			break
@@ -7703,7 +7707,7 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
         def groupingOperation = null
         def previousOperation = null
         def operation = null
-        def subDataType = dataType == "number" ? "decimal" : dataType
+        def subDataType = dataType == "long" ? "decimal" : dataType
         def idx = 0
         while (true) {
             def value = params[i].d
@@ -7858,9 +7862,9 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
 	} else {
     	result = cast(result, dataType)
     }
-	if (!simulate) {
-		setVariable(name, result)
-	} else {
+    setVariable(name, result)
+    log.trace "SetVariable result is $result"
+	if (simulate) {
 		return result
 	}
 	return true
