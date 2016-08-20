@@ -18,8 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.140.20160817" }
+def version() {	return "v0.2.141.20160820" }
 /*
+ *	 8/20/2016 >>> v0.2.141.20160820 - Beta M2 - Fixed a problem with SWITCH-CASE which would, upon the end of a matching case, send the flow to the second following case's start, executing two cases
+ *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
  *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
  *	 8/17/2016 >>> v0.2.13f.20160817 - Beta M2 - Fixed a problem with caching old orientation values - triggers for orientation did not work correctly
  *	 8/16/2016 >>> v0.2.13e.20160816 - Beta M2 - Minor fixes for the dashboard, progress on the experimental dashboard
@@ -5401,8 +5403,8 @@ private scheduleAction(action) {
 										continue
 									case "case":
 										//if we got here, we need to skip to the end
-										//a matching case probably just finished
-										x = flow.endIdx + 1
+										//a matching case probably just finished 
+										x = flow.endIdx
 										continue
 									case "loop":
 										if (flow.isWhile) {
@@ -5568,7 +5570,9 @@ private scheduleAction(action) {
 			}
 			x += 1
 			//exit when we reached the end
-			if (x >= tasks.size()) break
+			if (x >= tasks.size()) {
+            	break
+            }
 		}
 	}
 }
@@ -5703,7 +5707,7 @@ private buildFlowChart(tasks) {
 					flow.isCase = c.contains("case")
 					flow.loopType = (flow.isFor ? "for" : (flow.isWhile ? "while" : null))
 					flow.ifType = (flow.isElse ? "else" : (flow.isIf ? "if" : null))
-					flow.mode = (flow.isLoop ? "loop" : (flow.isIf ? "if" : (flow.isSwitch ? "switch" : null)))
+					flow.mode = (flow.isLoop ? "loop" : (flow.isIf ? "if" : (flow.isCase ? "case" : (flow.isSwitch ? "switch" : null))))
 					if (flow.mode) {
 						//ending flows need the indent applied before
 						indent = indent + (command.indent && (command.indent < 0) ? command.indent : 0)
@@ -5747,6 +5751,10 @@ private buildFlowChart(tasks) {
 										endFlow.startIdx = flow.idx
 									}
 									break
+								case "case":
+                                	endFlow.startIdx = flow.idx
+	                                flow.endIdx = i
+									break
 								case "switch":
 									if ((flow.caseIdxs != null) && (endFlow.isCase)) {
 										endFlow.startIdx = flow.idx
@@ -5764,7 +5772,7 @@ private buildFlowChart(tasks) {
 				if (flow.endIdx) break
 			}
 		}
-	}
+	}    
 	return result
 }
 
