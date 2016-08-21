@@ -18,9 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.143.20160821" }
+def version() {	return "v0.2.144.20160821" }
 /*
- *	 8/20/2016 >>> v0.2.143.20160820 - Beta M2 - Minor bug fixes
+ *	 8/20/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
+ *	 8/20/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
  *	 8/20/2016 >>> v0.2.142.20160820 - Beta M2 - Made setVariable use long numbers to avoid range overflows
  *	 8/20/2016 >>> v0.2.141.20160820 - Beta M2 - Fixed a problem with SWITCH-CASE which would, upon the end of a matching case, send the flow to the second following case's start, executing two cases
  *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
@@ -3540,7 +3541,7 @@ private getActionDescription(action) {
 		result += "® If day is ${buildNameList(action.rw, "or")}...\n"
 	}
 	if (action.rtf && action.rtt) {   
-		result += "® If time is between ${action.rtf == "custom time" ? formatTime(action.rtfc) : (action.rtfo ? (action.rtfo < 0 ? "${-action.rtfo} minutes before " : "${action.rtfo} minutes after ") : "") + action.rtf} and ${action.rtt == "custom time" ? formatTime(action.rttc) : (action.rtto ? (action.rtto < 0 ? "${-action.rtt} minutes before " : "${action.rtto} minutes after ") : "") + action.rtt}...\n"
+		result += "® If time is between ${action.rtf == "custom time" ? formatTime(action.rtfc) : (action.rtfo ? (action.rtfo < 0 ? "${-action.rtfo} minutes before " : "${action.rtfo} minutes after ") : "") + action.rtf} and ${action.rtt == "custom time" ? formatTime(action.rttc) : (action.rtto ? (action.rtto < 0 ? "${-action.rtto} minutes before " : "${action.rtto} minutes after ") : "") + action.rtt}...\n"
     }    
     if (action.rs1) {
     	result += "® If each of ${buildDeviceNameList(settings["actRSwitchOn${action.id}"], "and")} is on"
