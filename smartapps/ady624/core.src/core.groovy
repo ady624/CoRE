@@ -18,10 +18,11 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.144.20160821" }
+def version() {	return "v0.2.145.20160822" }
 /*
- *	 8/20/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
- *	 8/20/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
+ *	 8/22/2016 >>> v0.2.145.20160822 - Beta M2 - Fixed the custom command display to include parameters
+ *	 8/21/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
+ *	 8/21/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
  *	 8/20/2016 >>> v0.2.142.20160820 - Beta M2 - Made setVariable use long numbers to avoid range overflows
  *	 8/20/2016 >>> v0.2.141.20160820 - Beta M2 - Fixed a problem with SWITCH-CASE which would, upon the end of a matching case, send the flow to the second following case's start, executing two cases
  *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
@@ -3562,6 +3563,7 @@ private getActionDescription(action) {
 				i++
 			}
 			t += "]"
+            
 		}
 		result += "\n ► " + getTaskDescription(task)
 	}
@@ -3586,7 +3588,17 @@ private getTaskDescription(task) {
 
 	def result = ""
 	if (custom) {
-		result = task.c
+		result = task.c.replace(customCommandSuffix(), "") + "("
+        for (int i=0; i < task.p.size() / 2; i++) {
+            if (i > 0) result += ", "
+        	int j = i * 2 + 1
+        	if (task.p[j].t == "string") {
+            	result += "\"${task.p[j].d}\""
+            } else {
+            	result += "${task.p[j].d}"
+            }
+        }
+        return result + ")"
 	} else {
 		def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))
 		if (!cmd) {
@@ -7865,7 +7877,6 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
     	result = cast(result, dataType)
     }
     setVariable(name, result)
-    log.trace "SetVariable result is $result"
 	if (simulate) {
 		return result
 	}
