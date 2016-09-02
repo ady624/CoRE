@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.147.20160902" }
+def version() {	return "v0.2.148.20160902" }
 /*
+ *	 9/02/2016 >>> v0.2.148.20160902 - Beta M2 - Added instructions for removing dashboard taps. Thank you @dseg for the Tap idea.
  *	 9/02/2016 >>> v0.2.147.20160902 - Beta M2 - Minor fix with adding taps and API
  *	 9/02/2016 >>> v0.2.146.20160902 - Beta M2 - Introducing the dashboard taps - tap one to run its associated pistons
  *	 8/21/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
@@ -337,6 +338,9 @@ def pageDashboardTap(params) {
         section("") {
         	input "tapName${tapId}", "string", title: "Name", description: "Enter a name for this tap", required: false, defaultValue: "Tap #${tapId}"
         	input "tapPistons${tapId}", "enum", title: "Pistons", options: listPistons(), description: "Select the pistons to be executed when tapped", required: false, multiple: true
+        }
+        section("") {
+			paragraph "NOTE: To delete this dashboard tap, clear its name and list of pistons and then tap Done"
         }
     }
 }
