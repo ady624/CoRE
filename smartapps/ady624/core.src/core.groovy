@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.146.20160902" }
+def version() {	return "v0.2.147.20160902" }
 /*
+ *	 9/02/2016 >>> v0.2.147.20160902 - Beta M2 - Minor fix with adding taps and API
  *	 9/02/2016 >>> v0.2.146.20160902 - Beta M2 - Introducing the dashboard taps - tap one to run its associated pistons
  *	 8/21/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
  *	 8/21/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
@@ -314,14 +315,17 @@ def pageDashboardTaps() {
 }
 
 def pageDashboardTap(params) {
-	def tapId = params?.id ?: state.tapId
+	def tapId = params?.id != null ? params.id : state.tapId
     if (!tapId) {
     	//generate new tap id
         tapId = 1
     	def existingTaps = settings.findAll{ it.key.startsWith("tapName") }
+        log.trace "FOUND existing taps $existingTaps"
         for (tap in existingTaps) {
         	def id = tap.key.replace("tapName", "")
+            log.trace "FOUND ID $id"
             if (id.isInteger()) {
+            	log.trace "$id >= $tapId"
             	id = id.toInteger()
             	if (id >= tapId) tapId = id + 1
             }
@@ -2627,7 +2631,8 @@ mappings {
 	path("/ifttt/:eventName") {action: [GET: "api_ifttt", POST: "api_ifttt"]}
 	path("/execute") {action: [POST: "api_execute"]}
 	path("/execute/:pistonName") {action: [GET: "api_execute", POST: "api_execute"]}
-	path("/tap/:tapId") {action: [GET: "api_tap", POST: "api_tap"]}
+	path("/tap") {action: [POST: "api_tap"]}
+	path("/tap/:tapId") {action: [GET: "api_tap"]}
 	path("/pause") {action: [POST: "api_pause"]}
 	path("/resume") {action: [POST: "api_resume"]}
 	path("/piston") {action: [POST: "api_piston"]}
