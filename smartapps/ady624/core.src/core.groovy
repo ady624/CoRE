@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.148.20160902" }
+def version() {	return "v0.2.14a.20160902" }
 /*
+ *	 9/02/2016 >>> v0.2.14a.20160902 - Beta M2 - Fixed a problem with decimal points on dashboard taps
  *	 9/02/2016 >>> v0.2.149.20160902 - Beta M2 - Improved exit point speed (removed unnecessary piston refreshes)
  *	 9/02/2016 >>> v0.2.148.20160902 - Beta M2 - Added instructions for removing dashboard taps. Thank you @dseg for the Tap idea.
  *	 9/02/2016 >>> v0.2.147.20160902 - Beta M2 - Minor fix with adding taps and API
@@ -317,7 +318,7 @@ def pageDashboardTaps() {
 }
 
 def pageDashboardTap(params) {
-	def tapId = params?.id != null ? params.id : state.tapId
+	def tapId = (int) (params?.id != null ? params.id : state.tapId)
     if (!tapId) {
     	//generate new tap id
         tapId = 1
@@ -326,7 +327,7 @@ def pageDashboardTap(params) {
         	def id = tap.key.replace("tapName", "")
             if (id.isInteger()) {
             	id = id.toInteger()
-            	if (id >= tapId) tapId = id + 1
+            	if (id >= tapId) tapId = (int) (id + 1)
             }
         }
     }
