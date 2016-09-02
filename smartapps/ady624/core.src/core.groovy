@@ -18,9 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.145.20160822" }
+def version() {	return "v0.2.146.20160902" }
 /*
- *	 8/22/2016 >>> v0.2.145.20160822 - Beta M2 - Fixed the custom command display to include parameters
+ *	 9/02/2016 >>> v0.2.146.20160902 - Beta M2 - Introducing the dashboard taps - tap one to run its associated pistons
  *	 8/21/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
  *	 8/21/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
  *	 8/20/2016 >>> v0.2.142.20160820 - Beta M2 - Made setVariable use long numbers to avoid range overflows
@@ -66,6 +66,8 @@ preferences {
 	page(name: "pageChart")
 	page(name: "pageGlobalVariables")
 	page(name: "pageGeneralSettings")
+	page(name: "pageDashboardTaps")
+	page(name: "pageDashboardTap")
 	page(name: "pageIntegrateIFTTT")
 	page(name: "pageIntegrateIFTTTConfirm")
 	page(name: "pageResetSecurityToken")
@@ -125,6 +127,7 @@ private customCommandSuffix() { return "(..)" }
 /*** COMMON PAGES															***/
 /******************************************************************************/
 def pageMain() {
+	def res = dev()
 	parent ? pageMainCoREPiston() : pageMainCoRE()
 }
 
@@ -194,6 +197,7 @@ def pageRemove() {
 /******************************************************************************/
 private pageMainCoRE() {
 	initializeCoREStore()
+    rebuildTaps()
 	//CoRE main page
 	dynamicPage(name: "pageMain", title: "", install: true, uninstall: false) {
 		section() {
@@ -245,6 +249,11 @@ def pageGeneralSettings(params) {
 			label name: "name", title: "Name", state: (name ? "complete" : null), defaultValue: app.name, required: false
 		}
 
+		section(title: "Dashboard") {
+			href "pageDashboardTaps", title: "Taps", description: "Edit the list of taps on the dashboard", required: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
+			input "dashboardTheme", "enum", options: ["Classic", "Experimental"], title: "Dashboard theme", defaultValue: "Experimental", required: false
+        }
+
 		section(title: "Expert Features") {
 			input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true, required: false
         }
@@ -280,15 +289,52 @@ def pageGeneralSettings(params) {
 			href "pageResetSecurityToken", title: "", description: "Reset security token", required: false
 		}
 
-		section("Dashboard") {
-			input "dashboardTheme", "enum", options: ["Classic", "Experimental"], title: "Dashboard theme", defaultValue: "Classic", required: false
-		}
-
 		section("Remove CoRE") {
 			href "pageRemove", title: "", description: "Remove CoRE", required: false
 		}
 
 	}
+}
+
+def pageDashboardTaps() {
+	rebuildTaps()
+	dynamicPage(name: "pageDashboardTaps", title: "Dashboard Taps", install: false, uninstall: false) {
+    	def taps = state.taps
+        section("") {
+        	href "pageDashboardTap", title: "Add a new tap", required: false, params: [id: 0], image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
+        }
+        if (taps.size()) {
+            section("Taps") {
+                for (tap in taps) {
+                    href "pageDashboardTap", title: tap.n, description: "Runs ${buildNameList(tap.p, "and")}", required: false, params: [id: tap.i], image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
+                }
+            }
+        }
+    }
+}
+
+def pageDashboardTap(params) {
+	def tapId = params?.id ?: state.tapId
+    if (!tapId) {
+    	//generate new tap id
+        tapId = 1
+    	def existingTaps = settings.findAll{ it.key.startsWith("tapName") }
+        for (tap in existingTaps) {
+        	def id = tap.key.replace("tapName", "")
+            if (id.isInteger()) {
+            	id = id.toInteger()
+            	if (id >= tapId) tapId = id + 1
+            }
+        }
+    }
+    log.trace "TAP ID IS $tapId"
+    state.tapId = tapId
+	dynamicPage(name: "pageDashboardTap", title: "Dashboard Tap", install: false, uninstall: false) {
+        section("") {
+        	input "tapName${tapId}", "string", title: "Name", description: "Enter a name for this tap", required: false, defaultValue: "Tap #${tapId}"
+        	input "tapPistons${tapId}", "enum", title: "Pistons", options: listPistons(), description: "Select the pistons to be executed when tapped", required: false, multiple: true
+        }
+    }
 }
 
 def pageGlobalVariables() {
@@ -2165,6 +2211,7 @@ def publishVariables() {
 	if (!parent) return null
 	//we're saving the atomic store to our regular store to prevent race conditions
 	def globalVars = state.globalVars
+    log.trace "publishing variables $globalVars"
 	for (variable in globalVars) {
         def name = variable.key
         def oldValue = variable.value.oldValue
@@ -2580,6 +2627,7 @@ mappings {
 	path("/ifttt/:eventName") {action: [GET: "api_ifttt", POST: "api_ifttt"]}
 	path("/execute") {action: [POST: "api_execute"]}
 	path("/execute/:pistonName") {action: [GET: "api_execute", POST: "api_execute"]}
+	path("/tap/:tapId") {action: [GET: "api_tap", POST: "api_tap"]}
 	path("/pause") {action: [POST: "api_pause"]}
 	path("/resume") {action: [POST: "api_resume"]}
 	path("/piston") {action: [POST: "api_piston"]}
@@ -2587,7 +2635,7 @@ mappings {
 
 def api_dashboard() {
 	def cdn = "https://core.caramaliu.com/dashboard"
-    def theme = (settings["dashboardTheme"] ?: "classic").toLowerCase()
+    def theme = (settings["dashboardTheme"] ?: "experimental").toLowerCase()
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/components/components.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/components/components.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
 
@@ -2609,6 +2657,7 @@ def api_getDashboardData() {
 	}
 	result.variables = result.variables.sort{ it.key }
     result.version = version()
+    result.taps = state.taps
     result.now = now()
 	return result
 }
@@ -2638,6 +2687,21 @@ def api_execute() {
     	result = execute(pistonName, data)
         result = "Piston $pistonName is now being executed."
     }
+	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">$result<body></body></html>"
+}
+
+def api_tap() {
+	def data = request?.JSON
+	def tapId = params?.tapId ?: data?.tapId
+    def tap = state.taps.find{ "${it.i}" == tapId }
+    def result = ""
+    if (tap && tap.p) {
+    	for(pistonName in tap.p) {
+	    	execute(pistonName)
+			result += "Piston $pistonName is now being executed.<br/>"
+		}
+    }
+	def d = debug("Received an API tap request for tapID $tapId")
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">$result<body></body></html>"
 }
 
@@ -8827,6 +8891,28 @@ private rebuildActions() {
     cleanUpActions()
 }
 
+private rebuildTaps() {
+	def taps = settings.findAll{it.key.startsWith("tapName")}
+    state.taps = []
+    for(tap in taps) {
+    	def id = tap.key.replace("tapName", "")
+        if (id.isInteger()) {
+            if (tap.value != null) {
+                def name = tap.value
+                def pistons = settings["tapPistons${id}"]
+                if (name || pistons) {
+                    def t = [
+                        i: id.toInteger(),
+                        n: name,
+                        p: settings["tapPistons${id}"]
+                    ]
+                    state.taps.push t
+                }
+            }
+        }
+    }
+}
+
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
 private cleanUpConditions(deleteGroups) {
 	//go through each condition in the state config and delete it if no associated settings exist
@@ -10691,4 +10777,5 @@ private getColorByName(name, ownerId = null, taskId = null) {
 /*** Write code here and then move it to its proper location				***/
 /******************************************************************************/
 
-private dev() {}
+private dev() {
+}
