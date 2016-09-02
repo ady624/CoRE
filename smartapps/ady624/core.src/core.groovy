@@ -20,6 +20,7 @@
 */
 def version() {	return "v0.2.148.20160902" }
 /*
+ *	 9/02/2016 >>> v0.2.149.20160902 - Beta M2 - Improved exit point speed (removed unnecessary piston refreshes)
  *	 9/02/2016 >>> v0.2.148.20160902 - Beta M2 - Added instructions for removing dashboard taps. Thank you @dseg for the Tap idea.
  *	 9/02/2016 >>> v0.2.147.20160902 - Beta M2 - Minor fix with adding taps and API
  *	 9/02/2016 >>> v0.2.146.20160902 - Beta M2 - Introducing the dashboard taps - tap one to run its associated pistons
@@ -321,18 +322,14 @@ def pageDashboardTap(params) {
     	//generate new tap id
         tapId = 1
     	def existingTaps = settings.findAll{ it.key.startsWith("tapName") }
-        log.trace "FOUND existing taps $existingTaps"
         for (tap in existingTaps) {
         	def id = tap.key.replace("tapName", "")
-            log.trace "FOUND ID $id"
             if (id.isInteger()) {
-            	log.trace "$id >= $tapId"
             	id = id.toInteger()
             	if (id >= tapId) tapId = id + 1
             }
         }
     }
-    log.trace "TAP ID IS $tapId"
     state.tapId = tapId
 	dynamicPage(name: "pageDashboardTap", title: "Dashboard Tap", install: false, uninstall: false) {
         section("") {
@@ -2219,7 +2216,6 @@ def publishVariables() {
 	if (!parent) return null
 	//we're saving the atomic store to our regular store to prevent race conditions
 	def globalVars = state.globalVars
-    log.trace "publishing variables $globalVars"
 	for (variable in globalVars) {
         def name = variable.key
         def oldValue = variable.value.oldValue
@@ -2555,10 +2551,10 @@ private recoverPistons(recoverAll = false, excludeAppId = null) {
 	def recovery = atomicState.recovery
 	if (!(recovery instanceof Map)) recovery = [:]
     def threshold = now() - 30000
-    for(app in getChildApps()) {
+    def apps = getChildApps()
+    for(app in apps) {
     	if ((recoverAll || (recovery[app.id] && (recovery[app.id] < threshold))) && (!excludeAppId || (excludeAppId != app.id))) {
         	count += 1
-        	debug "Recovering piston ${app.label ?: app.name}" + (recoverAll ? "" : " because it was about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due"), null, "trace"
         	if (recoverAll || excludeAppId) {
 				sendLocationEvent(name: "CoRE Recovery [${app.id}]", value: "", displayed: true, linkText: "CoRE/${app.label} Recovery", isStateChange: true)
             } else {
@@ -2581,7 +2577,7 @@ private recoverPistons(recoverAll = false, excludeAppId = null) {
         }
     }
 	if (recoverAll || (count > 0)) debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered.", null, "trace"
-    refreshPistons(false)
+    if (recoverAll) refreshPistons(false)
     return true
 }
 
@@ -3745,13 +3741,13 @@ def deviceHandler(evt) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-	debug "Received a primary block device event", 1
+	debug "Received a primary block device event", 1, "trace"
 	broadcastEvent(evt, true, false)
 	//process tasks
 	processTasks()
-	perf = now() - perf
-	debug "Done in ${perf}ms", -1
 	exitPoint(perf)
+	perf = now() - perf
+	debug "Piston done in ${perf}ms", -1, "trace"
 }
 
 def latchingDeviceHandler(evt) {
@@ -3760,13 +3756,13 @@ def latchingDeviceHandler(evt) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-	debug "Received a secondary block device event", 1
+	debug "Received a secondary block device event", 1, "trace"
 	broadcastEvent(evt, false, true)
 	//process tasks
 	processTasks()
-	perf = now() - perf
-	debug "Done in ${perf}ms", -1
 	exitPoint(perf)
+	perf = now() - perf
+	debug "Piston done in ${perf}ms", -1, "trace"
 }
 
 def bothDeviceHandler(evt) {
@@ -3775,13 +3771,13 @@ def bothDeviceHandler(evt) {
 	//executes whenever a common use device has an event
 	//broadcast to both IF blocks
 	def perf = now()
-	debug "Received a dual block device event", 1
+	debug "Received a dual block device event", 1, "trace"
 	broadcastEvent(evt, true, true)
 	//process tasks
 	processTasks()
-	perf = now() - perf
-	debug "Done in ${perf}ms", -1
 	exitPoint(perf)
+	perf = now() - perf
+	debug "Piston done in ${perf}ms", -1, "trace"
 }
 
 def timeHandler() {
@@ -3789,11 +3785,11 @@ def timeHandler() {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-	debug "Received a time event", 1
+	debug "Received a time event", 1, "trace"
 	processTasks()
-	perf = now() - perf
-	debug "Done in ${perf}ms", -1
 	exitPoint(perf)
+	perf = now() - perf
+	debug "Piston done in ${perf}ms", -1, "trace"
 }
 
 def recoveryHandler(evt = null, showWarning = true) {
@@ -3810,6 +3806,7 @@ def recoveryHandler(evt = null, showWarning = true) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
+    debug "Received a recovery request", 1, "trace"
 	if (!evt && showWarning) debug "CAUTION: Received a recovery event", 1, "warn"
 	//reset markers for all tasks, the owner of the task probably crashed :)
 	def tasks = atomicState.tasks
@@ -3818,9 +3815,9 @@ def recoveryHandler(evt = null, showWarning = true) {
 	}
 	atomicState.tasks = tasks
 	processTasks()
-	perf = now() - perf
-	debug "Done in ${perf}ms", -1
 	exitPoint(perf)
+	perf = now() - perf
+	debug "Piston done in ${perf}ms", -1, "trace"
 }
 
 def executeHandler(data = null) {
@@ -3833,12 +3830,12 @@ def executeHandler(data = null) {
         	setVariable(item.key, item.value)
         }
     }
-	debug "Received an execute request", 1
+	debug "Received an execute request", 1, "trace"
 	broadcastEvent([name: "execute", date: new Date(), deviceId: "time", conditionId: null], true, false)
 	processTasks()
-	perf = now() - perf
-	debug "Done in ${perf}ms", -1
 	exitPoint(perf)
+	perf = now() - perf
+	debug "Piston done in ${perf}ms", -1, "trace"
 	return state.currentState
 }
 
@@ -3883,6 +3880,7 @@ private entryPoint() {
 }
 
 private exitPoint(milliseconds) {
+	def perf = now()
 	def appData = state.run == "config" ? state.config.app : state.app
 	def runStats = atomicState.runStats
 	if (runStats == null) runStats = [:]
@@ -3902,6 +3900,7 @@ private exitPoint(milliseconds) {
 	}
 	setVariable("\$previousEventExecutionTime", milliseconds, true)
 	state.lastExecutionTime = milliseconds
+    
 	try {
     	parent.onChildExitPoint(app, lastEvent, milliseconds, state.nextScheduledTime, getSummary())        
 	} catch(e) {
@@ -3928,6 +3927,7 @@ private exitPoint(milliseconds) {
     state.currentStateSince = atomicState.currentStateSince
 	state.temp = null
 	state.sim = null
+    
 }
 
 
