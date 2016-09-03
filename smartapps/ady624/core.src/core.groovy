@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.14a.20160902" }
+def version() {	return "v0.2.14b.20160902" }
 /*
+ *	 9/02/2016 >>> v0.2.14b.20160902 - Beta M2 - Fixed a problem with execution time measurements
  *	 9/02/2016 >>> v0.2.14a.20160902 - Beta M2 - Fixed a problem with decimal points on dashboard taps
  *	 9/02/2016 >>> v0.2.149.20160902 - Beta M2 - Improved exit point speed (removed unnecessary piston refreshes)
  *	 9/02/2016 >>> v0.2.148.20160902 - Beta M2 - Added instructions for removing dashboard taps. Thank you @dseg for the Tap idea.
@@ -3746,7 +3747,7 @@ def deviceHandler(evt) {
 	broadcastEvent(evt, true, false)
 	//process tasks
 	processTasks()
-	exitPoint(perf)
+	exitPoint(now() - perf)
 	perf = now() - perf
 	debug "Piston done in ${perf}ms", -1, "trace"
 }
@@ -3761,7 +3762,7 @@ def latchingDeviceHandler(evt) {
 	broadcastEvent(evt, false, true)
 	//process tasks
 	processTasks()
-	exitPoint(perf)
+	exitPoint(now() - perf)
 	perf = now() - perf
 	debug "Piston done in ${perf}ms", -1, "trace"
 }
@@ -3776,7 +3777,7 @@ def bothDeviceHandler(evt) {
 	broadcastEvent(evt, true, true)
 	//process tasks
 	processTasks()
-	exitPoint(perf)
+	exitPoint(now() - perf)
 	perf = now() - perf
 	debug "Piston done in ${perf}ms", -1, "trace"
 }
@@ -3788,7 +3789,7 @@ def timeHandler() {
 	def perf = now()
 	debug "Received a time event", 1, "trace"
 	processTasks()
-	exitPoint(perf)
+	exitPoint(now() - perf)
 	perf = now() - perf
 	debug "Piston done in ${perf}ms", -1, "trace"
 }
@@ -3816,7 +3817,7 @@ def recoveryHandler(evt = null, showWarning = true) {
 	}
 	atomicState.tasks = tasks
 	processTasks()
-	exitPoint(perf)
+	exitPoint(now() - perf)
 	perf = now() - perf
 	debug "Piston done in ${perf}ms", -1, "trace"
 }
@@ -3834,7 +3835,7 @@ def executeHandler(data = null) {
 	debug "Received an execute request", 1, "trace"
 	broadcastEvent([name: "execute", date: new Date(), deviceId: "time", conditionId: null], true, false)
 	processTasks()
-	exitPoint(perf)
+	exitPoint(now() - perf)
 	perf = now() - perf
 	debug "Piston done in ${perf}ms", -1, "trace"
 	return state.currentState
