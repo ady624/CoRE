@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.14b.20160902" }
+def version() {	return "v0.2.14c.20160908" }
 /*
+ *	 9/08/2016 >>> v0.2.14c.20160908 - Beta M2 - Added a few more system variables, $locationMode and $shmStatus
  *	 9/02/2016 >>> v0.2.14b.20160902 - Beta M2 - Fixed a problem with execution time measurements
  *	 9/02/2016 >>> v0.2.14a.20160902 - Beta M2 - Fixed a problem with decimal points on dashboard taps
  *	 9/02/2016 >>> v0.2.149.20160902 - Beta M2 - Improved exit point speed (removed unnecessary piston refreshes)
@@ -2159,6 +2160,10 @@ def getVariable(name) {
                 return null
             }
             return null
+        case "\$locationMode":
+        	return location.mode
+        case "\$shmStatus":
+        	return getAlarmSystemStatus()
     }
 	if (!name) return null
 	if (parent && name.startsWith("@")) {
@@ -7284,6 +7289,25 @@ private task_vcmd_sendNotificationToContacts(device, action, task, suffix = "") 
 	} catch(all) {}
 }
 
+private task_vcmd_queueAskAlexaMessage(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 2) {
+		return false
+	}
+	def message = formatMessage(params[0].d)
+    def unit = formatMessage(params[1].d)
+    sendLocationEvent name: "AskAlexaMsgQueue", value: "CoRE Piston: " + (app.label ?: app.name), isStateChange: true, descriptionText: message, unit: unit
+}
+
+private task_vcmd_deleteAskAlexaMessages(device, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 1) {
+		return false
+	}
+    def unit = formatMessage(params[0].d)
+    sendLocationEvent name: "AskAlexaMsgQueueDelete", value: "CoRE Piston: " + (app.label ?: app.name), isStateChange: true, unit: unit
+}
+
 private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 1) {
@@ -10343,6 +10367,8 @@ private virtualCommands() {
 		[ name: "sendNotification",	display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}' in notifications page",			aggregated: true,	],
 		[ name: "sendPushNotification",display: "Send Push notification",			parameters: ["Message:text","Show in notifications page:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
 		[ name: "sendSMSNotification",display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Show in notifications page:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
+		[ name: "queueAskAlexaMessage",display: "Queue AskAlexa message",			parameters: ["Message:text", "?Unit:text"],																		location: true, description: "Queue AskAlexa message '{0}' in unit {1}",aggregated: true,	],
+		[ name: "deleteAskAlexaMessages",display: "Delete AskAlexa messages",			parameters: ["Unit:text"],																		location: true, description: "Delete AskAlexa messages in unit {1}",aggregated: true,	],
 		[ name: "executeRoutine",	display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
 		[ name: "cancelPendingTasks",display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
 		[ name: "repeatAction",			display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
@@ -10559,7 +10585,6 @@ private initialSystemStore() {
 		"\$currentEventReceived": null,
 		"\$currentEventValue": null,
 		"\$currentState": null,
-		"\$currentState": null,
 		"\$currentStateDuration": 0,
 		"\$currentStateSince": null,
 		"\$currentStateSince": null,
@@ -10609,7 +10634,9 @@ private initialSystemStore() {
         "\$httpStatusCode": 0,
         "\$httpStatusOk": true,
         "\$iftttStatusCode": 0,
-        "\$iftttStatusOk": true
+        "\$iftttStatusOk": true,
+        "\$locationMode": "",
+        "\$shmStatus": ""
 	]
 }
 
