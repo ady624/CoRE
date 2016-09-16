@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.14d.20160916" }
+def version() {	return "v0.2.14e.20160916" }
 /*
+ *	 9/16/2016 >>> v0.2.14e.20160916 - Beta M2 - Fixed a problem with "time is any time of the day" where a events would be scheduled in error
  *	 9/16/2016 >>> v0.2.14d.20160916 - Beta M2 - Added optional 'ingredients' value1, value2, and value3 to IFTTT Maker request
  *	 9/08/2016 >>> v0.2.14c.20160908 - Beta M2 - Added a few more system variables, $locationMode and $shmStatus
  *	 9/02/2016 >>> v0.2.14b.20160902 - Beta M2 - Fixed a problem with execution time measurements
@@ -914,7 +915,7 @@ private getConditionGroupPageContent(params, condition) {
 			}
 		}
 	} catch(e) {
-		debug "ERROR: Error while executing getConditionGroupPageContent: $e", null, "error"
+		debug "ERROR: Error while executing getConditionGroupPageContent: ", null, "error", e
 	}
 }
 
@@ -1293,7 +1294,7 @@ def pageCondition(params) {
 			}
 		}
 	} catch(e) {
-		debug "ERROR: Error while executing pageCondition: $e", null, "error"
+		debug "ERROR: Error while executing pageCondition: ", null, "error", e
 	}
 }
 
@@ -3642,7 +3643,7 @@ private getActionDescription(action) {
 			t += "]"
             
 		}
-		result += "\n ► " + getTaskDescription(task)
+		result += "\n " + getTaskDescription(task, '► ')
 	}
 	return result
 }
@@ -3653,7 +3654,7 @@ def getActionDeviceList(action) {
 	return buildDeviceNameList(devices, "and")
 }
 
-private getTaskDescription(task) {
+private getTaskDescription(task, prfx = '') {
 	if (!task) return "[ERROR]"
 	state.taskIndent = state.taskIndent ? state.taskIndent : 0
 	def virtual = (task.c && task.c.startsWith(virtualCommandPrefix()))
@@ -3675,7 +3676,7 @@ private getTaskDescription(task) {
             	result += "${task.p[j].d}"
             }
         }
-        return result + ")"
+        result = result + ")"
 	} else {
 		def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))
 		if (!cmd) {
@@ -3723,19 +3724,22 @@ private getTaskDescription(task) {
 				}
 			} else if (cmd.name == "setColor") {
 				result = "Set color to "
-				if (task.p[0].d) return result + "\"${task.p[0].d}\""
-				if (task.p[1].d) return result + "RGB(${task.p[1].d})"
-				result = result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
+				if (task.p[0].d) {
+                	result = result + "\"${task.p[0].d}\""
+                } else if (task.p[1].d) {
+                	result = result + "RGB(${task.p[1].d})"
+                } else {
+					result = result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
+                }
 			} else {
 				result = formatMessage(cmd.description ? cmd.description : cmd.display, task.p)
 			}
 		}
 	}
-
 	def currentIndent = state.taskIndent + selfIndent
-	def prefix = "".padLeft(currentIndent > 0 ? currentIndent * 3 : 0, " ")
+	def prefix = "".padLeft(currentIndent > 0 ? currentIndent * 3 : 0, "│  ")
 	state.taskIndent = state.taskIndent + indent
-	return prefix + result + (task.m && task.m.size() ? " (only for ${buildNameList(task.m, "or")})" : "") + (task.d && task.d.size() ? " (only on ${buildNameList(task.d, "or")})" : "")
+	return prefix + (prfx ?: '') + result + (task.m && task.m.size() ? " (only for ${buildNameList(task.m, "or")})" : "") + (task.d && task.d.size() ? " (only on ${buildNameList(task.d, "or")})" : "")
 }
 
 
@@ -3912,7 +3916,7 @@ private exitPoint(milliseconds) {
 	try {
     	parent.onChildExitPoint(app, lastEvent, milliseconds, state.nextScheduledTime, getSummary())        
 	} catch(e) {
-		debug "ERROR: Could not update parent app: $e", null, "error"
+		debug "ERROR: Could not update parent app: ", null, "error", e
 	}
 	atomicState.runStats = runStats
 
@@ -4169,7 +4173,7 @@ private broadcastEvent(evt, primary, secondary) {
 				}
 			}
 		} catch(e) {
-			debug "ERROR: An error occurred while processing event $evt: $e", null, "error"
+			debug "ERROR: An error occurred while processing event $evt: ", null, "error", e
 		}
 	} else {
     	def msg = "Piston evaluation was prevented by ${restriction}." 
@@ -4399,7 +4403,7 @@ private evaluateCondition(condition, evt = null) {
 		perf = now() - perf
 		return result
 	} catch(e) {
-		debug "ERROR: Error evaluating condition: $e", null, "error"
+		debug "ERROR: Error evaluating condition: ", null, "error", e
 	}
 	return false
 }
@@ -4837,6 +4841,9 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 		}
 	}
 
+	if (getNextEventTime) {
+    	return null
+    }
 	return result && testDateTimeFilters(condition, time)
 }
 
@@ -5355,7 +5362,9 @@ private scheduleTimeTrigger(condition, data = null) {
 	if (!condition || !(condition.attr) || (condition.attr != "time")) return
 	def time = condition.trg ? getNextTimeTriggerTime(condition, condition.lt) : getNextTimeConditionTime(condition, condition.lt)
 	condition.nt = time
-	if (time) scheduleTask("evt", condition.id, "time", null, time)
+	if ((time instanceof Long) && (time > 0)) {
+    	scheduleTask("evt", condition.id, "time", null, time)
+    }
 }
 
 private scheduleActions(conditionId, stateChanged = false, currentState = true) {
@@ -6497,7 +6506,6 @@ private processTasks() {
 			//then if there's any pending tasks in the tasker, we look them up too and merge them to the task list
 			tasks = atomicState.tasks
 			tasks = tasks ? tasks : [:]
-
 			if (state.tasker && state.tasker.size()) {
 				for (task in state.tasker.sort{ it.idx }) {
 					if (task.add) {
@@ -6627,7 +6635,7 @@ private processTasks() {
 								try {
 									processCommandTask(task)
 								} catch (e) {
-									debug "ERROR: Error while processing command task: $e", null, "error"
+									debug "ERROR: Error while processing command task: ", null, "error", e
 								}
 							}
 							//repeat the while since we just modified the task
@@ -6659,8 +6667,9 @@ private processTasks() {
 		debug "Removing any existing ST safety nets", null, "trace"
 		unschedule(recoveryHandler)
 	} catch (e) {
-		debug "ERROR: Error while executing processTasks: $e", null, "error"
+		debug "ERROR: Error while executing processTasks: ", null, "error", e
 	}
+    state.tasker = null
 	//end of processTasks
 	perf = now() - perf
 	debug "Task processing took ${perf}ms", -1, "trace"
@@ -8215,7 +8224,7 @@ def resume() {
 /*** DEBUG FUNCTIONS														***/
 /******************************************************************************/
 
-private debug(message, shift = null, cmd = null) {
+private debug(message, shift = null, cmd = null, err = null) {
 	def debugging = settings.debugging
 	if (!debugging) {
 		return
@@ -8265,15 +8274,15 @@ private debug(message, shift = null, cmd = null) {
 	}
 
 	if (cmd == "info") {
-		log.info "$prefix$message"
+		log.info "$prefix$message", err
 	} else if (cmd == "trace") {
-		log.trace "$prefix$message"
+		log.trace "$prefix$message", err
 	} else if (cmd == "warn") {
-		log.warn "$prefix$message"
+		log.warn "$prefix$message", err
 	} else if (cmd == "error") {
-		log.error "$prefix$message"
+		log.error "$prefix$message", err
 	} else {
-		log.debug "$prefix$message"
+		log.debug "$prefix$message", err
 	}
 }
 
@@ -10415,7 +10424,7 @@ private virtualCommands() {
 		[ name: "beginElseBlock",		display: "Begin ELSE block",				location: true,		description: "ELSE",						flow: true,	selfIndent: -1,		 		],
 		[ name: "endIfBlock",			display: "End IF block",					location: true,		description: "END IF",						flow: true,	selfIndent: -1, indent: -1,	],
 		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH (|[{0}]|) DO",				flow: true,					indent: 2,	],
-		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE {0}:",					flow: true,	selfIndent: -1, 			],
+		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE {0}:",					flow: true,	selfIndent: -1,		],
 		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
 	] + (location.contactBookEnabled ? [
 			[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],
