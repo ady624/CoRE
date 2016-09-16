@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.14c.20160908" }
+def version() {	return "v0.2.14d.20160916" }
 /*
+ *	 9/16/2016 >>> v0.2.14d.20160916 - Beta M2 - Added optional 'ingredients' value1, value2, and value3 to IFTTT Maker request
  *	 9/08/2016 >>> v0.2.14c.20160908 - Beta M2 - Added a few more system variables, $locationMode and $shmStatus
  *	 9/02/2016 >>> v0.2.14b.20160902 - Beta M2 - Fixed a problem with execution time measurements
  *	 9/02/2016 >>> v0.2.14a.20160902 - Beta M2 - Fixed a problem with decimal points on dashboard taps
@@ -3961,6 +3962,7 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
     setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
     setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
+    setVariable("\$previousEventDevicePhysical", getVariable("\$currentEventDevicePhysical"), true)
     setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
     setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
     setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
@@ -3978,6 +3980,7 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventReceived", perf, true)
     setVariable("\$currentEventDevice", lastEvent.event.device, true)
     setVariable("\$currentEventDeviceIndex", 0, true)
+    setVariable("\$currentEventDevicePhysical", 0, true)
     setVariable("\$currentEventAttribute", lastEvent.event.name, true)
     setVariable("\$currentEventValue", lastEvent.event.value, true)
     setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
@@ -4519,6 +4522,8 @@ private evaluateDeviceCondition(condition, evt) {
 				//get the physical from the event, if that's related to this trigger
 				if (ownsEvent) {
 					physical = !!evt.physical
+					setVariable("\$currentEventDevicePhysical", physical, true)
+
 				}
 			}
 
@@ -7346,13 +7351,33 @@ private task_vcmd_executePiston(devices, action, task, suffix = "") {
 
 private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (params.size() != 1) {
+	if ((params.size() < 1) || (params.size() > 4)) {
 		return false
 	}
 	def event = params[0].d
-	httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey()){ response ->
-        setVariable("\$iftttStatusCode", response.status, true)            
-        setVariable("\$iftttStatusOk", response.status == 200, true)
+    def value1
+    def value2
+    def value3
+    if (params.size() == 4) {
+		value1 = formatMessage(params[1].d)
+		value2 = formatMessage(params[2].d)
+		value3 = formatMessage(params[3].d)
+	}
+    if (value1 || value2 || value3) {
+        def requestParams = [
+            uri:  "https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey(),
+            requestContentType: "application/json",
+            body: [value1: value1, value2: value2, value3: value3]
+        ]        
+        httpPost(requestParams){ response ->
+            setVariable("\$iftttStatusCode", response.status, true)            
+            setVariable("\$iftttStatusOk", response.status == 200, true)
+	    }
+	} else {    
+        httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey()){ response ->
+            setVariable("\$iftttStatusCode", response.status, true)            
+            setVariable("\$iftttStatusOk", response.status == 200, true)
+	    }
     }
 	return true
 }
@@ -10395,7 +10420,7 @@ private virtualCommands() {
 	] + (location.contactBookEnabled ? [
 			[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],
 	] : []) + (iftttKey() ? [
-			[ name: "iftttMaker",requires: [],		 			display: "Send IFTTT Maker event",	parameters: ["Event:text"],																		location: true,			description: "Send IFTTT Maker event '{0}'",													aggregated: true,	],
+			[ name: "iftttMaker",requires: [],		 			display: "Send IFTTT Maker event",	parameters: ["Event:text", "?Value1:string", "?Value2:string", "?Value3:string"],																		location: true,			description: "Send IFTTT Maker event '{0}' with parameters '{1}', '{2}', and '{3}'",													aggregated: true,	],
 	] : [])
 }
 
@@ -10582,6 +10607,7 @@ private initialSystemStore() {
 		"\$currentEventDelay": 0,
 		"\$currentEventDevice": null,
 		"\$currentEventDeviceIndex": 0,
+		"\$currentEventDevicePhysical": false,
 		"\$currentEventReceived": null,
 		"\$currentEventValue": null,
 		"\$currentState": null,
@@ -10609,6 +10635,7 @@ private initialSystemStore() {
 		"\$previousEventDelay": 0,
 		"\$previousEventDevice": null,
 		"\$previousEventDeviceIndex": 0,
+		"\$previousEventDevicePhysical": 0,
 		"\$previousEventExecutionTime": 0,
 		"\$previousEventReceived": null,
 		"\$previousEventValue": null,
