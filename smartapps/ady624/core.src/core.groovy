@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.14e.20160916" }
+def version() {	return "v0.2.14f.20160916" }
 /*
+ *	 9/16/2016 >>> v0.2.14f.20160916 - Beta M2 - Fixed some minor issues with condition evaluation display in the dashboard. Introducing "not evaluated": blue means evaluated as true, red means evaluated as false, gray means not evaluated at all
  *	 9/16/2016 >>> v0.2.14e.20160916 - Beta M2 - Fixed a problem with "time is any time of the day" where a events would be scheduled in error
  *	 9/16/2016 >>> v0.2.14d.20160916 - Beta M2 - Added optional 'ingredients' value1, value2, and value3 to IFTTT Maker request
  *	 9/08/2016 >>> v0.2.14c.20160908 - Beta M2 - Added a few more system variables, $locationMode and $shmStatus
@@ -4288,6 +4289,8 @@ private evaluateConditionSet(evt, primary, force = false) {
 	//this check ensures that an event that is used in both blocks, but as different types, one as a trigger
 	//and one as a condition do not interfere with each other
 	def app = state.run == "config" ? state.config.app : state.app
+    //reset last condition state
+    resetConditionState(primary ? app.conditions: app.otherConditions)
 	def eligibilityStatus = force ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
 	def evaluation = null
 	if (!force) {
@@ -4307,6 +4310,14 @@ private evaluateConditionSet(evt, primary, force = false) {
 		}
 	}
 	return evaluation
+}
+
+private resetConditionState(condition) {
+	if (!condition) return
+	condition.eval = null
+    if (condition.children) {
+    	for (cond in condition.children) resetConditionState(cond)
+    }
 }
 
 private evaluateCondition(condition, evt = null) {
@@ -10424,7 +10435,7 @@ private virtualCommands() {
 		[ name: "beginElseBlock",		display: "Begin ELSE block",				location: true,		description: "ELSE",						flow: true,	selfIndent: -1,		 		],
 		[ name: "endIfBlock",			display: "End IF block",					location: true,		description: "END IF",						flow: true,	selfIndent: -1, indent: -1,	],
 		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH (|[{0}]|) DO",				flow: true,					indent: 2,	],
-		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE {0}:",					flow: true,	selfIndent: -1,		],
+		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE '{0}':",					flow: true,	selfIndent: -1,		],
 		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
 	] + (location.contactBookEnabled ? [
 			[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],
