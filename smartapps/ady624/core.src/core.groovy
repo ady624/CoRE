@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.14f.20160916" }
+def version() {	return "v0.2.150.20160918" }
 /*
+ *	 9/18/2016 >>> v0.2.150.20160918 - Beta M2 - Fixed a problem with condition state changes due to a prior fix in the evaluation display for the dashboard (v0.2.14f)
  *	 9/16/2016 >>> v0.2.14f.20160916 - Beta M2 - Fixed some minor issues with condition evaluation display in the dashboard. Introducing "not evaluated": blue means evaluated as true, red means evaluated as false, gray means not evaluated at all
  *	 9/16/2016 >>> v0.2.14e.20160916 - Beta M2 - Fixed a problem with "time is any time of the day" where a events would be scheduled in error
  *	 9/16/2016 >>> v0.2.14d.20160916 - Beta M2 - Added optional 'ingredients' value1, value2, and value3 to IFTTT Maker request
@@ -4013,6 +4014,8 @@ private broadcastEvent(evt, primary, secondary) {
     }
 	if (allowed) {
 		try {
+            resetConditionState(app.conditions)
+            resetConditionState(app.otherConditions)
 			if (evt) {
 				//broadcast to primary IF block
 				def result1 = null
@@ -4290,7 +4293,6 @@ private evaluateConditionSet(evt, primary, force = false) {
 	//and one as a condition do not interfere with each other
 	def app = state.run == "config" ? state.config.app : state.app
     //reset last condition state
-    resetConditionState(primary ? app.conditions: app.otherConditions)
 	def eligibilityStatus = force ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
 	def evaluation = null
 	if (!force) {
@@ -4305,8 +4307,10 @@ private evaluateConditionSet(evt, primary, force = false) {
 	if (evaluation != null) {
 		if (primary) {
 			app.conditions.eval = evaluation
+            app.conditions.state = evaluation
 		} else {
 			app.otherConditions.eval = evaluation
+            app.otherConditions.state = evaluation
 		}
 	}
 	return evaluation
@@ -4344,7 +4348,7 @@ private evaluateCondition(condition, evt = null) {
 				def interrupt = false
 				//evaluate the child
 				//if we have a follwed by, we skip all conditions that are already true, step ladder...
-				if (!followedBy || !child.eval) {
+				if (!followedBy || !child.state) {
 					def subResult = evaluateCondition(child, evt)
 					//apply it to the composite result
 					switch (condition.grp) {
@@ -4379,13 +4383,14 @@ private evaluateCondition(condition, evt = null) {
 
 			if (followedBy && (result || resetLadder)) {
 				//we either completed the ladder or failed miserably, so let's reset it
-				for (child in condition.children) child.eval = false
+				for (child in condition.children) child.state = false
 			}
 		}
 		//apply the NOT, if needed
 		result = condition.not ? !result : result
-		def oldEval = condition.eval
+		def oldState = condition.state
 		condition.eval = result
+        condition.state = result
 
 		//store variables (only if evt is available, i.e. not simulating)
 		if (evt) {
@@ -4408,7 +4413,7 @@ private evaluateCondition(condition, evt = null) {
                 }                
             }
 			if (condition.id > 0) {
-				scheduleActions(condition.id, oldEval != result, result)
+				scheduleActions(condition.id, oldState != result, result)
 			}
 		}
 		perf = now() - perf
