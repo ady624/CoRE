@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.2.150.20160918" }
+def version() {	return "v0.3.151.20160920" }
 /*
+ *	 9/20/2016 >>> v0.3.151.20160920 - RC - Release Candidate is here! Added Pause/Resume Piston tasks
  *	 9/18/2016 >>> v0.2.150.20160918 - Beta M2 - Fixed a problem with condition state changes due to a prior fix in the evaluation display for the dashboard (v0.2.14f)
  *	 9/16/2016 >>> v0.2.14f.20160916 - Beta M2 - Fixed some minor issues with condition evaluation display in the dashboard. Introducing "not evaluated": blue means evaluated as true, red means evaluated as false, gray means not evaluated at all
  *	 9/16/2016 >>> v0.2.14e.20160916 - Beta M2 - Fixed a problem with "time is any time of the day" where a events would be scheduled in error
@@ -223,6 +224,16 @@ private pageMainCoRE() {
 		}
 
 		section() {
+            def apps = getChildApps().sort{ it.label }
+            def running = apps.findAll{ it.getPistonEnabled() }.size()
+            def paused = apps.size - running
+            if (running + paused == 0) {
+	            paragraph "You have not created any pistons yet.", required: false
+            } else {
+                paragraph "You have ${running ? running + ' running ' + (paused ? ' and ' : '') : ''}${paused ? paused + ' paused ' : ''}piston${running + paused > 0 ? 's' : ''}.", required: false
+            }
+        }
+        section() {
 			app( name: "pistons", title: "Add a CoRE piston...", appName: "CoRE", namespace: "ady624", multiple: true, uninstall: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/piston.png")
 		}
 
@@ -7374,6 +7385,26 @@ private task_vcmd_executePiston(devices, action, task, suffix = "") {
 	return true
 }
 
+private task_vcmd_pausePiston(devices, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 1) {
+		return false
+	}
+	def piston = params[0].d
+	def result = pausePiston(piston)
+	return true
+}
+
+private task_vcmd_resumePiston(devices, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 1) {
+		return false
+	}
+	def piston = params[0].d
+	def result = resumePiston(piston)
+	return true
+}
+
 private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if ((params.size() < 1) || (params.size() > 4)) {
@@ -8209,23 +8240,51 @@ def getSummary() {
 	]
 }
 
+def pausePiston(pistonName) {
+	if (parent) {
+    	return parent.pausePiston(pistonName)
+    } else {
+		def piston = getChildApps().find{ it.label == pistonName }
+		if (piston) {
+			//fire up the piston
+			return piston.pause()
+		}
+		return null
+    }
+}
+
 def pause() {
-	state.app.enabled = false
-	if (state.config && state.config.app) state.config.app.enabled = false
+	if (!parent) return null
+    state.app.enabled = false
+    if (state.config && state.config.app) state.config.app.enabled = false
     unsubscribe()
     state.tasks = [:]
 }
 
+def resumePiston(pistonName) {
+	if (parent) {
+    	return parent.resumePiston(pistonName)
+    } else {
+		def piston = getChildApps().find{ it.label == pistonName }
+		if (piston) {
+			//fire up the piston
+			return piston.resume()
+		}
+		return null
+    }
+}
+
 def resume() {
-	state.app.enabled = true
-	if (state.config && state.config.app) state.config.app.enabled = true    
-	state.run = "app"
-	initializeCoREPistonStore()
-	if (state.app.mode != "Follow-Up") {
-		//follow-up pistons don't subscribe to anything
-		subscribeToAll(state.app)
-	}
-	processTasks()
+	if (!parent) return null
+    state.app.enabled = true
+    if (state.config && state.config.app) state.config.app.enabled = true    
+    state.run = "app"
+    initializeCoREPistonStore()
+    if (state.app.mode != "Follow-Up") {
+        //follow-up pistons don't subscribe to anything
+        subscribeToAll(state.app)
+    }
+    processTasks()
 }
 
 
@@ -10421,9 +10480,11 @@ private virtualCommands() {
 		[ name: "deleteAskAlexaMessages",display: "Delete AskAlexa messages",			parameters: ["Unit:text"],																		location: true, description: "Delete AskAlexa messages in unit {1}",aggregated: true,	],
 		[ name: "executeRoutine",	display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
 		[ name: "cancelPendingTasks",display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
-		[ name: "repeatAction",			display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
+		//[ name: "repeatAction",			display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
 		[ name: "followUp",				display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
 		[ name: "executePiston",		display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
+		[ name: "pausePiston",			display: "Pause piston",					parameters: ["Piston:piston"],																location: true,	description: "Pause piston '{0}'",	aggregated: true],
+		[ name: "resumePiston",			display: "Resume piston",					parameters: ["Piston:piston"],																location: true,	description: "Resume piston '{0}'",	aggregated: true],
         [ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
         [ name: "wolRequest",			display: "Wake a LAN device", parameters: ["MAC address:string","?Secure code:string"], location: true, description: "Wake LAN device at address {0} with secure code {1}", aggregated: true],
         
