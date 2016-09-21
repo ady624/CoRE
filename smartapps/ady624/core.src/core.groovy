@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.152.20160921" }
+def version() {	return "v0.3.153.20160921" }
 /*
+ *	 9/21/2016 >>> v0.3.153.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Improved support for lock user codes
  *	 9/21/2016 >>> v0.3.152.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Added support for lock user codes
  *	 9/20/2016 >>> v0.3.151.20160920 - RC - Release Candidate is here! Added Pause/Resume Piston tasks
  *	 9/18/2016 >>> v0.2.150.20160918 - Beta M2 - Fixed a problem with condition state changes due to a prior fix in the evaluation display for the dashboard (v0.2.14f)
@@ -4504,12 +4505,12 @@ private evaluateDeviceCondition(condition, evt) {
 	def capability = attr && attr.capability ? getCapabilityByName(attr.capability) : null
 	def hasSubDevices = false
 	def matchesSubDevice = false
-	if (evt && evt.jsonData && capability && capability.count && capability.data) {
+	if (evt && capability && capability.count && capability.data) {
 		//at this point we won't evaluate this condition unless we have the right sub device below
 		hasSubDevices = true
-		setVariable("\$currentEventDeviceIndex", cast(evt.jsonData[capability.data], "number"), true)
-		def subDeviceId = "#${evt.jsonData[capability.data]}".trim()
-		def subDevices = condition.sdev ? condition.sdev : []
+		setVariable("\$currentEventDeviceIndex", cast(evt.jsonData ? evt.jsonData[capability.data] : 0, "number"), true)
+		def subDeviceId = "#${evt.jsonData ? evt.jsonData[capability.data] : "0"}".trim()
+		def subDevices = condition.sdev ?: []
 		if (subDevices && subDevices.size()) {
 			//are we expecting that button?
 			//subDeviceId in subDevices didn't seem to work?!
@@ -7343,21 +7344,23 @@ private task_vcmd_sendNotificationToContacts(device, action, task, suffix = "") 
 
 private task_vcmd_queueAskAlexaMessage(device, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (params.size() != 2) {
+	if ((params.size() < 2) || (params.size() > 3)) {
 		return false
 	}
 	def message = formatMessage(params[0].d)
     def unit = formatMessage(params[1].d)
-    sendLocationEvent name: "AskAlexaMsgQueue", value: "CoRE Piston: " + (app.label ?: app.name), isStateChange: true, descriptionText: message, unit: unit
+    def appName = (params.size() == 3 ? formatMessage(param[2].d) : null) ?: (app.label ?: app.name)
+    sendLocationEvent name: "AskAlexaMsgQueue", value: appName , isStateChange: true, descriptionText: message, unit: unit
 }
 
 private task_vcmd_deleteAskAlexaMessages(device, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (params.size() != 1) {
+	if ((params.size() < 1) || (params.size() > 2)) {
 		return false
 	}
     def unit = formatMessage(params[0].d)
-    sendLocationEvent name: "AskAlexaMsgQueueDelete", value: "CoRE Piston: " + (app.label ?: app.name), isStateChange: true, unit: unit
+    def appName = (params.size() == 2 ? formatMessage(param[1].d) : null) ?: (app.label ?: app.name)
+    sendLocationEvent name: "AskAlexaMsgQueueDelete", value: appName, isStateChange: true, unit: unit
 }
 
 private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
@@ -10487,8 +10490,8 @@ private virtualCommands() {
 		[ name: "sendNotification",	display: "Send notification",				parameters: ["Message:text"],																													location: true,	description: "Send notification '{0}' in notifications page",			aggregated: true,	],
 		[ name: "sendPushNotification",display: "Send Push notification",			parameters: ["Message:text","Show in notifications page:bool"],																							location: true,	description: "Send Push notification '{0}'",		aggregated: true,	],
 		[ name: "sendSMSNotification",display: "Send SMS notification",			parameters: ["Message:text","Phone number:phone","Show in notifications page:bool"],																		location: true, description: "Send SMS notification '{0}' to {1}",aggregated: true,	],
-		[ name: "queueAskAlexaMessage",display: "Queue AskAlexa message",			parameters: ["Message:text", "?Unit:text"],																		location: true, description: "Queue AskAlexa message '{0}' in unit {1}",aggregated: true,	],
-		[ name: "deleteAskAlexaMessages",display: "Delete AskAlexa messages",			parameters: ["Unit:text"],																		location: true, description: "Delete AskAlexa messages in unit {1}",aggregated: true,	],
+		[ name: "queueAskAlexaMessage",display: "Queue AskAlexa message",			parameters: ["Message:text", "?Unit:text", "?Application:text"],																		location: true, description: "Queue AskAlexa message '{0}' in unit {1}",aggregated: true,	],
+		[ name: "deleteAskAlexaMessages",display: "Delete AskAlexa messages",			parameters: ["Unit:text", "?Application:text"],																	location: true, description: "Delete AskAlexa messages in unit {1}",aggregated: true,	],
 		[ name: "executeRoutine",	display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
 		[ name: "cancelPendingTasks",display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
 		//[ name: "repeatAction",			display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
@@ -10550,7 +10553,7 @@ private attributes() {
 		[ name: "indicatorStatus",			type: "enum",			options: ["when off", "when on", "never"],	],
 		[ name: "illuminance",				type: "number",			range: "0..*",			unit: "lux",	],
 		[ name: "image",					type: "image",			],
-		[ name: "lock",						type: "enum",			options: ["locked", "unlocked"],	interactive: true,	],
+		[ name: "lock",						type: "enum",			options: ["locked", "unlocked"],	capability: "lock", interactive: true,	],
 		[ name: "activities",				type: "string",			],
 		[ name: "currentActivity",			type: "string",			],
 		[ name: "motion",					type: "enum",			options: ["active", "inactive"],	],
