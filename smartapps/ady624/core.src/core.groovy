@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.153.20160921" }
+def version() {	return "v0.3.154.20160921" }
 /*
+ *	 9/21/2016 >>> v0.3.154.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Lock user codes tested OK, adding "Cancel on condition state change", testing
  *	 9/21/2016 >>> v0.3.153.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Improved support for lock user codes
  *	 9/21/2016 >>> v0.3.152.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Added support for lock user codes
  *	 9/20/2016 >>> v0.3.151.20160920 - RC - Release Candidate is here! Added Pause/Resume Piston tasks
@@ -1162,7 +1163,7 @@ def pageCondition(params) {
 									}
 								}
                                 if (capability.count && (attribute == "lock") && (settings["condValue$id#1"] == "unlocked")) {
-                                    def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
+                                    def subDevices = capability.count && (attribute == capability.attribute) ? ["(none)"] + listCommonDeviceSubDevices(devices, capability.count, "") : []
                                     if (subDevices.size()) {
                                         input "condSubDev$id", "enum", title: "${capability.subDisplay ?: capability.display}(s)", options: subDevices, required: false, multiple: true, submitOnChange: false
                                     }
@@ -4433,6 +4434,10 @@ private evaluateCondition(condition, evt = null) {
                 }                
             }
 			if (condition.id > 0) {
+            	if (oldState != result) {
+                	//cancel all actions that need to be canceled on condition state change
+					unscheduleActions(condition.id)
+				}
 				scheduleActions(condition.id, oldState != result, result)
 			}
 		}
@@ -4511,6 +4516,7 @@ private evaluateDeviceCondition(condition, evt) {
 		setVariable("\$currentEventDeviceIndex", cast(evt.jsonData ? evt.jsonData[capability.data] : 0, "number"), true)
 		def subDeviceId = "#${evt.jsonData ? evt.jsonData[capability.data] : "0"}".trim()
 		def subDevices = condition.sdev ?: []
+        if (subDeviceId == "#0") subDeviceId = "(none)"
 		if (subDevices && subDevices.size()) {
 			//are we expecting that button?
 			//subDeviceId in subDevices didn't seem to work?!
@@ -5442,6 +5448,20 @@ private scheduleActions(conditionId, stateChanged = false, currentState = true) 
 	}
 }
 
+private unscheduleActions(conditionId) {
+	def tasks = atomicState.tasks
+	tasks = tasks ? tasks : [:]
+	while (true) {
+		def item = tasks.find{ (it.value.type == "cmd") && (it.value.data && it.value.data.cc == conditionId)}
+		if (item) {
+			tasks.remove(item.key)
+		} else {
+			break
+		}
+	}
+	atomicState.tasks = tasks
+}
+
 private scheduleAction(action) {
 	if (!action) return null
 	def deviceIds = action.l ? ["location"] : (action.d ? action.d : [])
@@ -5699,6 +5719,7 @@ private scheduleAction(action) {
 					if (action.tcp && action.tcp != "None") {
 						data = data ? data : [:]
 						data.c = action.tcp.contains("piston")
+                        data.cc = action.tcp.contains("condition") ? action.pid : null
 					}
 					if (command.aggregated) {
 						//an aggregated command schedules one command task for the whole group
