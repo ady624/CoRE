@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.151.20160920" }
+def version() {	return "v0.3.152.20160921" }
 /*
+ *	 9/21/2016 >>> v0.3.152.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Added support for lock user codes
  *	 9/20/2016 >>> v0.3.151.20160920 - RC - Release Candidate is here! Added Pause/Resume Piston tasks
  *	 9/18/2016 >>> v0.2.150.20160918 - Beta M2 - Fixed a problem with condition state changes due to a prior fix in the evaluation display for the dashboard (v0.2.14f)
  *	 9/16/2016 >>> v0.2.14f.20160916 - Beta M2 - Fixed some minor issues with condition evaluation display in the dashboard. Introducing "not evaluated": blue means evaluated as true, red means evaluated as false, gray means not evaluated at all
@@ -1032,7 +1033,6 @@ def pageCondition(params) {
 								} else {
 									//Location Mode, Smart Home Monitor support
 									validCondition = false
-									comparison = cleanUpComparison(settings["condComp$id"])
 									if (attribute == "variable") {
 										def dataType = settings["condDataType$id"]
 										overrideAttributeType = dataType ? dataType : "string"
@@ -1052,6 +1052,7 @@ def pageCondition(params) {
                                         def options = listComparisonOptions(attribute, supportsTriggers, overrideAttributeType)
                                         def defaultValue = (options.size() == 1 ? options[0] : null)
 										input "condComp$id", "enum", title: "Comparison", options: options, defaultValue: defaultValue, required: true, multiple: false, submitOnChange: true
+                                        comparison = cleanUpComparison(settings["condComp$id"] ?: defaultValue)
 										if (comparison) {
 											showParameters = true
 											validCondition = true
@@ -1077,10 +1078,10 @@ def pageCondition(params) {
 										input "condAttr$id", "enum", title: "Attribute", options: listCommonDeviceAttributes(devices), required: true, multiple: false, defaultValue: capability.attribute, submitOnChange: true
 									}
 
-									if (capability.count) {
+									if (capability.count && (attribute != "lock")) {
 										def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
 										if (subDevices.size()) {
-											input "condSubDev$id", "enum", title: "${capability.display}(s)", options: subDevices, defaultValue: subDevices.size() ? subDevices[0] : null, required: true, multiple: true, submitOnChange: true
+											input "condSubDev$id", "enum", title: "${capability.subDisplay ?: capability.display}(s)", options: subDevices, defaultValue: subDevices.size() ? subDevices[0] : null, required: true, multiple: true, submitOnChange: true
 										}
 									}
 									if (attribute) {
@@ -1159,6 +1160,13 @@ def pageCondition(params) {
 										input "condInteraction$id", "enum", title: "Interaction", options: ["Any", "Physical", "Programmatic"], required: true, multiple: false, defaultValue: defaultInteraction, submitOnChange: true
 									}
 								}
+                                if (capability.count && (attribute == "lock") && (settings["condValue$id#1"] == "unlocked")) {
+                                    def subDevices = capability.count && (attribute == capability.attribute) ? listCommonDeviceSubDevices(devices, capability.count, "") : []
+                                    if (subDevices.size()) {
+                                        input "condSubDev$id", "enum", title: "${capability.subDisplay ?: capability.display}(s)", options: subDevices, required: false, multiple: true, submitOnChange: false
+                                    }
+                                }
+                                
 
 							}
 						}
@@ -1689,7 +1697,7 @@ def pageAction(params) {
 				section(title: "Advanced options") {
 					paragraph "When an action schedules tasks for a certain device or devices, these new tasks may cause a conflict with pending future scheduled tasks for the same device or devices. The task override scope defines how these conflicts are handled. Depending on your choice, the following pending tasks are cancelled:\n ● None - no pending task is cancelled\n ● Action - only tasks scheduled by the same action are cancelled\n ● Local - only local tasks (scheduled by the same piston) are cancelled (default)\n ● Global - all global tasks (scheduled by any piston in the CoRE) are cancelled"
 					input "actTOS$id", "enum", title: "Task override scope", options:["None", "Action", "Local", "Global"], defaultValue: "Local", required: true
-					input "actTCP$id", "enum", title: "Task cancellation policy", options:["None", "Cancel on piston state change"], defaultValue: "None", required: true
+					input "actTCP$id", "enum", title: "Task cancellation policy", options:["None", "Cancel on piston state change"] + (id > 0 ? ["Cancel on condition state change", "Cancel on condition or piston state change"] : []), defaultValue: "None", required: true
 				}
 
 				if (id) {
@@ -3935,7 +3943,7 @@ private exitPoint(milliseconds) {
 
 	if (lastEvent && lastEvent.event) {
 		if (lastEvent.event.name != "piston") {
-			sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, linkText: "CoRE/${app.label}", isStateChange: true, descriptionText: "${appData.mode} piston executed in ${milliseconds}ms", data: [app: "CoRE", state: state.currentState, executionTime: milliseconds, event: lastEvent])
+			sendLocationEvent(name: "piston", value: "${app.label}", displayed: true, linkText: "CoRE/${app.label}", isStateChange: true, descriptionText: "${appData.mode} piston executed in ${milliseconds}ms", data: [app: "CoRE", state: state.currentState, restricted: state.restricted, executionTime: milliseconds, event: lastEvent])
 		}
 	}
 
@@ -4511,7 +4519,9 @@ private evaluateDeviceCondition(condition, evt) {
 					break
 				}
 			}
-		}
+		} else {
+        	matchesSubDevice = true
+        }
 	}
 
 	//is this a momentary event?
@@ -5687,7 +5697,7 @@ private scheduleAction(action) {
 					}
 					if (action.tcp && action.tcp != "None") {
 						data = data ? data : [:]
-						data.c = true
+						data.c = action.tcp.contains("piston")
 					}
 					if (command.aggregated) {
 						//an aggregated command schedules one command task for the whole group
@@ -6458,6 +6468,7 @@ private processTasks() {
 
         //find out if we need to execute the tasks
         def restricted = (checkPistonRestriction() != null)
+        state.restricted = restricted
         def executeTasks = !appData.restrictions?.pe || !restricted
 
 		//let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
@@ -9797,7 +9808,7 @@ private listCommonDeviceSubDevices(devices, countAttributes, prefix = "") {
     	countAttributes = []
     }
 	for (device in devices) {
-		def cnt = 4
+		def cnt = device.name.toLowerCase().contains("lock") ? 32 : 4
 		switch (device.name) {
 			case "Aeon Minimote":
 			case "Aeon Key Fob":
@@ -10189,7 +10200,7 @@ private capabilities() {
 		[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						multiple: true,			devices: "leak sensors",	],
 		[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
 		[ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
-		[ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],														multiple: true,			devices: "electronic locks", ],
+		[ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],						count: "numberOfCodes,numCodes", data: "usedCode", subDisplay: "By user code", multiple: true,			devices: "electronic locks", ],
 		[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
 		[ name: "locationMode",						display: "Mode",							attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
 		[ name: "momentary",						display: "Momentary",						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
