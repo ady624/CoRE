@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.155.20160926" }
+def version() {	return "v0.3.156.20160927" }
 /*
+ *	 9/27/2016 >>> v0.3.156.20160927 - RC - Fixed a bug that was bleeding the time from offset into the time to for piston restrictions
  *	 9/26/2016 >>> v0.3.155.20160926 - RC - Added lock user codes support and cancel on condition state change
  *	 9/21/2016 >>> v0.3.154.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Lock user codes tested OK, adding "Cancel on condition state change", testing
  *	 9/21/2016 >>> v0.3.153.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Improved support for lock user codes
@@ -5834,7 +5835,7 @@ private checkTimeCondition(timeFrom, timeFromCustom, timeFromOffset, timeTo, tim
 				tf = h * 60 + m + cast(timeFromOffset, "number")
 				break
 			case 1:
-				tt = h * 60 + m + cast(timeFromOffset, "number")
+				tt = h * 60 + m + cast(timeToOffset, "number")
 				break
 		}
 		i += 1
