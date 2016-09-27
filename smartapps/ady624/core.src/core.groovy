@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.154.20160921" }
+def version() {	return "v0.3.155.20160926" }
 /*
+ *	 9/26/2016 >>> v0.3.155.20160926 - RC - Added lock user codes support and cancel on condition state change
  *	 9/21/2016 >>> v0.3.154.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Lock user codes tested OK, adding "Cancel on condition state change", testing
  *	 9/21/2016 >>> v0.3.153.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Improved support for lock user codes
  *	 9/21/2016 >>> v0.3.152.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Added support for lock user codes
