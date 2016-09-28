@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.158.20160928" }
+def version() {	return "v0.3.159.20160928" }
 /*
+ *	 9/28/2016 >>> v0.3.159.20160928 - RC - Added low(), med(), and high() support (standard command instead of custom) for the zwave fan speed control
  *	 9/28/2016 >>> v0.3.158.20160928 - RC - Minor fixes where state.app or state.config.app was not yet initialized - though I could not replicate the issue
  *	 9/28/2016 >>> v0.3.157.20160928 - RC - Added support for local http requests - simply use a local IP in the HTTP request and CoRE will use the hub for that request - don't expect any results back yet :(
  *	 9/27/2016 >>> v0.3.156.20160927 - RC - Fixed a bug that was bleeding the time from offset into the time to for piston restrictions
@@ -3759,7 +3760,7 @@ private getTaskDescription(task, prfx = '') {
 					result = result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
                 }
 			} else {
-				result = formatMessage(cmd.description ? cmd.description : cmd.display, task.p)
+				result = formatMessage(cmd.description ?: cmd.display, task.p)
 			}
 		}
 	}
@@ -10523,7 +10524,10 @@ private commands() {
 		[ name: "presetSeven",	display: "Pan camera to preset #7",		],
 		[ name: "presetEight",	display: "Pan camera to preset #8",		],
 		[ name: "presetCommand",display: "Pan camera to custom preset",	parameters: ["Preset #:number[1..99]"], description: "Pan camera to preset #{0}",	],
-
+        //zwave fan speed control by @pmjoen
+		[ name: "low",	display: "Set to Low"],
+		[ name: "med",	display: "Set to Medium"],
+		[ name: "high",	display: "Set to High"],
 	]
 }
 
