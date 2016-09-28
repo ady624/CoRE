@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.156.20160927" }
+def version() {	return "v0.3.157.20160928" }
 /*
+ *	 9/28/2016 >>> v0.3.157.20160928 - RC - Added support for local http requests - simply use a local IP in the HTTP request and CoRE will use the hub for that request - don't expect any results back yet :(
  *	 9/27/2016 >>> v0.3.156.20160927 - RC - Fixed a bug that was bleeding the time from offset into the time to for piston restrictions
  *	 9/26/2016 >>> v0.3.155.20160926 - RC - Added lock user codes support and cancel on condition state change
  *	 9/21/2016 >>> v0.3.154.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Lock user codes tested OK, adding "Cancel on condition state change", testing
@@ -6654,6 +6655,7 @@ private processTasks() {
 			} else {
 				setVariable("\$nextScheduledTime", null, true)
 				state.nextScheduledTime = null
+                unschedule(timeHandler)
 			}
 
 			//we're done with the scheduling, let's do some real work, if we have any
@@ -7485,6 +7487,101 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     def importData = !!params[4].d
     def importPrefix = params[5].d ?: ""
     if (!uri) return false
+    def protocol = "https"
+    def uriParts = uri.tokenize("://")
+    if (uriParts.size() > 2) {
+    	debug "Invalid URI for web request", null, "warn"
+    	return false
+    }
+    if (uriParts.size() == 2) {
+    	//remove the httpX:// from the uri
+    	protocol = uriParts[0].toLowerCase()
+        uri = uriParts[1]
+    }
+    def internal = uri.startsWith("10.") || uri.startsWith("192.168.")
+    if ((!internal) && uri.startsWith("172.")) {
+    	//check for the 172.16.x.x/12 class
+        def b = uri.substring(4,2)
+        if (b.isInteger()) {
+        	b = b.toInteger()
+            internal = (b >= 16) && (b <= 31)
+        }
+    }
+    def data = [:]
+    for(variable in variables) {
+    	data[variable] = getVariable(variable)
+    }
+    if (internal) {    
+    	try {
+            sendHubCommand(new physicalgraph.device.HubAction(
+                method: method,
+                path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
+                headers: [
+                    HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
+                ],
+                query: data
+            ))
+        } catch (all) {
+            debug "Error executing internal web request: $all", null, "error"
+        }            
+    } else {
+        try {
+            def requestParams = [
+                uri:  "${protocol}://${uri}",
+                query: method == "GET" ? data : null,
+                requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
+                body: method != "GET" ? data : null
+            ]
+            def func = ""
+            switch(method) {
+                case "GET":
+                    func = "httpGet"
+                    break
+                case "POST":
+                    func = "httpPost"
+                    break
+                case "PUT":
+                    func = "httpPut"
+                    break
+                case "DELETE":
+                    func = "httpDelete"
+                    break
+                case "HEAD":
+                    func = "httpHead"
+                    break
+            }
+            if (func) {
+                "$func"(requestParams) { response ->
+                    setVariable("\$httpStatusCode", response.status, true)            
+                    setVariable("\$httpStatusOk", response.status == 200, true)            
+                    if (importData && (response.status == 200) && response.data) {
+                        try {
+                            def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
+                            importVariables(jsonData, importPrefix)
+                        } catch (all) {
+                            debug "Error parsing JSON response for web request: $all", null, "error"
+                        }
+                    }
+                }
+            }
+        } catch (all) {
+            debug "Error executing external web request: $all", null, "error"
+        }
+    }
+	return true
+}
+
+
+private task_vcmd_httpRequest_backup(devices, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 6) return false
+	def uri = params[0].d
+    def method = params[1].d
+    def contentType = params[2].d
+    def variables = params[3].d
+    def importData = !!params[4].d
+    def importPrefix = params[5].d ?: ""
+    if (!uri) return false
     def protocol = ""
     switch (uri.substring(0, 7).toLowerCase()) {
     	case "http://":
@@ -7546,7 +7643,6 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     }
 	return true
 }
-
 private task_vcmd_wolRequest(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 2) return false
@@ -10522,7 +10618,7 @@ private virtualCommands() {
 		[ name: "executePiston",		display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
 		[ name: "pausePiston",			display: "Pause piston",					parameters: ["Piston:piston"],																location: true,	description: "Pause piston '{0}'",	aggregated: true],
 		[ name: "resumePiston",			display: "Resume piston",					parameters: ["Piston:piston"],																location: true,	description: "Resume piston '{0}'",	aggregated: true],
-        [ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
+        [ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","?Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
         [ name: "wolRequest",			display: "Wake a LAN device", parameters: ["MAC address:string","?Secure code:string"], location: true, description: "Wake LAN device at address {0} with secure code {1}", aggregated: true],
         
 		//flow control commands
