@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.157.20160928" }
+def version() {	return "v0.3.158.20160928" }
 /*
+ *	 9/28/2016 >>> v0.3.158.20160928 - RC - Minor fixes where state.app or state.config.app was not yet initialized - though I could not replicate the issue
  *	 9/28/2016 >>> v0.3.157.20160928 - RC - Added support for local http requests - simply use a local IP in the HTTP request and CoRE will use the hub for that request - don't expect any results back yet :(
  *	 9/27/2016 >>> v0.3.156.20160927 - RC - Fixed a bug that was bleeding the time from offset into the time to for piston restrictions
  *	 9/26/2016 >>> v0.3.155.20160926 - RC - Added lock user codes support and cancel on condition state change
@@ -7480,7 +7481,7 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 6) return false
-	def uri = params[0].d
+	def uri = formatMessage(params[0].d)
     def method = params[1].d
     def contentType = params[2].d
     def variables = params[3].d
@@ -7488,9 +7489,9 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     def importPrefix = params[5].d ?: ""
     if (!uri) return false
     def protocol = "https"
-    def uriParts = uri.tokenize("://")
+    def uriParts = uri.tokenize("://")    
     if (uriParts.size() > 2) {
-    	debug "Invalid URI for web request", null, "warn"
+    	debug "Invalid URI for web request: $uri", null, "warn"
     	return false
     }
     if (uriParts.size() == 2) {
@@ -8352,7 +8353,7 @@ def getSummary() {
 	if (!state.app) {
     	log.warn "Piston ${app.label} is not complete, please open it and save it"
     }
-	def stateApp = (state.app ?: state.config.app)
+	def stateApp = (state.app ?: state.config?.app)
 	return [
 		i: app.id,
 		l: app.label,
@@ -8388,6 +8389,7 @@ def pausePiston(pistonName) {
 
 def pause() {
 	if (!parent) return null
+    if (!state.app) return null
     state.app.enabled = false
     if (state.config && state.config.app) state.config.app.enabled = false
     unsubscribe()
@@ -8409,6 +8411,7 @@ def resumePiston(pistonName) {
 
 def resume() {
 	if (!parent) return null
+    if (!state.app) return null
     state.app.enabled = true
     if (state.config && state.config.app) state.config.app.enabled = true    
     state.run = "app"
@@ -9079,7 +9082,7 @@ private withEachTrigger(condition, callback, data = null) {
 }
 
 private getTriggerCount(app) {
-	return getConditionTriggerCount(app.conditions) + (settings.mode in ["Latching", "And-If", "Or-If"] ? getConditionTriggerCount(app.otherConditions) : 0)
+	return app ? getConditionTriggerCount(app.conditions) + (settings.mode in ["Latching", "And-If", "Or-If"] ? getConditionTriggerCount(app.otherConditions) : 0) : 0
 }
 
 private getConditionConditionCount(condition) {
@@ -9105,7 +9108,7 @@ private getConditionConditionCount(condition) {
 }
 
 private getConditionCount(app) {
-	return getConditionConditionCount(app.conditions) + (!(settings.mode in ["Basic", "Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0)
+	return app ? getConditionConditionCount(app.conditions) + (!(settings.mode in ["Basic", "Simple", "Follow-Up"]) ? getConditionConditionCount(app.otherConditions) : 0) : 0
 }
 
 def rebuildPiston(update = false) {
