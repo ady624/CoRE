@@ -7492,7 +7492,6 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     if (!uri) return false
     def protocol = "https"
     def uriParts = uri.split("://").toList()
-    log.trace "FOUND uriParts $uriParts"
     if (uriParts.size() > 2) {
     	debug "Invalid URI for web request: $uri", null, "warn"
     	return false
