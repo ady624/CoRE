@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.159.20160928" }
+def version() {	return "v0.3.15a.20160928" }
 /*
+ *	 9/28/2016 >>> v0.3.15a.20160928 - RC - Fix for internal web requests
  *	 9/28/2016 >>> v0.3.159.20160928 - RC - Added low(), med(), and high() support (standard command instead of custom) for the zwave fan speed control
  *	 9/28/2016 >>> v0.3.158.20160928 - RC - Minor fixes where state.app or state.config.app was not yet initialized - though I could not replicate the issue
  *	 9/28/2016 >>> v0.3.157.20160928 - RC - Added support for local http requests - simply use a local IP in the HTTP request and CoRE will use the hub for that request - don't expect any results back yet :(
@@ -7490,7 +7491,8 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     def importPrefix = params[5].d ?: ""
     if (!uri) return false
     def protocol = "https"
-    def uriParts = uri.tokenize("://")    
+    def uriParts = uri.split("://").toList()
+    log.trace "FOUND uriParts $uriParts"
     if (uriParts.size() > 2) {
     	debug "Invalid URI for web request: $uri", null, "warn"
     	return false
