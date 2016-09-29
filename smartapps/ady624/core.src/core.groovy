@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.15a.20160928" }
+def version() {	return "v0.3.15b.20160928" }
 /*
+ *	 9/28/2016 >>> v0.3.15b.20160928 - RC - Fix for internal web requests - take 2
  *	 9/28/2016 >>> v0.3.15a.20160928 - RC - Fix for internal web requests
  *	 9/28/2016 >>> v0.3.159.20160928 - RC - Added low(), med(), and high() support (standard command instead of custom) for the zwave fan speed control
  *	 9/28/2016 >>> v0.3.158.20160928 - RC - Minor fixes where state.app or state.config.app was not yet initialized - though I could not replicate the issue
@@ -7516,13 +7517,21 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     }
     if (internal) {    
     	try {
+            log.trace([
+                method: method,
+                path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
+                headers: [
+                    HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
+                ],
+                query: data ?: null
+            ])
             sendHubCommand(new physicalgraph.device.HubAction(
                 method: method,
                 path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
                 headers: [
                     HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
                 ],
-                query: data
+                query: data ?: null
             ))
         } catch (all) {
             debug "Error executing internal web request: $all", null, "error"
