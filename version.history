@@ -1,5 +1,29 @@
  *  Version history
  *
+ *	 9/20/2016 >>> v0.3.151.20160920 - RC - Release Candidate is here! Added Pause/Resume Piston tasks
+ *
+ *	 9/18/2016 >>> v0.2.150.20160918 - Beta M2 - Fixed a problem with condition state changes due to a prior fix in the evaluation display for the dashboard (v0.2.14f)
+ *	 9/16/2016 >>> v0.2.14f.20160916 - Beta M2 - Fixed some minor issues with condition evaluation display in the dashboard. Introducing "not evaluated": blue means evaluated as true, red means evaluated as false, gray means not evaluated at all
+ *	 9/16/2016 >>> v0.2.14e.20160916 - Beta M2 - Fixed a problem with "time is any time of the day" where a events would be scheduled in error
+ *	 9/16/2016 >>> v0.2.14d.20160916 - Beta M2 - Added optional 'ingredients' value1, value2, and value3 to IFTTT Maker request
+ *	 9/08/2016 >>> v0.2.14c.20160908 - Beta M2 - Added a few more system variables, $locationMode and $shmStatus
+ *	 9/02/2016 >>> v0.2.14b.20160902 - Beta M2 - Fixed a problem with execution time measurements
+ *	 9/02/2016 >>> v0.2.14a.20160902 - Beta M2 - Fixed a problem with decimal points on dashboard taps
+ *	 9/02/2016 >>> v0.2.149.20160902 - Beta M2 - Improved exit point speed (removed unnecessary piston refreshes)
+ *	 9/02/2016 >>> v0.2.148.20160902 - Beta M2 - Added instructions for removing dashboard taps. Thank you @dseg for the Tap idea.
+ *	 9/02/2016 >>> v0.2.147.20160902 - Beta M2 - Minor fix with adding taps and API
+ *	 9/02/2016 >>> v0.2.146.20160902 - Beta M2 - Introducing the dashboard taps - tap one to run its associated pistons
+ *	 8/21/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
+ *	 8/21/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
+ *	 8/20/2016 >>> v0.2.142.20160820 - Beta M2 - Made setVariable use long numbers to avoid range overflows
+ *	 8/20/2016 >>> v0.2.141.20160820 - Beta M2 - Fixed a problem with SWITCH-CASE which would, upon the end of a matching case, send the flow to the second following case's start, executing two cases
+ *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
+ *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
+ *	 8/17/2016 >>> v0.2.13f.20160817 - Beta M2 - Fixed a problem with caching old orientation values - triggers for orientation did not work correctly
+ *	 8/16/2016 >>> v0.2.13e.20160816 - Beta M2 - Minor fixes for the dashboard, progress on the experimental dashboard
+ *	 8/15/2016 >>> v0.2.13d.20160815 - Beta M2 - Fixed a bug affecting variables (introduced with v0.2.13c), made some dashboard improvements (speed)
+ *	 8/14/2016 >>> v0.2.13c.20160814 - Beta M2 - Minor fix regarding setting a number variable - allowing decimals during the calculus
+ *	 8/14/2016 >>> v0.2.13b.20160814 - Beta M2 - Forced capability Sensor to show (no default attribute in documentation)
  *	 8/12/2016 >>> v0.2.13a.20160812 - Beta M2 - Initial release of Beta M2
  *
  *	 8/10/2016 >>> v0.1.139.20160810 - Beta M1 - Implemented "Wait for common time" - waits for sunrise, sunset, noon or midnight on specified days of the week and "Wait for custom time" - waits for custom defined time on specified days of the week
