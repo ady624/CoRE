@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.15b.20160928" }
+def version() {	return "v0.3.15c.20161001" }
 /*
+ *	10/01/2016 >>> v0.3.15c.20161001 - RC - Added LIFX integration
  *	 9/28/2016 >>> v0.3.15b.20160928 - RC - Fix for internal web requests - take 2
  *	 9/28/2016 >>> v0.3.15a.20160928 - RC - Fix for internal web requests
  *	 9/28/2016 >>> v0.3.159.20160928 - RC - Added low(), med(), and high() support (standard command instead of custom) for the zwave fan speed control
@@ -31,29 +32,6 @@ def version() {	return "v0.3.15b.20160928" }
  *	 9/21/2016 >>> v0.3.153.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Improved support for lock user codes
  *	 9/21/2016 >>> v0.3.152.20160921 - RC - DO NOT UPDATE TO THIS UNLESS REQUESTED TO - Added support for lock user codes
  *	 9/20/2016 >>> v0.3.151.20160920 - RC - Release Candidate is here! Added Pause/Resume Piston tasks
- *	 9/18/2016 >>> v0.2.150.20160918 - Beta M2 - Fixed a problem with condition state changes due to a prior fix in the evaluation display for the dashboard (v0.2.14f)
- *	 9/16/2016 >>> v0.2.14f.20160916 - Beta M2 - Fixed some minor issues with condition evaluation display in the dashboard. Introducing "not evaluated": blue means evaluated as true, red means evaluated as false, gray means not evaluated at all
- *	 9/16/2016 >>> v0.2.14e.20160916 - Beta M2 - Fixed a problem with "time is any time of the day" where a events would be scheduled in error
- *	 9/16/2016 >>> v0.2.14d.20160916 - Beta M2 - Added optional 'ingredients' value1, value2, and value3 to IFTTT Maker request
- *	 9/08/2016 >>> v0.2.14c.20160908 - Beta M2 - Added a few more system variables, $locationMode and $shmStatus
- *	 9/02/2016 >>> v0.2.14b.20160902 - Beta M2 - Fixed a problem with execution time measurements
- *	 9/02/2016 >>> v0.2.14a.20160902 - Beta M2 - Fixed a problem with decimal points on dashboard taps
- *	 9/02/2016 >>> v0.2.149.20160902 - Beta M2 - Improved exit point speed (removed unnecessary piston refreshes)
- *	 9/02/2016 >>> v0.2.148.20160902 - Beta M2 - Added instructions for removing dashboard taps. Thank you @dseg for the Tap idea.
- *	 9/02/2016 >>> v0.2.147.20160902 - Beta M2 - Minor fix with adding taps and API
- *	 9/02/2016 >>> v0.2.146.20160902 - Beta M2 - Introducing the dashboard taps - tap one to run its associated pistons
- *	 8/21/2016 >>> v0.2.144.20160821 - Beta M2 - Fixed a bug in accepting an action restriction with a negative offset for the range end
- *	 8/21/2016 >>> v0.2.143.20160821 - Beta M2 - Minor bug fixes
- *	 8/20/2016 >>> v0.2.142.20160820 - Beta M2 - Made setVariable use long numbers to avoid range overflows
- *	 8/20/2016 >>> v0.2.141.20160820 - Beta M2 - Fixed a problem with SWITCH-CASE which would, upon the end of a matching case, send the flow to the second following case's start, executing two cases
- *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
- *	 8/17/2016 >>> v0.2.140.20160817 - Beta M2 - Fixed a problem with triggers and threeAxis orientation
- *	 8/17/2016 >>> v0.2.13f.20160817 - Beta M2 - Fixed a problem with caching old orientation values - triggers for orientation did not work correctly
- *	 8/16/2016 >>> v0.2.13e.20160816 - Beta M2 - Minor fixes for the dashboard, progress on the experimental dashboard
- *	 8/15/2016 >>> v0.2.13d.20160815 - Beta M2 - Fixed a bug affecting variables (introduced with v0.2.13c), made some dashboard improvements (speed)
- *	 8/14/2016 >>> v0.2.13c.20160814 - Beta M2 - Minor fix regarding setting a number variable - allowing decimals during the calculus
- *	 8/14/2016 >>> v0.2.13b.20160814 - Beta M2 - Forced capability Sensor to show (no default attribute in documentation)
- *	 8/12/2016 >>> v0.2.13a.20160812 - Beta M2 - Initial release of Beta M2
  */
 
 /******************************************************************************/
@@ -91,6 +69,8 @@ preferences {
 	page(name: "pageDashboardTap")
 	page(name: "pageIntegrateIFTTT")
 	page(name: "pageIntegrateIFTTTConfirm")
+	page(name: "pageIntegrateLIFX")
+	page(name: "pageIntegrateLIFXConfirm")
 	page(name: "pageResetSecurityToken")
 	page(name: "pageResetSecurityTokenConfirm")
     page(name: "pageRecoverAllPistons")
@@ -304,6 +284,8 @@ def pageGeneralSettings(params) {
 		section("CoRE Integrations") {
 			def iftttConnected = state.modules && state.modules["IFTTT"] && settings["iftttEnabled"] && state.modules["IFTTT"].connected
 			href "pageIntegrateIFTTT", title: "IFTTT", description: iftttConnected ? "Connected" : "Not configured", state: (iftttConnected ? "complete" : null), submitOnChange: true, required: false
+			def lifxConnected = state.modules && state.modules["LIFX"] && settings["lifxEnabled"] && state.modules["LIFX"].connected
+			href "pageIntegrateLIFX", title: "LIFX", description: lifxConnected ? "Connected" : "Not configured", state: (lifxConnected ? "complete" : null), submitOnChange: true, required: false
 		}
 
 		section("Piston Recovery") {
@@ -544,12 +526,12 @@ def pageIntegrateIFTTT() {
 	return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT™ Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
 		section() {
 			paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. You will be provided with a key that needs to be entered below", required: false
-			input "iftttEnabled", "bool", title: "Enable IFTTT", submitOnChange: true, required: false
-			if (settings.iftttEnabled) href name: "", title: "IFTTT Maker channel", required: false, style: "external", url: "https://www.ifttt.com/maker", description: "tap to go to IFTTT™ and connect the Maker channel"
+			input "iftttEnabled", "bool", title: "Enable IFTTT™", submitOnChange: true, required: false
+			if (settings.iftttEnabled) href name: "", title: "IFTTT™ Maker channel", required: false, style: "external", url: "https://www.ifttt.com/maker", description: "tap to go to IFTTT™ and connect the Maker channel"
 		}
 		if (settings.iftttEnabled) {
-			section("IFTTT Maker key"){
-				input("iftttKey", "string", title: "Key", description: "Your IFTTT Maker key", required: false)
+			section("IFTTT™ Maker key"){
+				input("iftttKey", "string", title: "Key", description: "Your IFTTT™ Maker key", required: false)
 			}
 		}
 	}
@@ -557,19 +539,55 @@ def pageIntegrateIFTTT() {
 
 def pageIntegrateIFTTTConfirm() {
 	if (testIFTTT()) {
-		return dynamicPage(name: "pageIntegrateIFTTTConfirm", title: "IFTTT Integration", nextPage:"pageGeneralSettings") {
+		return dynamicPage(name: "pageIntegrateIFTTTConfirm", title: "IFTTT™ Integration") {
 			section(){
-				paragraph "Congratulations! You have successfully connected CoRE to IFTTT."
+				paragraph "Congratulations! You have successfully connected CoRE to IFTTT™."
 			}
 		}
 	} else {
-		return dynamicPage(name: "pageIntegrateIFTTTConfirm",  title: "IFTTT Integration") {
+		return dynamicPage(name: "pageIntegrateIFTTTConfirm",  title: "IFTTT™ Integration") {
 			section(){
-				paragraph "Sorry, the credentials you provided for IFTTT are invalid. Please go back and try again."
+				paragraph "Sorry, the credentials you provided for IFTTT™ are invalid. Please go back and try again."
 			}
 		}
 	}
 }
+
+
+
+def pageIntegrateLIFX() {
+	return dynamicPage(name: "pageIntegrateLIFX", title: "LIFX™ Integration", nextPage: settings.lifxEnabled ? "pageIntegrateLIFXConfirm" : null) {
+		section() {
+			paragraph "CoRE can optionally integrate with LIFX™, allowing you to run scenes directly into your LIFX™ environment. To enable LIFX™, please login to your LIFX™ cloud account and go to Settings under your account. Tap on Generate New Token and copy the generated token into the field below", required: false
+			input "lifxEnabled", "bool", title: "Enable LIFX™", submitOnChange: true, required: false
+			if (settings.lifxEnabled) href name: "", title: "LIFX™ Cloud Account", required: false, style: "external", url: "https://cloud.lifx.com", description: "tap to go to LIFX™ Cloud and generate an access token"
+		}
+		if (settings.lifxEnabled) {
+			section("LIFX™ Access Token"){
+				input("lifxToken", "string", title: "Token", description: "Your LIFX™ Access Token", required: false)
+			}
+		}
+	}
+}
+
+def pageIntegrateLIFXConfirm() {
+	if (testLIFX()) {
+		return dynamicPage(name: "pageIntegrateLIFXConfirm", title: "LIFX™ Integration") {
+			section(){
+				paragraph "Congratulations! You have successfully connected CoRE to LIFX."
+			}
+		}
+	} else {
+		return dynamicPage(name: "pageIntegrateLIFXConfirm",  title: "LIFX™ Integration") {
+			section(){
+				paragraph "Sorry, the access token you provided for LIFX™ is invalid. Please go back and try again."
+			}
+		}
+	}
+}
+
+
+
 
 
 def pageResetSecurityToken() {
@@ -1610,6 +1628,8 @@ def pageAction(params) {
 													input "actParam$id#$tid-$i", "enum", options: listStateVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
 												} else if (param.type == "stateVariables") {
 													input "actParam$id#$tid-$i", "enum", options:  listStateVariables(true), title: param.title, required: param.required, submitOnChange: param.last, multiple: true
+												} else if (param.type == "lifxScenes") {
+													input "actParam$id#$tid-$i", "enum", options:  listLifxScenes(), title: param.title, required: param.required, submitOnChange: param.last, multiple: false
 												} else if (param.type == "piston") {
 													def pistons = parent.listPistons(state.config.expertMode || command.name.contains("follow") ? null : app.label)
 													input "actParam$id#$tid-$i", "enum", options: pistons, title: param.title, required: param.required, submitOnChange: param.last, multiple: false
@@ -2975,10 +2995,35 @@ def listAskAlexaMacros() {
 	return state.askAlexaMacros ? state.askAlexaMacros : []
 }
 
-def iftttKey() {
-	if (parent) return parent.iftttKey()
+def getIftttKey() {
+	if (parent) return parent.getIftttKey()
 	def modules = atomicState.modules
 	return (modules && modules["IFTTT"] && modules["IFTTT"].connected ? modules["IFTTT"].key : null)
+}
+
+def getLifxToken() {
+	if (parent) return parent.getLifxToken()
+	def modules = atomicState.modules
+	return (modules && modules["LIFX"] && modules["LIFX"].connected ? modules["LIFX"].token : null)
+}
+
+def listLifxScenes() {
+	if (parent) return parent.listLifxScenes()
+	def modules = atomicState.modules
+	if (modules && modules["LIFX"] && modules["LIFX"].connected) {
+    	return modules["LIFX"]?.scenes*.name
+    }
+    return []
+}
+
+def getLifxSceneId(name) {
+	if (parent) return parent.getLifxSceneId(name)
+	def modules = atomicState.modules
+	if (modules && modules["LIFX"] && modules["LIFX"].connected) {
+    	def scene = modules["LIFX"]?.scenes.find { it.name == name }
+        if (scene) return scene.id
+    }
+    return null
 }
 
 
@@ -3207,6 +3252,50 @@ def testIFTTT() {
 			}
 			return false;
  		}
+	}
+	return false
+}
+
+def testLIFX() {
+	if ((!settings.lifxToken) || (!settings.lifxEnabled)) return false
+	//setup our security descriptor
+	state.modules["LIFX"] = [
+		token: settings.lifxToken,
+		connected: false
+	]
+	if (settings.lifxToken) {
+		//verify the key
+         def requestParams = [
+            uri:  "https://api.lifx.com",
+            path: "/v1/scenes",
+            headers: [
+            	"Authorization": "Bearer ${settings.lifxToken}"
+            ],
+            requestContentType: "application/json"
+        ]
+        try {
+            return httpGet(requestParams) { response ->
+                if (response.status == 200) {
+                	if (response.data instanceof List) {
+    	                state.modules["LIFX"].connected = true
+                        def ss = []
+                        for(scene in response.data) {
+                        	def s = [
+                            	id: scene.uuid,
+                                name: scene.name
+                            ]
+                            ss.push(s)
+                        }
+                        state.modules["LIFX"].scenes = ss
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+        catch(all) {
+	        return false
+        }
 	}
 	return false
 }
@@ -3944,6 +4033,7 @@ private exitPoint(milliseconds) {
 	state.lastExecutionTime = milliseconds
     
 	try {
+        state.nextScheduledTime = atomicState.nextScheduledTime
     	parent.onChildExitPoint(app, lastEvent, milliseconds, state.nextScheduledTime, getSummary())        
 	} catch(e) {
 		debug "ERROR: Could not update parent app: ", null, "error", e
@@ -6653,12 +6743,14 @@ private processTasks() {
 			if (nextTime) {
 				def seconds = Math.ceil((nextTime - now()) / 1000)
 				runIn(seconds, timeHandler)
+				atomicState.nextScheduledTime = nextTime
 				state.nextScheduledTime = nextTime
 				setVariable("\$nextScheduledTime", nextTime, true)
 				debug "Scheduling ST job to run in ${seconds}s, at ${formatLocalTime(nextTime)}", null, "info"
 			} else {
 				setVariable("\$nextScheduledTime", null, true)
-				state.nextScheduledTime = null
+				atomicState.nextScheduledTime = null
+				state.nextScheduledTime = nextTime
                 unschedule(timeHandler)
 			}
 
@@ -7409,6 +7501,8 @@ private task_vcmd_followUp(devices, action, task, suffix = "") {
 	}
 	def piston = params[2].d
 	def result = execute(piston)
+    //state.store = atomicState.store
+    state.nextScheduledTime = atomicState.nextScheduledTime
 	if (params[3].d) {
 		setVariable(params[3].d, result)
 	}
@@ -7422,6 +7516,8 @@ private task_vcmd_executePiston(devices, action, task, suffix = "") {
 	}
 	def piston = params[0].d
 	def result = execute(piston)
+    //state.store = atomicState.store
+    state.nextScheduledTime = atomicState.nextScheduledTime
 	if (params[1].d) {
 		setVariable(params[1].d, result)
 	}
@@ -7448,6 +7544,37 @@ private task_vcmd_resumePiston(devices, action, task, suffix = "") {
 	return true
 }
 
+private task_vcmd_lifxScene(devices, action, task, suffix = "") {
+	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
+	if (params.size() != 1) {
+		return false
+	}
+	def sceneName = params[0].d
+    def sceneId = getLifxSceneId(sceneName)
+    if (sceneId) {
+    	def requestParams = [
+            uri:  "https://api.lifx.com",
+            path: "/v1/scenes/scene_id::${sceneId}/activate",
+            headers: [
+                "Authorization": "Bearer ${getLifxToken()}"
+            ],
+            requestContentType: "application/json"
+        ]
+        try {
+            return httpPut(requestParams) { response ->
+                if (response.status == 200) {
+                    return true;
+                }
+                return false;
+            }
+        }
+        catch(all) {
+            return false
+        }
+    }
+    return false
+}
+
 private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if ((params.size() < 1) || (params.size() > 4)) {
@@ -7464,7 +7591,7 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 	}
     if (value1 || value2 || value3) {
         def requestParams = [
-            uri:  "https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey(),
+            uri:  "https://maker.ifttt.com/trigger/${event}/with/key/" + getIftttKey(),
             requestContentType: "application/json",
             body: [value1: value1, value2: value2, value3: value3]
         ]        
@@ -7473,7 +7600,7 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
             setVariable("\$iftttStatusOk", response.status == 200, true)
 	    }
 	} else {    
-        httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + iftttKey()){ response ->
+        httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + getIftttKey()){ response ->
             setVariable("\$iftttStatusCode", response.status, true)            
             setVariable("\$iftttStatusOk", response.status == 200, true)
 	    }
@@ -7517,14 +7644,6 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     }
     if (internal) {    
     	try {
-            log.trace([
-                method: method,
-                path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
-                headers: [
-                    HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
-                ],
-                query: data ?: null
-            ])
             sendHubCommand(new physicalgraph.device.HubAction(
                 method: method,
                 path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
@@ -10241,7 +10360,7 @@ private parseCommandParameter(parameter) {
 		dataType = tokens[tokens.size() - 1]
 	}
 
-	if (dataType in ["askAlexaMacro", "ifttt", "attribute", "attributes", "contact", "contacts", "variable", "variables", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
+	if (dataType in ["askAlexaMacro", "ifttt", "attribute", "attributes", "contact", "contacts", "variable", "variables", "lifxScenes", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
 		//special case handled internally
 		return [title: title, type: dataType, required: required, last: last]
 	}
@@ -10542,7 +10661,7 @@ private commands() {
 }
 
 private virtualCommands() {
-	return [
+	def cmds = [
 		[ name: "wait",				display: "Wait",							parameters: ["Time:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait {0} {1}",	],
 		[ name: "waitVariable",		display: "Wait (variable)",					parameters: ["Time (variable):variable","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Wait |[{0}]| {1}",	],
 		[ name: "waitRandom",		display: "Wait (random)",					parameters: ["At least:number[1..1440]","At most:number[1..1440]","Unit:enum[seconds,minutes,hours]"],	immediate: true,	location: true,	description: "Wait {0}-{1} {2}",	],
@@ -10653,11 +10772,19 @@ private virtualCommands() {
 		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH (|[{0}]|) DO",				flow: true,					indent: 2,	],
 		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE '{0}':",					flow: true,	selfIndent: -1,		],
 		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
-	] + (location.contactBookEnabled ? [
-			[ name: "sendNotificationToContacts",requires: [],		 			display: "Send notification to contacts",	parameters: ["Message:text","Contacts:contacts","Save notification:bool"],																		location: true,			description: "Send notification '{0}' to {1}",													aggregated: true,	],
-	] : []) + (iftttKey() ? [
-			[ name: "iftttMaker",requires: [],		 			display: "Send IFTTT Maker event",	parameters: ["Event:text", "?Value1:string", "?Value2:string", "?Value3:string"],																		location: true,			description: "Send IFTTT Maker event '{0}' with parameters '{1}', '{2}', and '{3}'",													aggregated: true,	],
-	] : [])
+		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE '{0}':",					flow: true,	selfIndent: -1,		],
+		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
+    ]
+   	if (location.contactBookEnabled) {
+    	cmds.push([ name: "sendNotificationToContacts", display: "Send notification to contacts", parameters: ["Message:text","Contacts:contacts","Save notification:bool"], location: true, description: "Send notification '{0}' to {1}", aggregated: true])
+    }
+    if (getIftttKey()) {
+    	cmds.push([ name: "iftttMaker", display: "Send IFTTT Maker event", parameters: ["Event:text", "?Value1:string", "?Value2:string", "?Value3:string"], location: true, description: "Send IFTTT Maker event '{0}' with parameters '{1}', '{2}', and '{3}'", aggregated: true])
+    }
+	if (getLifxToken()) {
+		cmds.push([ name: "lifxScene", display: "Activate LIFX scene", parameters: ["Scene:lifxScenes"], location: true, description: "Activate LIFX Scene '{0}'", aggregated: true])
+    }    
+    return cmds
 }
 
 private attributes() {
