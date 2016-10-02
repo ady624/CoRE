@@ -7557,7 +7557,7 @@ private task_vcmd_lifxScene(devices, action, task, suffix = "") {
     if (sceneId != null) {
     	def requestParams = [
             uri:  "https://api.lifx.com",
-            path: "/v1/scenes/scene_id::${sceneId}/activate",
+            path: "/v1/scenes/scene_id:${sceneId}/activate",
             headers: [
                 "Authorization": "Bearer $token"
             ]
