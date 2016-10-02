@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.15c.20161001" }
+def version() {	return "v0.3.15d.20161002" }
 /*
+ *	10/02/2016 >>> v0.3.15d.20161002 - RC - Added some logging for LIFX integration
  *	10/01/2016 >>> v0.3.15c.20161001 - RC - Added LIFX integration
  *	 9/28/2016 >>> v0.3.15b.20160928 - RC - Fix for internal web requests - take 2
  *	 9/28/2016 >>> v0.3.15a.20160928 - RC - Fix for internal web requests
@@ -128,8 +129,7 @@ private customCommandSuffix() { return "(..)" }
 /*** COMMON PAGES															***/
 /******************************************************************************/
 def pageMain() {
-	def res = dev()
-	parent ? pageMainCoREPiston() : pageMainCoRE()
+    parent ? pageMainCoREPiston() : pageMainCoRE()
 }
 
 def pageViewVariable(params) {
@@ -523,15 +523,15 @@ def pageChart(params) {
 
 
 def pageIntegrateIFTTT() {
-	return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT™ Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
+	return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
 		section() {
-			paragraph "CoRE can optionally integrate with IFTTT™ (IF This Then That) via the Maker channel, triggering immediate events to IFTTT™. To enable IFTTT™, please login to your IFTTT™ account and connect the Maker channel. You will be provided with a key that needs to be entered below", required: false
-			input "iftttEnabled", "bool", title: "Enable IFTTT™", submitOnChange: true, required: false
-			if (settings.iftttEnabled) href name: "", title: "IFTTT™ Maker channel", required: false, style: "external", url: "https://www.ifttt.com/maker", description: "tap to go to IFTTT™ and connect the Maker channel"
+			paragraph "CoRE can optionally integrate with IFTTT (IF This Then That) via the Maker channel, triggering immediate events to IFTTT. To enable IFTTT, please login to your IFTTT account and connect the Maker channel. You will be provided with a key that needs to be entered below", required: false
+			input "iftttEnabled", "bool", title: "Enable IFTTT", submitOnChange: true, required: false
+			if (settings.iftttEnabled) href name: "", title: "IFTTT Maker channel", required: false, style: "external", url: "https://www.ifttt.com/maker", description: "tap to go to IFTTT and connect the Maker channel"
 		}
 		if (settings.iftttEnabled) {
-			section("IFTTT™ Maker key"){
-				input("iftttKey", "string", title: "Key", description: "Your IFTTT™ Maker key", required: false)
+			section("IFTTT Maker key"){
+				input("iftttKey", "string", title: "Key", description: "Your IFTTT Maker key", required: false)
 			}
 		}
 	}
@@ -539,15 +539,15 @@ def pageIntegrateIFTTT() {
 
 def pageIntegrateIFTTTConfirm() {
 	if (testIFTTT()) {
-		return dynamicPage(name: "pageIntegrateIFTTTConfirm", title: "IFTTT™ Integration") {
+		return dynamicPage(name: "pageIntegrateIFTTTConfirm", title: "IFTTT Integration") {
 			section(){
-				paragraph "Congratulations! You have successfully connected CoRE to IFTTT™."
+				paragraph "Congratulations! You have successfully connected CoRE to IFTTT."
 			}
 		}
 	} else {
-		return dynamicPage(name: "pageIntegrateIFTTTConfirm",  title: "IFTTT™ Integration") {
+		return dynamicPage(name: "pageIntegrateIFTTTConfirm",  title: "IFTTT Integration") {
 			section(){
-				paragraph "Sorry, the credentials you provided for IFTTT™ are invalid. Please go back and try again."
+				paragraph "Sorry, the credentials you provided for IFTTT are invalid. Please go back and try again."
 			}
 		}
 	}
@@ -556,15 +556,15 @@ def pageIntegrateIFTTTConfirm() {
 
 
 def pageIntegrateLIFX() {
-	return dynamicPage(name: "pageIntegrateLIFX", title: "LIFX™ Integration", nextPage: settings.lifxEnabled ? "pageIntegrateLIFXConfirm" : null) {
+	return dynamicPage(name: "pageIntegrateLIFX", title: "LIFX Integration", nextPage: settings.lifxEnabled ? "pageIntegrateLIFXConfirm" : null) {
 		section() {
-			paragraph "CoRE can optionally integrate with LIFX™, allowing you to run scenes directly into your LIFX™ environment. To enable LIFX™, please login to your LIFX™ cloud account and go to Settings under your account. Tap on Generate New Token and copy the generated token into the field below", required: false
-			input "lifxEnabled", "bool", title: "Enable LIFX™", submitOnChange: true, required: false
-			if (settings.lifxEnabled) href name: "", title: "LIFX™ Cloud Account", required: false, style: "external", url: "https://cloud.lifx.com", description: "tap to go to LIFX™ Cloud and generate an access token"
+			paragraph "CoRE can optionally integrate with LIFX, allowing you to run scenes directly into your LIFX environment. To enable LIFX, please login to your LIFX cloud account and go to Settings under your account. Tap on Generate New Token and copy the generated token into the field below", required: false
+			input "lifxEnabled", "bool", title: "Enable LIFX", submitOnChange: true, required: false
+			if (settings.lifxEnabled) href name: "", title: "LIFX Cloud Account", required: false, style: "external", url: "https://cloud.lifx.com", description: "tap to go to LIFX Cloud and generate an access token"
 		}
 		if (settings.lifxEnabled) {
-			section("LIFX™ Access Token"){
-				input("lifxToken", "string", title: "Token", description: "Your LIFX™ Access Token", required: false)
+			section("LIFX Access Token"){
+				input("lifxToken", "string", title: "Token", description: "Your LIFX Access Token", required: false)
 			}
 		}
 	}
@@ -572,15 +572,15 @@ def pageIntegrateLIFX() {
 
 def pageIntegrateLIFXConfirm() {
 	if (testLIFX()) {
-		return dynamicPage(name: "pageIntegrateLIFXConfirm", title: "LIFX™ Integration") {
+		return dynamicPage(name: "pageIntegrateLIFXConfirm", title: "LIFX Integration") {
 			section(){
 				paragraph "Congratulations! You have successfully connected CoRE to LIFX."
 			}
 		}
 	} else {
-		return dynamicPage(name: "pageIntegrateLIFXConfirm",  title: "LIFX™ Integration") {
+		return dynamicPage(name: "pageIntegrateLIFXConfirm",  title: "LIFX Integration") {
 			section(){
-				paragraph "Sorry, the access token you provided for LIFX™ is invalid. Please go back and try again."
+				paragraph "Sorry, the access token you provided for LIFX is invalid. Please go back and try again."
 			}
 		}
 	}
@@ -1545,7 +1545,8 @@ def pageAction(params) {
 					ids = ids.sort()
 					def availableCommands = (deviceAction ? listCommonDeviceCommands(devices, usedCapabilities) : [])
 					def flowCommands = []
-					for (vcmd in virtualCommands().sort { it.display }) {
+                    def cmds = virtualCommands()
+					for (vcmd in cmds.sort{ it.display }) {
 						if ((!(vcmd.display in availableCommands)) && (vcmd.location || deviceAction)) {
 							def ok = true
 							if (vcmd.requires && vcmd.requires.size()) {
@@ -2997,14 +2998,14 @@ def listAskAlexaMacros() {
 
 def getIftttKey() {
 	if (parent) return parent.getIftttKey()
-	def modules = atomicState.modules
-	return (modules && modules["IFTTT"] && modules["IFTTT"].connected ? modules["IFTTT"].key : null)
+	def module = atomicState.modules?.IFTTT
+	return (module && module.connected ? module.key : null)
 }
 
 def getLifxToken() {
 	if (parent) return parent.getLifxToken()
-	def modules = atomicState.modules
-	return (modules && modules["LIFX"] && modules["LIFX"].connected ? modules["LIFX"].token : null)
+	def module = atomicState.modules?.LIFX
+	return (module && module.connected ? module.token : null)
 }
 
 def listLifxScenes() {
@@ -7551,15 +7552,17 @@ private task_vcmd_lifxScene(devices, action, task, suffix = "") {
 	}
 	def sceneName = params[0].d
     def sceneId = getLifxSceneId(sceneName)
-    if (sceneId) {
+    def token = getLifxToken()
+    log.trace "$sceneName >>> with ID $sceneId >>> with Token $token"
+    if (sceneId != null) {
     	def requestParams = [
             uri:  "https://api.lifx.com",
             path: "/v1/scenes/scene_id::${sceneId}/activate",
             headers: [
-                "Authorization": "Bearer ${getLifxToken()}"
-            ],
-            requestContentType: "application/json"
+                "Authorization": "Bearer $token"
+            ]
         ]
+       	//log.trace requestParams
         try {
             return httpPut(requestParams) { response ->
                 if (response.status == 200) {
@@ -7571,6 +7574,8 @@ private task_vcmd_lifxScene(devices, action, task, suffix = "") {
         catch(all) {
             return false
         }
+    } else {
+    	debug "WARNING: LIFX Scene $sceneName could not be found", null, "warn"
     }
     return false
 }
@@ -10244,7 +10249,8 @@ private getCommandByName(name) {
 }
 
 private getVirtualCommandByName(name) {
-	for(def command in virtualCommands()) {
+	def cmds = virtualCommands()
+	for(def command in cmds) {
 		if (command.name == name) {
 			return command
 		}
@@ -10253,7 +10259,8 @@ private getVirtualCommandByName(name) {
 }
 
 private getCommandByDisplay(display) {
-	for(def command in commands()) {
+	def cmds = commands()
+	for(def command in cmds) {
 		if (command.display == display) {
 			return command
 		}
@@ -10262,7 +10269,8 @@ private getCommandByDisplay(display) {
 }
 
 private getVirtualCommandByDisplay(display) {
-	for(def command in virtualCommands()) {
+	def cmds = virtualCommands()
+	for(def command in cmds) {
 		if (command.display == display) {
 			return command
 		}
