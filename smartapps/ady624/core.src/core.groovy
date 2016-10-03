@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.15d.20161002" }
+def version() {	return "v0.3.15e.20161003" }
 /*
+ *	10/03/2016 >>> v0.3.15e.20161002 - RC - Fixed a problem where latching pistons would not allow both conditional blocks to run for Simulate, Execute, Follow Up
  *	10/02/2016 >>> v0.3.15d.20161002 - RC - Added some logging for LIFX integration
  *	10/01/2016 >>> v0.3.15c.20161001 - RC - Added LIFX integration
  *	 9/28/2016 >>> v0.3.15b.20160928 - RC - Fix for internal web requests - take 2
@@ -4145,7 +4146,8 @@ private broadcastEvent(evt, primary, secondary) {
 				switch (mode) {
                 	case "And-If":
                     case "Or-If":
-                        //these two modes always evaluate both blocks
+                    case "Latching":
+                        //these three modes always evaluate both blocks
                         primary = true
                         secondary = true
                         force = true
@@ -7553,7 +7555,6 @@ private task_vcmd_lifxScene(devices, action, task, suffix = "") {
 	def sceneName = params[0].d
     def sceneId = getLifxSceneId(sceneName)
     def token = getLifxToken()
-    log.trace "$sceneName >>> with ID $sceneId >>> with Token $token"
     if (sceneId != null) {
     	def requestParams = [
             uri:  "https://api.lifx.com",
@@ -7562,7 +7563,6 @@ private task_vcmd_lifxScene(devices, action, task, suffix = "") {
                 "Authorization": "Bearer $token"
             ]
         ]
-       	//log.trace requestParams
         try {
             return httpPut(requestParams) { response ->
                 if (response.status == 200) {
