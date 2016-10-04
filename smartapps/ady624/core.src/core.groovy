@@ -20,7 +20,8 @@
 */
 def version() {	return "v0.3.15e.20161003" }
 /*
- *	10/03/2016 >>> v0.3.15e.20161002 - RC - Fixed a problem where latching pistons would not allow both conditional blocks to run for Simulate, Execute, Follow Up
+ *	10/04/2016 >>> v0.3.15f.20161004 - RC - Code trim down to avoid "Class file too large!" error in JVM
+ *	10/03/2016 >>> v0.3.15e.20161003 - RC - Fixed a problem where latching pistons would not allow both conditional blocks to run for Simulate, Execute, Follow Up
  *	10/02/2016 >>> v0.3.15d.20161002 - RC - Added some logging for LIFX integration
  *	10/01/2016 >>> v0.3.15c.20161001 - RC - Added LIFX integration
  *	 9/28/2016 >>> v0.3.15b.20160928 - RC - Fix for internal web requests - take 2
@@ -655,6 +656,7 @@ private pageMainCoREPiston() {
 			//input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
 			href "pageToggleEnabled", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete"
 			input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Basic", submitOnChange: true
+/*
 			switch (state.config.app.mode) {
 				case "Latching":
 				paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
@@ -663,6 +665,7 @@ private pageMainCoREPiston() {
 				paragraph "An Else-If Piston executes a set of actions if an initial condition set evaluates to true, otherwise executes a second set of actions if a second condition set evaluates to true"
 				break
 			}
+*/
 		}
         
         if (state.config.app.mode != "Do") {
@@ -6046,12 +6049,6 @@ private buildFlowChart(tasks) {
 
 
 
-private cmd_repeatAction(action, task, time) {
-	def result = cmd_wait(action, task, time)
-	result.schedule = true
-	return result
-}
-
 private cmd_followUp(action, task, time) {
 	def result = cmd_wait(action, task, time)
 	result.schedule = true
@@ -7818,16 +7815,6 @@ private task_vcmd_beginForLoop(device, action, task, suffix = "") {
 	}
 }
 
-
-private task_vcmd_repeatAction(device, action, task, suffix = "") {
-	state.rerunSchedule = true
-	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
-	if (!action || (params.size() != 2)) {
-		return false
-	}
-	scheduleAction(action)
-	return true
-}
 
 private task_vcmd_loadAttribute(device, action, task, simulate = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -10757,7 +10744,6 @@ private virtualCommands() {
 		[ name: "deleteAskAlexaMessages",display: "Delete AskAlexa messages",			parameters: ["Unit:text", "?Application:text"],																	location: true, description: "Delete AskAlexa messages in unit {1}",aggregated: true,	],
 		[ name: "executeRoutine",	display: "Execute routine",					parameters: ["Routine:routine"],																		location: true, 										description: "Execute routine '{0}'",				aggregated: true,	],
 		[ name: "cancelPendingTasks",display: "Cancel pending tasks",			parameters: ["Scope:enum[Local,Global]"],																														description: "Cancel all pending {0} tasks",		],
-		//[ name: "repeatAction",			display: "Repeat whole action",				parameters: ["Interval:number[1..1440]","Unit:enum[seconds,minutes,hours]"],													immediate: true,	location: true,	description: "Repeat whole action every {0} {1}",	aggregated: true],
 		[ name: "followUp",				display: "Follow up with piston",			parameters: ["Delay:number[1..1440]","Unit:enum[seconds,minutes,hours]","Piston:piston","?Save state into variable:string"],	immediate: true,	varEntry: 3,	location: true,	description: "Follow up with piston '{2}' after {0} {1}",	aggregated: true],
 		[ name: "executePiston",		display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
 		[ name: "pausePiston",			display: "Pause piston",					parameters: ["Piston:piston"],																location: true,	description: "Pause piston '{0}'",	aggregated: true],
