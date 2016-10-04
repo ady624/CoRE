@@ -18,7 +18,7 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.15e.20161003" }
+def version() {	return "v0.3.15f.20161004" }
 /*
  *	10/04/2016 >>> v0.3.15f.20161004 - RC - Code trim down to avoid "Class file too large!" error in JVM
  *	10/03/2016 >>> v0.3.15e.20161003 - RC - Fixed a problem where latching pistons would not allow both conditional blocks to run for Simulate, Execute, Follow Up
