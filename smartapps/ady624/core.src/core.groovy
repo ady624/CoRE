@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.15f.20161004" }
+def version() {	return "v0.3.160.20161014" }
 /*
+ *	10/14/2016 >>> v0.3.160.20161014 - RC - Fixed a bug not allowing Set color to work when using HSL instead of a simple color. Compliments to @simonselmer
  *	10/04/2016 >>> v0.3.15f.20161004 - RC - Code trim down to avoid "Class file too large!" error in JVM
  *	10/03/2016 >>> v0.3.15e.20161003 - RC - Fixed a problem where latching pistons would not allow both conditional blocks to run for Simulate, Execute, Follow Up
  *	10/02/2016 >>> v0.3.15d.20161002 - RC - Added some logging for LIFX integration
@@ -90,7 +91,6 @@ preferences {
 	page(name: "pageConditionGroupL3")
 	page(name: "pageConditionGroupL4")
 	page(name: "pageConditionGroupL5")
-	page(name: "pageConditionVsTrigger")
 	page(name: "pageActionGroup")
 	page(name: "pageAction")
 	page(name: "pageActionDevices")
@@ -1347,18 +1347,6 @@ def pageCondition(params) {
 		}
 	} catch(e) {
 		debug "ERROR: Error while executing pageCondition: ", null, "error", e
-	}
-}
-
-def pageConditionVsTrigger() {
-	state.run = "config"
-	dynamicPage(name: "pageConditionVsTrigger", title: "Conditions versus Trigers", uninstall: false, install: false) {
-		section() {
-			paragraph "All Pistons are event-driven. This means that an action is taken whenever something happens while the Piston is watching over. To do so, the Piston subscribes to events from all the devices you use while building your 'If...' and - in case of latching Pistons - your 'But if...' statements as well. Since a Piston subscribes to multiple device events, it is evaluated every time such an event occurs. Depending on your conditions, a device event may not necessarily make any change to the evaluated state of the Piston (think OR), but the Piston is evaluated either way, making it possible to execute actions even if the Piston's status didn't change. More about this under the 'Then...' or 'Else...' sections of the Piston."
-			paragraph "Events tell Pistons something has changed. Depending on the logic you are trying to implement, sometimes you need to check that the state of a device is within a certain range, and sometimes you need to react to a device state reaching a certain value, list or range.\n\nLet's start with an example. Say you have a temperature sensor and you want to monitor its temperature. You want to be alerted if the temperature is over 100°F. Now, assume the temperature starts at 99°F and increases steadily at a rate of one degree Fahrenheit per minute.", title: "State vs. State Change"
-			paragraph "If you use a condition, the Piston will be evaluated every one minute, as the temperature changes. The first evaluation will result in a false condition as the temperature reaches 100°F. Remember, our condition is for the temperature to be OVER 100°F. The next minute, your temperature is reported at 101°F which will cause the Piston to evaluate true this time. Your 'Then...' actions will now have a chance at execution. The next minute, as the temperature reaches 102°F, the Piston will again evaluate true and proceed to executing your 'Then...' actions. This will happen for as long as the temperature remains over 100°F and will possibly execute your actions every time a new temperature is read that matches that condition. You could use this to pass the information along to another service (think IFTTT) or display it on some sort of screen. But not for turning on a thermostat - you don't neet to turn the thermostat on every one minute, it's very likely already on from your last execution.", title: "Using a Condition"
-			paragraph "If you use a trigger, the Piston will now be on the lookout for a certain state change that 'triggers' our evaluation to become true. You will no longer look for a temperature over 100°F, but instead you will be looking for when the temperature exceeds 100°F. This means your actions will only be executed when the temperature actually transitioned from below or equal to 100°F to over 100°F. This means your actions will only execute once and for the Piston to fire your actions again, the temperature would have to first drop at or below 100°F and then raise again to exceed your set threshold of 100°F. Now, this you could use to control a thermostat, right?", title: "Using a Trigger"
-		}
 	}
 }
 
@@ -6987,7 +6975,7 @@ private processCommandTask(task) {
 							} else {
 								p.hue = hue
 								p.saturation = saturation
-								p.level - lightness
+								p.level = lightness
 							}
                             def msg = "Executing command: [${device}].${cn}($p)"
                             def perf = now()
@@ -10766,8 +10754,6 @@ private virtualCommands() {
 		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH (|[{0}]|) DO",				flow: true,					indent: 2,	],
 		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE '{0}':",					flow: true,	selfIndent: -1,		],
 		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
-		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE '{0}':",					flow: true,	selfIndent: -1,		],
-		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
     ]
    	if (location.contactBookEnabled) {
     	cmds.push([ name: "sendNotificationToContacts", display: "Send notification to contacts", parameters: ["Message:text","Contacts:contacts","Save notification:bool"], location: true, description: "Send notification '{0}' to {1}", aggregated: true])
@@ -10801,7 +10787,7 @@ private attributes() {
 		[ name: "level",					type: "number",			range: "0..100",		unit: "%",	],
 		[ name: "switch",					type: "enum",			options: ["on", "off"],	interactive: true,	],
 		[ name: "switch*",					type: "enum",			options: ["on", "off"],	interactive: true,	],
-		[ name: "colorTemperature",			type: "number",			range: "2000..7000",	unit: "°K",	],
+		[ name: "colorTemperature",			type: "number",			range: "1700..27000",	unit: "°K",	],
 		[ name: "consumable",				type: "enum",			options: ["missing", "good", "replace", "maintenance_required", "order"],	],
 		[ name: "contact",					type: "enum",			options: ["open", "closed"],	],
 		[ name: "door",						type: "enum",			options: ["unknown", "closed", "open", "closing", "opening"],	interactive: true,	],
