@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.160.20161014" }
+def version() {	return "v0.3.161.20161027" }
 /*
+ *	10/27/2016 >>> v0.3.161.20161027 - RC - Fixed a bug affecting the queueAskAlexaMessage virtual command task
  *	10/14/2016 >>> v0.3.160.20161014 - RC - Fixed a bug not allowing Set color to work when using HSL instead of a simple color. Compliments to @simonselmer
  *	10/04/2016 >>> v0.3.15f.20161004 - RC - Code trim down to avoid "Class file too large!" error in JVM
  *	10/03/2016 >>> v0.3.15e.20161003 - RC - Fixed a problem where latching pistons would not allow both conditional blocks to run for Simulate, Execute, Follow Up
@@ -955,7 +956,7 @@ private getConditionGroupPageContent(params, condition) {
 
 			if (id > 0) {
 				section(title: "Required data - do not change", hideable: true, hidden: true) {
-					input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
+					input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "-2..${pid+1}", defaultValue: pid
 				}
 			}
 		}
@@ -1341,7 +1342,7 @@ def pageCondition(params) {
 				}
 
 				section(title: "Required data - do not change", hideable: true, hidden: true) {
-					input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "$pid..${pid+1}", defaultValue: pid
+					input "condParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change condParent$id", range: "-2..${pid+1}", defaultValue: pid
 				}
 			}
 		}
@@ -1724,7 +1725,7 @@ def pageAction(params) {
 
 				if (id) {
 					section(title: "Required data - do not change", hideable: true, hidden: true) {
-						input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "$pid..${pid+1}", defaultValue: pid
+						input "actParent$id", "number", title: "Parent ID", description: "Value needs to be $pid, do not change", range: "-2..${pid+1}", defaultValue: pid
 					}
 				}
 			}
@@ -3464,7 +3465,7 @@ private getNextConditionId() {
 	def nextId = getLastConditionId(state.config.app.conditions) + 1
 	def otherNextId = getLastConditionId(state.config.app.otherConditions) + 1
 	nextId = nextId > otherNextId ? nextId : otherNextId
-	while (settings.findAll { it.key == "condParent" + nextId }) {
+	while (settings.find { it.key == "condParent" + nextId }) {
 		nextId++
 	}
 	return (int) nextId
@@ -7458,7 +7459,7 @@ private task_vcmd_queueAskAlexaMessage(device, action, task, suffix = "") {
 	}
 	def message = formatMessage(params[0].d)
     def unit = formatMessage(params[1].d)
-    def appName = (params.size() == 3 ? formatMessage(param[2].d) : null) ?: (app.label ?: app.name)
+    def appName = (params.size() == 3 ? formatMessage(params[2].d) : null) ?: (app.label ?: app.name)
     sendLocationEvent name: "AskAlexaMsgQueue", value: appName , isStateChange: true, descriptionText: message, unit: unit
 }
 
