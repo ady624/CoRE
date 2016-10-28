@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.161.20161027" }
+def version() {	return "v0.3.162.20161028" }
 /*
+ *	10/28/2016 >>> v0.3.162.20161028 - RC - Minor speed improvement for getNextConditionId()
  *	10/27/2016 >>> v0.3.161.20161027 - RC - Fixed a bug affecting the queueAskAlexaMessage virtual command task
  *	10/14/2016 >>> v0.3.160.20161014 - RC - Fixed a bug not allowing Set color to work when using HSL instead of a simple color. Compliments to @simonselmer
  *	10/04/2016 >>> v0.3.15f.20161004 - RC - Code trim down to avoid "Class file too large!" error in JVM
@@ -3465,7 +3466,8 @@ private getNextConditionId() {
 	def nextId = getLastConditionId(state.config.app.conditions) + 1
 	def otherNextId = getLastConditionId(state.config.app.otherConditions) + 1
 	nextId = nextId > otherNextId ? nextId : otherNextId
-	while (settings.find { it.key == "condParent" + nextId }) {
+    def keys = settings.findAll { it.key.startsWith("condParent") }
+	while (keys.find { it.key == "condParent" + nextId }) {
 		nextId++
 	}
 	return (int) nextId
