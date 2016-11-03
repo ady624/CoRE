@@ -20,6 +20,7 @@
 */
 def version() {	return "v0.3.162.20161028" }
 /*
+ *	11/02/2016 >>> v0.3.163.20161102 - RC - Adjustments to better fit the Ring integration - assuming 1 button if no numberOfButtons (may break other DTH implementations), assuming button #1 pushed if no buttonNumber is provided
  *	10/28/2016 >>> v0.3.162.20161028 - RC - Minor speed improvement for getNextConditionId()
  *	10/27/2016 >>> v0.3.161.20161027 - RC - Fixed a bug affecting the queueAskAlexaMessage virtual command task
  *	10/14/2016 >>> v0.3.160.20161014 - RC - Fixed a bug not allowing Set color to work when using HSL instead of a simple color. Compliments to @simonselmer
@@ -4607,8 +4608,11 @@ private evaluateDeviceCondition(condition, evt) {
 	if (evt && capability && capability.count && capability.data) {
 		//at this point we won't evaluate this condition unless we have the right sub device below
 		hasSubDevices = true
-		setVariable("\$currentEventDeviceIndex", cast(evt.jsonData ? evt.jsonData[capability.data] : 0, "number"), true)
-		def subDeviceId = "#${evt.jsonData ? evt.jsonData[capability.data] : "0"}".trim()
+        def idx = cast(evt.jsonData ? evt.jsonData[capability.data] : 0, "number")
+        //if button index is 0, make it 1
+        if ((attr.name == "button") && (idx == 0)) idx = 1
+		setVariable("\$currentEventDeviceIndex", idx, true)
+		def subDeviceId = "#$idx".trim()
 		def subDevices = condition.sdev ?: []
         if (subDeviceId == "#0") subDeviceId = "(none)"
 		if (subDevices && subDevices.size()) {
@@ -10046,7 +10050,7 @@ private listCommonDeviceSubDevices(devices, countAttributes, prefix = "") {
     	countAttributes = []
     }
 	for (device in devices) {
-		def cnt = device.name.toLowerCase().contains("lock") ? 32 : 4
+		def cnt = device.name.toLowerCase().contains("lock") ? 32 : 1
 		switch (device.name) {
 			case "Aeon Minimote":
 			case "Aeon Key Fob":
