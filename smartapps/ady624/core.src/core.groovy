@@ -18,7 +18,7 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.162.20161028" }
+def version() {	return "v0.3.163.20161102" }
 /*
  *	11/02/2016 >>> v0.3.163.20161102 - RC - Adjustments to better fit the Ring integration - assuming 1 button if no numberOfButtons (may break other DTH implementations), assuming button #1 pushed if no buttonNumber is provided
  *	10/28/2016 >>> v0.3.162.20161028 - RC - Minor speed improvement for getNextConditionId()
