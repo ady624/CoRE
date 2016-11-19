@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.162.20161028" }
+def version() {	return "v0.3.164.20161118" }
 /*
+ *	11/18/2016 >>> v0.3.164.20161102 - RC - Fixed a loose type casting causing Android ST 2.2.2 to fail - thank you @rappleg for the fix, also now encoding uri for web requests - may break things
  *	11/02/2016 >>> v0.3.163.20161102 - RC - Adjustments to better fit the Ring integration - assuming 1 button if no numberOfButtons (may break other DTH implementations), assuming button #1 pushed if no buttonNumber is provided
  *	10/28/2016 >>> v0.3.162.20161028 - RC - Minor speed improvement for getNextConditionId()
  *	10/27/2016 >>> v0.3.161.20161027 - RC - Fixed a bug affecting the queueAskAlexaMessage virtual command task
@@ -7608,7 +7609,7 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 6) return false
-	def uri = formatMessage(params[0].d)
+	def uri = java.net.URLEncoder.encode(formatMessage(params[0].d), "UTF-8")
     def method = params[1].d
     def contentType = params[2].d
     def variables = params[3].d
@@ -9091,18 +9092,21 @@ private formatOrdinalNumberName(number) {
 /******************************************************************************/
 
 //finds and returns the condition object for the given condition Id
+//fixed by @rappleg to use strict type casting - fix for Android ST 2.2.2 app
 private _traverseConditions(parent, conditionId) {
-	if (parent.id == conditionId) {
+    Integer conditionIdInt = conditionId instanceof String ? Integer.valueOf(conditionId) : conditionId
+	if (parent.id == conditionIdInt) {
 		return parent
 	}
 	for (condition in parent.children) {
-		def result = _traverseConditions(condition, conditionId)
+		def result = _traverseConditions(condition, conditionIdInt)
 		if (result) {
 			return result
 		}
 	}
 	return null
 }
+
 
 //returns a condition based on its ID
 private getCondition(conditionId, primary = null) {
