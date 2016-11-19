@@ -3492,7 +3492,7 @@ private createAction(parentId, onState = true, actionId = null) {
 	def action = [:]
 	//give the new condition an id
 	action.id = (int) actionId == null ? getNextActionId() : actionId
-	action.pid = (int) parentId
+	action.pid = (int) parentId.toInteger()
 	action.rs = !!onState
 	state.config.app.actions.push(action)
 	return action
