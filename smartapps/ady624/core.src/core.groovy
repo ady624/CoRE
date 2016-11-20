@@ -18,9 +18,10 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.164.20161118" }
+def version() {	return "v0.3.165.20161120" }
 /*
- *	11/18/2016 >>> v0.3.164.20161102 - RC - Fixed a loose type casting causing Android ST 2.2.2 to fail - thank you @rappleg for the fix, also now encoding uri for web requests - may break things
+ *	11/20/2016 >>> v0.3.165.20161120 - RC - DO NOT UPGRADE TO THIS UNLESS REQUESTED TO - Added support for EchoSistant, also fixed some bug with httpRequest (and added some extra logs)
+ *	11/18/2016 >>> v0.3.164.20161118 - RC - Fixed a loose type casting causing Android ST 2.2.2 to fail - thank you @rappleg for the fix, also now encoding uri for web requests - may break things
  *	11/02/2016 >>> v0.3.163.20161102 - RC - Adjustments to better fit the Ring integration - assuming 1 button if no numberOfButtons (may break other DTH implementations), assuming button #1 pushed if no buttonNumber is provided
  *	10/28/2016 >>> v0.3.162.20161028 - RC - Minor speed improvement for getNextConditionId()
  *	10/27/2016 >>> v0.3.161.20161027 - RC - Fixed a bug affecting the queueAskAlexaMessage virtual command task
@@ -640,7 +641,6 @@ def pageRebuildAllPistons() {
 
 private pageMainCoREPiston() {
 	//CoRE Piston main page
-	//dev()
 	state.run = "config"
 	configApp()
 	cleanUpConditions(true)
@@ -1082,6 +1082,10 @@ def pageCondition(params) {
 									if ((capability.name == "askAlexaMacro") && (!listAskAlexaMacros().size())) {
 										paragraph "It looks like you don't have the Ask Alexa SmartApp installed, or you haven't created any macros yet. To use this capability, please install Ask Alexa or, if already installed, create some macros first, then try again.", title: "Oh-oh!"
 										href "", title: "Ask Alexa", description: "Tap here for more information on Ask Alexa", style: "external", url: "https://community.smartthings.com/t/release-ask-alexa/46786"
+										showParameters = false
+									} else if ((capability.name == "echoSistantProfile") && (!listEchoSistantProfiles().size())) {
+										paragraph "It looks like you don't have the EchoSistant SmartApp installed, or you haven't created any profiles yet. To use this capability, please install EchoSistant or, if already installed, create some profiles first, then try again.", title: "Oh-oh!"
+										href "", title: "EchoSistant", description: "Tap here for more information on EchoSistant", style: "external", url: "https://community.smartthings.com/t/release-echosistant-version-1-2-0/62109"
 										showParameters = false
 									} else {
                                         def options = listComparisonOptions(attribute, supportsTriggers, overrideAttributeType)
@@ -2509,6 +2513,7 @@ def initializeCoRE() {
 	refreshPistons()
 	subscribe(location, "CoRE", coreHandler)
 	subscribe(location, "askAlexa", askAlexaHandler)
+	subscribe(location, "echoSistant", echoSistantHandler)
     subscribe(app, appTouchHandler)
     /* temporary - remove old handlers */
     unschedule(recovery1)
@@ -2569,6 +2574,7 @@ def initializeCoREStore() {
 	state.modules = state.modules ? state.modules : [:]
 	state.stateStore = state.stateStore ? state.stateStore : [:]
 	state.askAlexaMacros = state.askAlexaMacros ? state.askAlexaMacros : []
+	state.echoSistantProfiles = state.echoSistantProfiles ? state.echoSistantProfiles : []
     state.globalVars = state.globalVars ? state.globalVars : []
 }
 
@@ -2589,6 +2595,15 @@ def askAlexaHandler(evt) {
 	switch (evt.value) {
 		case "refresh":
 				atomicState.askAlexaMacros = evt.jsonData && evt.jsonData?.macros ? evt.jsonData.macros : []
+			break
+	}
+}
+
+def echoSistantHandler(evt) {
+	if (!evt) return
+	switch (evt.value) {
+		case "refresh":
+				atomicState.echoSistantProfiles = evt.jsonData && evt.jsonData?.profiles ? evt.jsonData.profiles : []
 			break
 	}
 }
@@ -2992,6 +3007,11 @@ def listAskAlexaMacros() {
 	return state.askAlexaMacros ? state.askAlexaMacros : []
 }
 
+def listEchoSistantProfiles() {
+	if (parent) return parent.listEchoSistantProfiles()
+	return state.echoSistantProfiles ? state.echoSistantProfiles : []
+}
+
 def getIftttKey() {
 	if (parent) return parent.getIftttKey()
 	def module = atomicState.modules?.IFTTT
@@ -3353,6 +3373,10 @@ private updateCondition(condition) {
 	switch (condition.cap) {
 		case "Ask Alexa Macro":
 			condition.attr = "askAlexaMacro"
+			condition.dev.push "location"
+			break
+		case "EchoSistant Profile":
+			condition.attr = "echoSistantProfile"
 			condition.dev.push "location"
 			break
 		case "IFTTT":
@@ -3969,7 +3993,7 @@ def executeHandler(data = null) {
 }
 
 private preAuthorizeEvent(evt) {
-	if (!(evt.name in ["piston", "routineExecuted", "askAlexaMacro", "ifttt", "variable"])) return true
+	if (!(evt.name in ["piston", "routineExecuted", "askAlexaMacro", "echoSistantProfile", "ifttt", "variable"])) return true
 	//prevent one piston from retriggering itself
 	if (evt && (evt.name == "piston") && (evt.value == app.label)) return false
 	state.filterEvent = true
@@ -4107,7 +4131,7 @@ private broadcastEvent(evt, primary, secondary) {
     setVariable("\$currentEventValue", lastEvent.event.value, true)
     setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
     setVariable("\$currentEventDelay", lastEvent.delay, true)
-    if (!(evt.name in ["askAlexaMacro", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
+    if (!(evt.name in ["askAlexaMacro", "echoSistantProfile", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
         def cache = atomicState.cache
         cache = cache ? cache : [:]
         def deviceId = evt.deviceId ? evt.deviceId : location.id
@@ -4563,6 +4587,11 @@ private evaluateDeviceCondition(condition, evt) {
 			virtualCurrentValue = evt ? evt.value : "<<<unknown piston>>>"
 			attribute = "askAlexaMacro"
 			break
+		case "EchoSistant Profile":
+			devices = [location]
+			virtualCurrentValue = evt ? evt.value : "<<<unknown piston>>>"
+			attribute = "echoSistantProfile"
+			break
 		case "IFTTT":
 			devices = [location]
 			virtualCurrentValue = evt ? evt.value : "<<<unknown IFTTT event>>>"
@@ -4657,7 +4686,7 @@ private evaluateDeviceCondition(condition, evt) {
 
 			def oldValue = null
 			def oldValueSince = null
-			if (evt && !(evt.name in ["askAlexaMacro", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
+			if (evt && !(evt.name in ["askAlexaMacro", "echoSistantProfile", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
 				def cache = state.cache ? state.cache : [:]
 				def cachedValue = cache[device.id + "-" + attribute]
 				if (cachedValue) {
@@ -7609,7 +7638,7 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 6) return false
-	def uri = java.net.URLEncoder.encode(formatMessage(params[0].d), "UTF-8")
+	def uri = formatMessage(params[0].d).replace(" ", "%20")
     def method = params[1].d
     def contentType = params[2].d
     def variables = params[3].d
@@ -7642,6 +7671,7 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
     }
     if (internal) {    
     	try {
+            debug "Sending internal web request to: $uri", null, "info"
             sendHubCommand(new physicalgraph.device.HubAction(
                 method: method,
                 path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
@@ -7655,6 +7685,7 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
         }            
     } else {
         try {
+            debug "Sending external web request to: $uri", null, "info"
             def requestParams = [
                 uri:  "${protocol}://${uri}",
                 query: method == "GET" ? data : null,
@@ -9348,7 +9379,7 @@ private _cleanUpCondition(condition, deleteGroups) {
 	if (condition.id > 0) {
 		if (condition.children == null) {
 			//if regular condition
-			if (!(condition.cap in ["Ask Alexa Macro", "IFTTT", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
+			if (!(condition.cap in ["Ask Alexa Macro", "EchoSistant Profile", "IFTTT", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
 				deleteCondition(condition.id);
 				return true
 			//} else {
@@ -9452,6 +9483,7 @@ private getConditionDescription(id, level = 0) {
 			//post formatting
 			switch (capability.name) {
 				case "askAlexaMacro":
+				case "echoSistantProfile":
 				case "piston":
 				case "routine":
 					deviceList = "${capability.display} '${values.trim()}' was "
@@ -9904,7 +9936,7 @@ private listComparisonOptions(attributeName, allowTriggers, overrideAttributeTyp
 	def conditions = []
 	def triggers = []
 	def attribute = getAttributeByName(attributeName, device)
-	def allowTimedComparisons = !(attributeName in ["askAlexaMacro", "mode", "ifttt", "alarmSystemStatus", "piston", "routineExecuted", "variable"])
+	def allowTimedComparisons = !(attributeName in ["askAlexaMacro", "echoSistantProfile", "mode", "ifttt", "alarmSystemStatus", "piston", "routineExecuted", "variable"])
 	if (attribute) {
 		def optionCount = attribute.options ? attribute.options.size() : 0
 		def attributeType = overrideAttributeType ? overrideAttributeType : attribute.type
@@ -10354,7 +10386,7 @@ private parseCommandParameter(parameter) {
 		dataType = tokens[tokens.size() - 1]
 	}
 
-	if (dataType in ["askAlexaMacro", "ifttt", "attribute", "attributes", "contact", "contacts", "variable", "variables", "lifxScenes", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
+	if (dataType in ["askAlexaMacro", "echoSistantProfile", "ifttt", "attribute", "attributes", "contact", "contacts", "variable", "variables", "lifxScenes", "stateVariable", "stateVariables", "routine", "piston", "aggregation", "dataType"]) {
 		//special case handled internally
 		return [title: title, type: dataType, required: required, last: last]
 	}
@@ -10440,25 +10472,22 @@ private capabilities() {
 		[ name: "piston",							display: "CoRE Piston",						attribute: "piston",					commands: ["executePiston"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Piston"	],
 		[ name: "dateAndTime",						display: "Date & Time",						attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "time", name: "time"],		virtualDeviceName: "Date & Time"	],
 		[ name: "switchLevel",						display: "Dimmable Light",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
-		[ name: "switchLevel",						display: "Dimmer",							attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers",			],
+		[ name: "echoSistantProfile",				display: "EchoSistant Profile",				attribute: "echoSistantProfile",		commands: [],																		multiple: true,			virtualDevice: location,	virtualDeviceName: "EchoSistant Profile"	],
 		[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					multiple: true,			devices: "energy meters"],
 		[ name: "ifttt",							display: "IFTTT",							attribute: "ifttt",						commands: [],																		multiple: false,		virtualDevice: location,	virtualDeviceName: "IFTTT"	],
 		[ name: "illuminanceMeasurement",			display: "Illuminance Measurement",			attribute: "illuminance",				multiple: true,			devices: "illuminance sensors",	],
 		[ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
 		[ name: "indicator",						display: "Indicator",						attribute: "indicatorStatus",			multiple: true,			devices: "indicator devices"],
 		[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						multiple: true,			devices: "leak sensors",	],
-		[ name: "switch",							display: "Light bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
 		[ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
 		[ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],						count: "numberOfCodes,numCodes", data: "usedCode", subDisplay: "By user code", multiple: true,			devices: "electronic locks", ],
 		[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
-		[ name: "locationMode",						display: "Mode",							attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
 		[ name: "momentary",						display: "Momentary",						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
 		[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					multiple: true,			devices: "motion sensors",	],
 		[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
 		[ name: "notification",						display: "Notification",					commands: ["deviceNotification"],													multiple: true,			devices: "notification devices",	],
 		[ name: "pHMeasurement",					display: "pH Measurement",					attribute: "pH",						multiple: true,			devices: "pH sensors",	],
 		[ name: "occupancy",						display: "Occupancy",						attribute: "occupancy",					multiple: true,			devices: "occupancy detectors",	],
-		[ name: "switch",							display: "Outlet",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "outlets",			],
 		[ name: "piston",							display: "Piston",							attribute: "piston",					commands: ["executePiston"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Piston"	],
 		[ name: "polling",							display: "Polling",							commands: ["poll"],																	multiple: true,			devices: "pollable devices",	],
 		[ name: "powerMeter",						display: "Power Meter",						attribute: "power",						multiple: true,			devices: "power meters",	],
@@ -10492,7 +10521,7 @@ private capabilities() {
 		[ name: "thermostatOperatingState",			display: "Thermostat Operating State",		attribute: "thermostatOperatingState",	multiple: true,			],
 		[ name: "thermostatSetpoint",				display: "Thermostat Setpoint",				attribute: "thermostatSetpoint",		multiple: true,			],
 		[ name: "threeAxis",						display: "Three Axis Sensor",				attribute: "orientation",				multiple: true,			devices: "three axis sensors",	],
-		[ name: "dateAndTime",						display: "Time",							attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "time", name: "time"],		virtualDeviceName: "Date & Time"	],
+		[ name: "dateAndTime",						display: "Time",							attribute: "time",						multiple: true,			, virtualDevice: [id: "time", name: "time"],		virtualDeviceName: "Date & Time"	],
 		[ name: "timedSession",						display: "Timed Session",					attribute: "sessionStatus",				commands: ["setTimeRemaining", "start", "stop", "pause", "cancel"],					multiple: true,			devices: "timed sessions"],
 		[ name: "tone",								display: "Tone Generator",					commands: ["beep"],																	multiple: true,			devices: "tone generators",	],
 		[ name: "touchSensor",						display: "Touch Sensor",					attribute: "touch",						multiple: true,			],
@@ -10506,10 +10535,11 @@ private capabilities() {
 
 private commands() {
 	def tempUnit = "°" + location.temperatureScale
+    def defGroup = "Control [devices]"
 	return [
 		[ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set location mode",			],
 		[ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set Smart Home Monitor status",],
-		[ name: "on",										category: "Convenience",				group: "Control [devices]",			display: "Turn on", 						attribute: "switch",	value: "on",	],
+		[ name: "on",										category: "Convenience",				group: defGroup,			display: "Turn on", 						attribute: "switch",	value: "on",	],
 		[ name: "on1",										display: "Turn on #1", 						attribute: "switch1",	value: "on",	],
 		[ name: "on2",										display: "Turn on #2", 						attribute: "switch2",	value: "on",	],
 		[ name: "on3",										display: "Turn on #3", 						attribute: "switch3",	value: "on",	],
@@ -10518,7 +10548,7 @@ private commands() {
 		[ name: "on6",										display: "Turn on #6", 						attribute: "switch6",	value: "on",	],
 		[ name: "on7",										display: "Turn on #7", 						attribute: "switch7",	value: "on",	],
 		[ name: "on8",										display: "Turn on #8", 						attribute: "switch8",	value: "on",	],
-		[ name: "off",										category: "Convenience",				group: "Control [devices]",			display: "Turn off",						attribute: "switch",	value: "off",	],
+		[ name: "off",										category: "Convenience",				group: defGroup,			display: "Turn off",						attribute: "switch",	value: "off",	],
 		[ name: "off1",										display: "Turn off #1",						attribute: "switch1",	value: "off",	],
 		[ name: "off2",										display: "Turn off #2",						attribute: "switch2",	value: "off",	],
 		[ name: "off3",										display: "Turn off #3",						attribute: "switch3",	value: "off",	],
@@ -10536,68 +10566,68 @@ private commands() {
 		[ name: "toggle6",									display: "Toggle #1",	],
 		[ name: "toggle7",									display: "Toggle #1",	],
 		[ name: "toggle8",									display: "Toggle #1",	],
-		[ name: "setColor",									category: "Convenience",				group: "Control [devices]",			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], 	attribute: "color",		value: "*|color",	],
-		[ name: "setLevel",									category: "Convenience",				group: "Control [devices]",			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",		attribute: "level",		value: "*|number",	],
-		[ name: "setHue",									category: "Convenience",				group: "Control [devices]",			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	attribute: "hue",		value: "*|number",	],
-		[ name: "setSaturation",							category: "Convenience",				group: "Control [devices]",			display: "Set saturation",				parameters: ["Saturation:saturation"], description: "Set saturation to {0}%",	attribute: "saturation",		value: "*|number",	],
-		[ name: "setColorTemperature",						category: "Convenience",				group: "Control [devices]",			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], description: "Set color temperature to {0}°K",	attribute: "colorTemperature",		value: "*|number",	],
-		[ name: "open",										category: "Convenience",				group: "Control [devices]",			display: "Open",						attribute: "door",		value: "open",	],
-		[ name: "close",									category: "Convenience",				group: "Control [devices]",			display: "Close",						attribute: "door",		value: "close",	],
-		[ name: "windowShade.open",							category: "Convenience",				group: "Control [devices]",			display: "Open fully",					],
-		[ name: "windowShade.close",						category: "Convenience",				group: "Control [devices]",			display: "Close fully",					],
-		[ name: "windowShade.presetPosition",				category: "Convenience",				group: "Control [devices]",			display: "Move to preset position",		],
-		[ name: "lock",										category: "Safety and Security",		group: "Control [devices]",			display: "Lock",						attribute: "lock",		value: "locked",	],
-		[ name: "unlock",									category: "Safety and Security",		group: "Control [devices]",			display: "Unlock",						attribute: "lock",		value: "unlocked",	],
-		[ name: "take",										category: "Safety and Security",		group: "Control [devices]",			display: "Take a picture",				],
-		[ name: "alarm.off",								category: "Safety and Security",		group: "Control [devices]",			display: "Stop",						attribute: "alarm",		value: "off",	],
-		[ name: "alarm.strobe",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe",						attribute: "alarm",		value: "strobe",	],
-		[ name: "alarm.siren",								category: "Safety and Security",		group: "Control [devices]",			display: "Siren",						attribute: "alarm",		value: "siren",	],
-		[ name: "alarm.both",								category: "Safety and Security",		group: "Control [devices]",			display: "Strobe and Siren",			attribute: "alarm",		value: "both",	],
-		[ name: "thermostat.off",							category: "Comfort",					group: "Control [devices]",			display: "Set to Off",					attribute: "thermostatMode",	value: "off",	],
-		[ name: "thermostat.heat",							category: "Comfort",					group: "Control [devices]",			display: "Set to Heat",					attribute: "thermostatMode",	value: "heat",	],
-		[ name: "thermostat.cool",							category: "Comfort",					group: "Control [devices]",			display: "Set to Cool",					attribute: "thermostatMode",	value: "cool",	],
-		[ name: "thermostat.auto",							category: "Comfort",					group: "Control [devices]",			display: "Set to Auto",					attribute: "thermostatMode",	value: "auto",	],
-		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: "Control [devices]",			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergencyHeat",	],
-		[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: "Control [devices]",			display: "Quick set heating point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
-		[ name: "thermostat.quickSetCool",					category: "Comfort",					group: "Control [devices]",			display: "Quick set cooling point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
-		[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "thermostatHeatingSetpoint",	value: "*|decimal",	],
-		[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: "Control [devices]",			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	attribute: "thermostatCoolingSetpoint",	value: "*|decimal",	],
-		[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: "Control [devices]",			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	attribute: "thermostatMode",	value: "*|string",	],
-		[ name: "fanOn",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to On",				],
-		[ name: "fanCirculate",								category: "Comfort",					group: "Control [devices]",			display: "Set fan to Circulate",		],
-		[ name: "fanAuto",									category: "Comfort",					group: "Control [devices]",			display: "Set fan to Auto",				],
-		[ name: "setThermostatFanMode",						category: "Comfort",					group: "Control [devices]",			display: "Set fan mode",				parameters: ["Fan mode:thermostatFanMode"], description: "Set fan mode to {0}",	],
-		[ name: "play",										category: "Entertainment",				group: "Control [devices]",			display: "Play",	],
-		[ name: "pause",									category: "Entertainment",				group: "Control [devices]",			display: "Pause",	],
-		[ name: "stop",										category: "Entertainment",				group: "Control [devices]",			display: "Stop",	],
-		[ name: "nextTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Next track",					],
-		[ name: "previousTrack",							category: "Entertainment",				group: "Control [devices]",			display: "Previous track",				],
-		[ name: "mute",										category: "Entertainment",				group: "Control [devices]",			display: "Mute",	],
-		[ name: "unmute",									category: "Entertainment",				group: "Control [devices]",			display: "Unmute",	],
-		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: "Control [devices]",			display: "Set volume",					parameters: ["Level:level"], description: "Set volume to {0}%",	],
-		[ name: "playText",									category: "Entertainment",				group: "Control [devices]",			display: "Speak text",					parameters: ["Text:string", "?Volume:level"], description: "Speak text \"{0}\" at volume {1}", ],
+		[ name: "setColor",									category: "Convenience",				group: defGroup,			display: "Set color",					parameters: ["?*Color:color","?*RGB:text","Hue:hue","Saturation:saturation","Lightness:level"], 	attribute: "color",		value: "*|color",	],
+		[ name: "setLevel",									category: "Convenience",				group: defGroup,			display: "Set level",					parameters: ["Level:level"], description: "Set level to {0}%",		attribute: "level",		value: "*|number",	],
+		[ name: "setHue",									category: "Convenience",				group: defGroup,			display: "Set hue",						parameters: ["Hue:hue"], description: "Set hue to {0}°",	attribute: "hue",		value: "*|number",	],
+		[ name: "setSaturation",							category: "Convenience",				group: defGroup,			display: "Set saturation",				parameters: ["Saturation:saturation"], description: "Set saturation to {0}%",	attribute: "saturation",		value: "*|number",	],
+		[ name: "setColorTemperature",						category: "Convenience",				group: defGroup,			display: "Set color temperature",		parameters: ["Color Temperature:colorTemperature"], description: "Set color temperature to {0}°K",	attribute: "colorTemperature",		value: "*|number",	],
+		[ name: "open",										category: "Convenience",				group: defGroup,			display: "Open",						attribute: "door",		value: "open",	],
+		[ name: "close",									category: "Convenience",				group: defGroup,			display: "Close",						attribute: "door",		value: "close",	],
+		[ name: "windowShade.open",							category: "Convenience",				group: defGroup,			display: "Open fully",					],
+		[ name: "windowShade.close",						category: "Convenience",				group: defGroup,			display: "Close fully",					],
+		[ name: "windowShade.presetPosition",				category: "Convenience",				group: defGroup,			display: "Move to preset position",		],
+		[ name: "lock",										category: "Safety and Security",		group: defGroup,			display: "Lock",						attribute: "lock",		value: "locked",	],
+		[ name: "unlock",									category: "Safety and Security",		group: defGroup,			display: "Unlock",						attribute: "lock",		value: "unlocked",	],
+		[ name: "take",										category: "Safety and Security",		group: defGroup,			display: "Take a picture",				],
+		[ name: "alarm.off",								category: "Safety and Security",		group: defGroup,			display: "Stop",						attribute: "alarm",		value: "off",	],
+		[ name: "alarm.strobe",								category: "Safety and Security",		group: defGroup,			display: "Strobe",						attribute: "alarm",		value: "strobe",	],
+		[ name: "alarm.siren",								category: "Safety and Security",		group: defGroup,			display: "Siren",						attribute: "alarm",		value: "siren",	],
+		[ name: "alarm.both",								category: "Safety and Security",		group: defGroup,			display: "Strobe and Siren",			attribute: "alarm",		value: "both",	],
+		[ name: "thermostat.off",							category: "Comfort",					group: defGroup,			display: "Set to Off",					attribute: "thermostatMode",	value: "off",	],
+		[ name: "thermostat.heat",							category: "Comfort",					group: defGroup,			display: "Set to Heat",					attribute: "thermostatMode",	value: "heat",	],
+		[ name: "thermostat.cool",							category: "Comfort",					group: defGroup,			display: "Set to Cool",					attribute: "thermostatMode",	value: "cool",	],
+		[ name: "thermostat.auto",							category: "Comfort",					group: defGroup,			display: "Set to Auto",					attribute: "thermostatMode",	value: "auto",	],
+		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: defGroup,			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergencyHeat",	],
+		[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: defGroup,			display: "Quick set heating point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
+		[ name: "thermostat.quickSetCool",					category: "Comfort",					group: defGroup,			display: "Quick set cooling point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
+		[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "thermostatHeatingSetpoint",	value: "*|decimal",	],
+		[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	attribute: "thermostatCoolingSetpoint",	value: "*|decimal",	],
+		[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: defGroup,			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	attribute: "thermostatMode",	value: "*|string",	],
+		[ name: "fanOn",									category: "Comfort",					group: defGroup,			display: "Set fan to On",				],
+		[ name: "fanCirculate",								category: "Comfort",					group: defGroup,			display: "Set fan to Circulate",		],
+		[ name: "fanAuto",									category: "Comfort",					group: defGroup,			display: "Set fan to Auto",				],
+		[ name: "setThermostatFanMode",						category: "Comfort",					group: defGroup,			display: "Set fan mode",				parameters: ["Fan mode:thermostatFanMode"], description: "Set fan mode to {0}",	],
+		[ name: "play",										category: "Entertainment",				group: defGroup,			display: "Play",	],
+		[ name: "pause",									category: "Entertainment",				group: defGroup,			display: "Pause",	],
+		[ name: "stop",										category: "Entertainment",				group: defGroup,			display: "Stop",	],
+		[ name: "nextTrack",								category: "Entertainment",				group: defGroup,			display: "Next track",					],
+		[ name: "previousTrack",							category: "Entertainment",				group: defGroup,			display: "Previous track",				],
+		[ name: "mute",										category: "Entertainment",				group: defGroup,			display: "Mute",	],
+		[ name: "unmute",									category: "Entertainment",				group: defGroup,			display: "Unmute",	],
+		[ name: "musicPlayer.setLevel",						category: "Entertainment",				group: defGroup,			display: "Set volume",					parameters: ["Level:level"], description: "Set volume to {0}%",	],
+		[ name: "playText",									category: "Entertainment",				group: defGroup,			display: "Speak text",					parameters: ["Text:string", "?Volume:level"], description: "Speak text \"{0}\" at volume {1}", ],
 		[ name: "playTextAndRestore",	display: "Speak text and restore",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and restore", ],
 		[ name: "playTextAndResume",	display: "Speak text and resume",		parameters: ["Text:string","?Volume:level"], 	description: "Speak text \"{0}\" at volume {1} and resume", ],
-		[ name: "playTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Play track",					parameters: ["Track URI:string","?Volume:level"],				description: "Play track \"{0}\" at volume {1}",	],
+		[ name: "playTrack",								category: "Entertainment",				group: defGroup,			display: "Play track",					parameters: ["Track URI:string","?Volume:level"],				description: "Play track \"{0}\" at volume {1}",	],
 		[ name: "playTrackAtVolume",	display: "Play track at volume",		parameters: ["Track URI:string","Volume:level"],description: "Play track \"{0}\" at volume {1}",	],
 		[ name: "playTrackAndRestore",	display: "Play track and restore",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" at volume {1} and restore", ],
 		[ name: "playTrackAndResume",	display: "Play track and resume",		parameters: ["Track URI:string","?Volume:level"], 	description: "Play track \"{0}\" at volume {1} and resume", ],
-		[ name: "setTrack",									category: "Entertainment",				group: "Control [devices]",			parameters: ["Track URI:string"],	display: "Set track to '{0}'",					],
+		[ name: "setTrack",									category: "Entertainment",				group: defGroup,			parameters: ["Track URI:string"],	display: "Set track to '{0}'",					],
 		[ name: "setLocalLevel",display: "Set local level",				parameters: ["Level:level"],	description: "Set local level to {0}", ],
-		[ name: "resumeTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Resume track",				],
-		[ name: "restoreTrack",								category: "Entertainment",				group: "Control [devices]",			display: "Restore track",				],
-		[ name: "speak",									category: "Entertainment",				group: "Control [devices]",			display: "Speak",						parameters: ["Message:string"], description: "Speak \"{0}\"", ],
-		[ name: "startActivity",							category: "Entertainment",				group: "Control [devices]",			display: "Start activity",				parameters: ["Activity:string"], description: "Start activity\"{0}\"",	],
-		[ name: "getCurrentActivity",						category: "Entertainment",				group: "Control [devices]",			display: "Get current activity",		],
-		[ name: "getAllActivities",							category: "Entertainment",				group: "Control [devices]",			display: "Get all activities",			],
-		[ name: "push",										category: "Other",						group: "Control [devices]",			display: "Push",	],
-		[ name: "beep",										category: "Other",						group: "Control [devices]",			display: "Beep",	],
-		[ name: "timedSession.setTimeRemaining",			category: "Other",						group: "Control [devices]",			display: "Set remaining time",			parameters: ["Remaining time [s]:number"], description: "Set remaining time to {0}s",	],
-		[ name: "timedSession.start",						category: "Other",						group: "Control [devices]",			display: "Start timed session",			],
-		[ name: "timedSession.stop",						category: "Other",						group: "Control [devices]",			display: "Stop timed session",			],
-		[ name: "timedSession.pause",						category: "Other",						group: "Control [devices]",			display: "Pause timed session",			],
-		[ name: "timedSession.cancel",						category: "Other",						group: "Control [devices]",			display: "Cancel timed session",		],
-		[ name: "setConsumableStatus",						category: "Other",						group: "Control [devices]",			display: "Set consumable status",		parameters: ["Status:consumable"], description: "Set consumable status to {0}",	],
+		[ name: "resumeTrack",								category: "Entertainment",				group: defGroup,			display: "Resume track",				],
+		[ name: "restoreTrack",								category: "Entertainment",				group: defGroup,			display: "Restore track",				],
+		[ name: "speak",									category: "Entertainment",				group: defGroup,			display: "Speak",						parameters: ["Message:string"], description: "Speak \"{0}\"", ],
+		[ name: "startActivity",							category: "Entertainment",				group: defGroup,			display: "Start activity",				parameters: ["Activity:string"], description: "Start activity\"{0}\"",	],
+		[ name: "getCurrentActivity",						category: "Entertainment",				group: defGroup,			display: "Get current activity",		],
+		[ name: "getAllActivities",							category: "Entertainment",				group: defGroup,			display: "Get all activities",			],
+		[ name: "push",										category: "Other",						group: defGroup,			display: "Push",	],
+		[ name: "beep",										category: "Other",						group: defGroup,			display: "Beep",	],
+		[ name: "timedSession.setTimeRemaining",			category: "Other",						group: defGroup,			display: "Set remaining time",			parameters: ["Remaining time [s]:number"], description: "Set remaining time to {0}s",	],
+		[ name: "timedSession.start",						category: "Other",						group: defGroup,			display: "Start timed session",			],
+		[ name: "timedSession.stop",						category: "Other",						group: defGroup,			display: "Stop timed session",			],
+		[ name: "timedSession.pause",						category: "Other",						group: defGroup,			display: "Pause timed session",			],
+		[ name: "timedSession.cancel",						category: "Other",						group: defGroup,			display: "Cancel timed session",		],
+		[ name: "setConsumableStatus",						category: "Other",						group: defGroup,			display: "Set consumable status",		parameters: ["Status:consumable"], description: "Set consumable status to {0}",	],
 		[ name: "configure",	display: "Configure",					],
 		[ name: "poll",			display: "Poll",	],
 		[ name: "refresh",		display: "Refresh",	],
@@ -10839,9 +10869,9 @@ private attributes() {
 		[ name: "sessionStatus",			type: "enum",			options: ["paused", "stopped", "running", "canceled"],	],
 		[ name: "threeAxis",				type: "vector3",		],
 		[ name: "orientation",				type: "orientation",	options: threeAxisOrientations(),	valueType: "enum",	subscribe: "threeAxis",	],
-		[ name: "axisX",					type: "number",			range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
-		[ name: "axisY",					type: "number",			range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
-		[ name: "axisZ",					type: "number",			range: "-1024..1024",	unit: null,		options: null,					subscribe: "threeAxis",		],
+		[ name: "axisX",					type: "number",			range: "-1024..1024",	subscribe: "threeAxis",		],
+		[ name: "axisY",					type: "number",			range: "-1024..1024",	subscribe: "threeAxis",		],
+		[ name: "axisZ",					type: "number",			range: "-1024..1024",	subscribe: "threeAxis",		],
 		[ name: "touch",					type: "enum",			options: ["touched"],		],
 		[ name: "valve",					type: "enum",			options: ["open", "closed"],					],
 		[ name: "voltage",					type: "decimal",		range: "*..*",			unit: "V",	],
@@ -10854,6 +10884,7 @@ private attributes() {
 		[ name: "variable",					type: "enum",			options: state.run == "config" ? listVariables(true) : [],	valueType: "enum",	],
 		[ name: "time",						type: "time",	],
 		[ name: "askAlexaMacro",			type: "askAlexaMacro",	options: state.run == "config" ? listAskAlexaMacros() : [], valueType: "enum"],
+		[ name: "echoSistantProfile",		type: "echoSistantProfile",	options: state.run == "config" ? listEchoSistantProfiles() : [], valueType: "enum"],
 		[ name: "ifttt",					type: "ifttt",			valueType: "string"],
 	]
 	return state.temp.attributes
@@ -10934,6 +10965,7 @@ private comparisons() {
 		[ type: "routine",				options: optionsEvents		],
 		[ type: "piston",				options: optionsEvents		],
 		[ type: "askAlexaMacro",		options: optionsEvents		],
+		[ type: "echoSistantProfile",	options: optionsEvents		],
 		[ type: "ifttt",				options: optionsEvents		],
 		[ type: "number",				options: optionsNumber,		],
 		[ type: "variable",				options: optionsNumber,		],
@@ -11195,6 +11227,3 @@ private getColorByName(name, ownerId = null, taskId = null) {
 /*** DEVELOPMENT AREA														***/
 /*** Write code here and then move it to its proper location				***/
 /******************************************************************************/
-
-private dev() {
-}
