@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.165.20161120" }
+def version() {	return "v0.3.166.20161121" }
 /*
+ *	11/21/2016 >>> v0.3.166.20161120 - RC - Added some capabilities back - had to remove some to make room for EchoSistant - CoRE is now reaching the max code base limit
  *	11/20/2016 >>> v0.3.165.20161120 - RC - DO NOT UPGRADE TO THIS UNLESS REQUESTED TO - Added support for EchoSistant, also fixed some bug with httpRequest (and added some extra logs)
  *	11/18/2016 >>> v0.3.164.20161118 - RC - Fixed a loose type casting causing Android ST 2.2.2 to fail - thank you @rappleg for the fix, also now encoding uri for web requests - may break things
  *	11/02/2016 >>> v0.3.163.20161102 - RC - Adjustments to better fit the Ring integration - assuming 1 button if no numberOfButtons (may break other DTH implementations), assuming button #1 pushed if no buttonNumber is provided
@@ -10472,6 +10473,7 @@ private capabilities() {
 		[ name: "piston",							display: "CoRE Piston",						attribute: "piston",					commands: ["executePiston"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Piston"	],
 		[ name: "dateAndTime",						display: "Date & Time",						attribute: "time",						commands: null, /* wish we could control time */									multiple: true,			, virtualDevice: [id: "time", name: "time"],		virtualDeviceName: "Date & Time"	],
 		[ name: "switchLevel",						display: "Dimmable Light",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
+		[ name: "switchLevel",						display: "Dimmer",							attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmable lights",	],
 		[ name: "echoSistantProfile",				display: "EchoSistant Profile",				attribute: "echoSistantProfile",		commands: [],																		multiple: true,			virtualDevice: location,	virtualDeviceName: "EchoSistant Profile"	],
 		[ name: "energyMeter",						display: "Energy Meter",					attribute: "energy",					multiple: true,			devices: "energy meters"],
 		[ name: "ifttt",							display: "IFTTT",							attribute: "ifttt",						commands: [],																		multiple: false,		virtualDevice: location,	virtualDeviceName: "IFTTT"	],
@@ -10482,6 +10484,7 @@ private capabilities() {
 		[ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
 		[ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],						count: "numberOfCodes,numCodes", data: "usedCode", subDisplay: "By user code", multiple: true,			devices: "electronic locks", ],
 		[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
+		[ name: "locationMode",						display: "Mode",							attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
 		[ name: "momentary",						display: "Momentary",						commands: ["push"],																	multiple: true,			devices: "momentary switches"],
 		[ name: "motionSensor",						display: "Motion Sensor",					attribute: "motion",					multiple: true,			devices: "motion sensors",	],
 		[ name: "musicPlayer",						display: "Music Player",					attribute: "status",					commands: ["play", "pause", "stop", "nextTrack", "playTrack", "setLevel", "playText", "mute", "previousTrack", "unmute", "setTrack", "resumeTrack", "restoreTrack"],	multiple: true,			devices: "music players", ],
