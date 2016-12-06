@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.166.20161121" }
+def version() {	return "v0.3.167.20161206" }
 /*
+ *	12/06/2016 >>> v0.3.167.20161206 - RC - Added some capabilities back - Light Bulb - removed Step Sensor as there is no more room :(
  *	11/21/2016 >>> v0.3.166.20161120 - RC - Added some capabilities back - had to remove some to make room for EchoSistant - CoRE is now reaching the max code base limit
  *	11/20/2016 >>> v0.3.165.20161120 - RC - DO NOT UPGRADE TO THIS UNLESS REQUESTED TO - Added support for EchoSistant, also fixed some bug with httpRequest (and added some extra logs)
  *	11/18/2016 >>> v0.3.164.20161118 - RC - Fixed a loose type casting causing Android ST 2.2.2 to fail - thank you @rappleg for the fix, also now encoding uri for web requests - may break things
@@ -10481,6 +10482,7 @@ private capabilities() {
 		[ name: "imageCapture",						display: "Image Capture",					attribute: "image",						commands: ["take"],																	multiple: true,			devices: "cameras"],
 		[ name: "indicator",						display: "Indicator",						attribute: "indicatorStatus",			multiple: true,			devices: "indicator devices"],
 		[ name: "waterSensor",						display: "Leak Sensor",						attribute: "water",						multiple: true,			devices: "leak sensors",	],
+		[ name: "switch",							display: "Light Bulb",						attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "lights", 			],
 		[ name: "locationMode",						display: "Location Mode",					attribute: "mode",						commands: ["setMode"],																multiple: false,		devices: "location", virtualDevice: location	],
 		[ name: "lock",								display: "Lock",							attribute: "lock",						commands: ["lock", "unlock"],						count: "numberOfCodes,numCodes", data: "usedCode", subDisplay: "By user code", multiple: true,			devices: "electronic locks", ],
 		[ name: "mediaController",					display: "Media Controller",				attribute: "currentActivity",			commands: ["startActivity", "getAllActivities", "getCurrentActivity"],				multiple: true,			devices: "media controllers"],
@@ -10509,7 +10511,7 @@ private capabilities() {
 		[ name: "smokeDetector",					display: "Smoke Detector",					attribute: "smoke",						multiple: true,			devices: "smoke detectors",	],
 		[ name: "soundSensor",						display: "Sound Sensor",					attribute: "sound",						multiple: true,			devices: "sound sensors",	],
 		[ name: "speechSynthesis",					display: "Speech Synthesis",				commands: ["speak"],																multiple: true,			devices: "speech synthesizers", ],
-		[ name: "stepSensor",						display: "Step Sensor",						attribute: "steps",						multiple: true,			devices: "step sensors",	],
+		//[ name: "stepSensor",						display: "Step Sensor",						attribute: "steps",						multiple: true,			devices: "step sensors",	],
 		[ name: "switch",							display: "Switch",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "switches",			],
 		[ name: "switchLevel",						display: "Switch Level",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers" ],
 		[ name: "soundPressureLevel",				display: "Sound Pressure Level",			attribute: "soundPressureLevel",		multiple: true,			devices: "sound pressure sensors",	],
