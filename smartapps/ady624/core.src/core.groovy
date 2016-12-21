@@ -18,8 +18,9 @@
  *
  *  Version history
 */
-def version() {	return "v0.3.167.20161206" }
+def version() {	return "v0.3.168.20161220" }
 /*
+ *	12/20/2016 >>> v0.3.168.20161220 - RC - Fixed a bug with loading attributes coolingSetpoint and heatingSetpoint from variables, thank you @bridaus for pointing it out, also extended conditional time options to 360 minutes
  *	12/06/2016 >>> v0.3.167.20161206 - RC - Added some capabilities back - Light Bulb - removed Step Sensor as there is no more room :(
  *	11/21/2016 >>> v0.3.166.20161120 - RC - Added some capabilities back - had to remove some to make room for EchoSistant - CoRE is now reaching the max code base limit
  *	11/20/2016 >>> v0.3.165.20161120 - RC - DO NOT UPGRADE TO THIS UNLESS REQUESTED TO - Added support for EchoSistant, also fixed some bug with httpRequest (and added some extra logs)
@@ -8954,7 +8955,7 @@ private getThreeAxisOrientation(value, getIndex = false) {
 }
 private timeOptions(trigger = false) {
 	def result = ["1 minute"]
-	for (def i =2; i <= (trigger ? 360 : 60); i++) {
+	for (def i =2; i <= (trigger ? 360 : 360); i++) {
 		result.push("$i minutes")
 	}
 	return result
@@ -10595,8 +10596,8 @@ private commands() {
 		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: defGroup,			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergencyHeat",	],
 		[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: defGroup,			display: "Quick set heating point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
 		[ name: "thermostat.quickSetCool",					category: "Comfort",					group: defGroup,			display: "Quick set cooling point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
-		[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "thermostatHeatingSetpoint",	value: "*|decimal",	],
-		[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	attribute: "thermostatCoolingSetpoint",	value: "*|decimal",	],
+		[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "heatingSetpoint",	value: "*|decimal",	],
+		[ name: "thermostat.setCoolingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set cooling point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set cooling point at {0}$tempUnit",	attribute: "coolingSetpoint",	value: "*|decimal",	],
 		[ name: "thermostat.setThermostatMode",				category: "Comfort",					group: defGroup,			display: "Set thermostat mode",			parameters: ["Mode:thermostatMode"], description: "Set thermostat mode to {0}",	attribute: "thermostatMode",	value: "*|string",	],
 		[ name: "fanOn",									category: "Comfort",					group: defGroup,			display: "Set fan to On",				],
 		[ name: "fanCirculate",								category: "Comfort",					group: defGroup,			display: "Set fan to Circulate",		],
