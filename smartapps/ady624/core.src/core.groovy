@@ -17,9 +17,10 @@
  *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *  Version history
-*/
-def version() {	return "v0.3.168.20161220" }
+ */
+def version() {	return "v0.3.169.20170104" }
 /*
+ *	12/30/2016 >>> v0.3.169.20170104 - RC - Moved colors() Map into core ST color utility to reduce Class file size and avoid Class file too large errors
  *	12/20/2016 >>> v0.3.168.20161220 - RC - Fixed a bug with loading attributes coolingSetpoint and heatingSetpoint from variables, thank you @bridaus for pointing it out, also extended conditional time options to 360 minutes
  *	12/06/2016 >>> v0.3.167.20161206 - RC - Added some capabilities back - Light Bulb - removed Step Sensor as there is no more room :(
  *	11/21/2016 >>> v0.3.166.20161120 - RC - Added some capabilities back - had to remove some to make room for EchoSistant - CoRE is now reaching the max code base limit
@@ -85,8 +86,8 @@ preferences {
 	page(name: "pageIntegrateLIFXConfirm")
 	page(name: "pageResetSecurityToken")
 	page(name: "pageResetSecurityTokenConfirm")
-    page(name: "pageRecoverAllPistons")
-    page(name: "pageRebuildAllPistons")
+	page(name: "pageRecoverAllPistons")
+	page(name: "pageRebuildAllPistons")
 
 	//Piston pages
 	page(name: "pageIf")
@@ -105,7 +106,7 @@ preferences {
 	page(name: "pageVariables")
 	page(name: "pageSetVariable")
 	page(name: "pageSimulate")
-    page(name: "pageRebuild")
+	page(name: "pageRebuild")
 	page(name: "pageToggleEnabled")
 	page(name: "pageInitializeVariable")
 	page(name: "pageInitializedVariable")
@@ -139,12 +140,12 @@ private customCommandSuffix() { return "(..)" }
 /*** COMMON PAGES															***/
 /******************************************************************************/
 def pageMain() {
-    parent ? pageMainCoREPiston() : pageMainCoRE()
+	parent ? pageMainCoREPiston() : pageMainCoRE()
 }
 
 def pageViewVariable(params) {
 	def var = params?.var
-		dynamicPage(name: "pageViewVariable", title: "", uninstall: false, install: false) {
+	dynamicPage(name: "pageViewVariable", title: "", uninstall: false, install: false) {
 		if (var) {
 			section() {
 				paragraph var, title: "Variable name", required: false
@@ -181,7 +182,7 @@ def pageViewVariable(params) {
 
 def pageDeleteVariable(params) {
 	def var = params?.var
-		dynamicPage(name: "pageInitializedVariable", title: "", uninstall: false, install: false) {
+	dynamicPage(name: "pageInitializedVariable", title: "", uninstall: false, install: false) {
 		if (var != null) {
 			section() {
 				deleteVariable(var)
@@ -208,7 +209,7 @@ def pageRemove() {
 /******************************************************************************/
 private pageMainCoRE() {
 	initializeCoREStore()
-    rebuildTaps()
+	rebuildTaps()
 	//CoRE main page
 	dynamicPage(name: "pageMain", title: "", install: true, uninstall: false) {
 		section() {
@@ -224,16 +225,16 @@ private pageMainCoRE() {
 		}
 
 		section() {
-            def apps = getChildApps().sort{ it.label }
-            def running = apps.findAll{ it.getPistonEnabled() }.size()
-            def paused = apps.size - running
-            if (running + paused == 0) {
-	            paragraph "You have not created any pistons yet.", required: false
-            } else {
-                paragraph "You have ${running ? running + ' running ' + (paused ? ' and ' : '') : ''}${paused ? paused + ' paused ' : ''}piston${running + paused > 0 ? 's' : ''}.", required: false
-            }
-        }
-        section() {
+			def apps = getChildApps().sort{ it.label }
+			def running = apps.findAll{ it.getPistonEnabled() }.size()
+			def paused = apps.size - running
+			if (running + paused == 0) {
+				paragraph "You have not created any pistons yet.", required: false
+			} else {
+				paragraph "You have ${running ? running + ' running ' + (paused ? ' and ' : '') : ''}${paused ? paused + ' paused ' : ''}piston${running + paused > 0 ? 's' : ''}.", required: false
+			}
+		}
+		section() {
 			app( name: "pistons", title: "Add a CoRE piston...", appName: "CoRE", namespace: "ady624", multiple: true, uninstall: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/piston.png")
 		}
 
@@ -273,13 +274,13 @@ def pageGeneralSettings(params) {
 		section(title: "Dashboard") {
 			href "pageDashboardTaps", title: "Taps", description: "Edit the list of taps on the dashboard", required: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
 			input "dashboardTheme", "enum", options: ["Classic", "Experimental"], title: "Dashboard theme", defaultValue: "Experimental", required: false
-        }
+		}
 
 		section(title: "Expert Features") {
 			input "expertMode", "bool", title: "Expert Mode", defaultValue: false, submitOnChange: true, required: false
-        }
-        
-        section(title: "Debugging") {
+		}
+
+		section(title: "Debugging") {
 			input "debugging", "bool", title: "Enable debugging", defaultValue: false, submitOnChange: true, required: false
 			def debugging = settings.debugging
 			if (debugging) {
@@ -299,14 +300,14 @@ def pageGeneralSettings(params) {
 		}
 
 		section("Piston Recovery") {
-        	paragraph "Recovery allows pistons that have been left behind by missed ST events to recover and resume their work", required: false
-            input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours", required: false
-            input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day", required: false
-            input "recoveryNotifications", "bool", title: "Send recovery notifications via ST UI", required: false
-            input "recoveryPushNotifications", "bool", title: "Send recovery notifications via PUSH", required: false
+			paragraph "Recovery allows pistons that have been left behind by missed ST events to recover and resume their work", required: false
+			input "recovery#1", "enum", options: ["Disabled", "Every 1 hour", "Every 3 hours"], title: "Stage 1 recovery", defaultValue: "Every 3 hours", required: false
+			input "recovery#2", "enum", options: ["Disabled", "Every 2 hours", "Every 4 hours", "Every 6 hours", "Every 12 hours", "Every 1 day", "Every 2 days", "Every 3 days"], title: "Stage 2 recovery", defaultValue: "Every 1 day", required: false
+			input "recoveryNotifications", "bool", title: "Send recovery notifications via ST UI", required: false
+			input "recoveryPushNotifications", "bool", title: "Send recovery notifications via PUSH", required: false
 			href "pageRecoverAllPistons", title: "Recover all pistons", description: "Use this option when you have pistons displaying large 'past due' times in the dashboard.", required: false
 			href "pageRebuildAllPistons", title: "Rebuild all pistons", description: "Use this option if there is a problem with your pistons, including when the dashboard is no longer working (blank).", required: false
-        }
+		}
 
 		section("Security") {
 			href "pageResetSecurityToken", title: "", description: "Reset security token", required: false
@@ -322,44 +323,44 @@ def pageGeneralSettings(params) {
 def pageDashboardTaps() {
 	rebuildTaps()
 	dynamicPage(name: "pageDashboardTaps", title: "Dashboard Taps", install: false, uninstall: false) {
-    	def taps = state.taps
-        section("") {
-        	href "pageDashboardTap", title: "Add a new tap", required: false, params: [id: 0], image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
-        }
-        if (taps.size()) {
-            section("Taps") {
-                for (tap in taps) {
-                    href "pageDashboardTap", title: tap.n, description: "Runs ${buildNameList(tap.p, "and")}", required: false, params: [id: tap.i], image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
-                }
-            }
-        }
-    }
+		def taps = state.taps
+		section("") {
+			href "pageDashboardTap", title: "Add a new tap", required: false, params: [id: 0], image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
+		}
+		if (taps.size()) {
+			section("Taps") {
+				for (tap in taps) {
+					href "pageDashboardTap", title: tap.n, description: "Runs ${buildNameList(tap.p, "and")}", required: false, params: [id: tap.i], image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
+				}
+			}
+		}
+	}
 }
 
 def pageDashboardTap(params) {
 	def tapId = (int) (params?.id != null ? params.id : state.tapId)
-    if (!tapId) {
-    	//generate new tap id
-        tapId = 1
-    	def existingTaps = settings.findAll{ it.key.startsWith("tapName") }
-        for (tap in existingTaps) {
-        	def id = tap.key.replace("tapName", "")
-            if (id.isInteger()) {
-            	id = id.toInteger()
-            	if (id >= tapId) tapId = (int) (id + 1)
-            }
-        }
-    }
-    state.tapId = tapId
+	if (!tapId) {
+		//generate new tap id
+		tapId = 1
+		def existingTaps = settings.findAll{ it.key.startsWith("tapName") }
+		for (tap in existingTaps) {
+			def id = tap.key.replace("tapName", "")
+			if (id.isInteger()) {
+				id = id.toInteger()
+				if (id >= tapId) tapId = (int) (id + 1)
+			}
+		}
+	}
+	state.tapId = tapId
 	dynamicPage(name: "pageDashboardTap", title: "Dashboard Tap", install: false, uninstall: false) {
-        section("") {
-        	input "tapName${tapId}", "string", title: "Name", description: "Enter a name for this tap", required: false, defaultValue: "Tap #${tapId}"
-        	input "tapPistons${tapId}", "enum", title: "Pistons", options: listPistons(), description: "Select the pistons to be executed when tapped", required: false, multiple: true
-        }
-        section("") {
+		section("") {
+			input "tapName${tapId}", "string", title: "Name", description: "Enter a name for this tap", required: false, defaultValue: "Tap #${tapId}"
+			input "tapPistons${tapId}", "enum", title: "Pistons", options: listPistons(), description: "Select the pistons to be executed when tapped", required: false, multiple: true
+		}
+		section("") {
 			paragraph "NOTE: To delete this dashboard tap, clear its name and list of pistons and then tap Done"
-        }
-    }
+		}
+	}
 }
 
 def pageGlobalVariables() {
@@ -386,7 +387,7 @@ def pageGlobalVariables() {
 def pageStatistics() {
 	dynamicPage(name: "pageStatistics", title: "", install: false, uninstall: false) {
 		def apps = getChildApps().sort{ it.label }
-        def running = apps.findAll{ it.getPistonEnabled() }.size()
+		def running = apps.findAll{ it.getPistonEnabled() }.size()
 		section(title: "CoRE") {
 			paragraph mem(), title: "Memory Usage", required: false
 			paragraph "${running}", title: "Running pistons", required: false
@@ -436,11 +437,11 @@ def pageStatistics() {
 
 		def i = 0
 		if (apps && apps.size()) {
-        	section("Pistons") {
-                for (app in apps.sort{ it.label }) {
-                    href "pagePistonStatistics", params: [pistonId: app.id], title: app.label ?: app.name, required: false
-                }
-            }
+			section("Pistons") {
+				for (app in apps.sort{ it.label }) {
+					href "pagePistonStatistics", params: [pistonId: app.id], title: app.label ?: app.name, required: false
+				}
+			}
 		} else {
 			section() {
 				paragraph "No pistons running", required: false
@@ -451,62 +452,62 @@ def pageStatistics() {
 
 def pagePistonStatistics(params) {
 	def pistonId = params?.pistonId ?: state.pistonId
-    state.pistonId = pistonId
+	state.pistonId = pistonId
 	dynamicPage(name: "pagePistonStatistics", title: "", install: false, uninstall: false) {
-    	def app = getChildApps().find{ it.id == pistonId }
-        if (app) {
-            def mode = app.getMode()
-            def version = app.version()
-            def currentState = app.getCurrentState()
-            def stateSince = app.getCurrentStateSince()
-            def runStats = app.getRunStats()
-            def conditionStats = app.getConditionStats()
-            def subscribedDevices = app.getDeviceSubscriptionCount()
-            stateSince = stateSince ? formatLocalTime(stateSince) : null
-            def description = "Piston mode: ${mode ? mode : "unknown"}"
-            description += "\nPiston version: $version"
-            description += "\nSubscribed devices: $subscribedDevices"
-            description += "\nCondition count: ${conditionStats.conditions}"
-            description += "\nTrigger count: ${conditionStats.triggers}"
-            description += "\n\nCurrent state: ${currentState == null ? "unknown" : currentState}"
-            description += "\nSince: " + (stateSince ?  stateSince : "(never run)")
-            description += "\n\nMemory usage: " + app.mem()
-            if (runStats) {
-                def executionSince = runStats.executionSince ? formatLocalTime(runStats.executionSince) : null
-                description += "\n\nEvaluated: ${runStats.executionCount} time${runStats.executionCount == 1 ? "" : "s"}"
-                description += "\nSince: " + (executionSince ?  executionSince : "(unknown)")
-                description += "\n\nTotal evaluation time: ${Math.round(runStats.executionTime / 1000)}s"
-                description += "\nLast evaluation time: ${runStats.lastExecutionTime}ms"
-                if (runStats.executionCount > 0) {
-                    description += "\nMin evaluation time: ${runStats.minExecutionTime}ms"
-                    description += "\nAvg evaluation time: ${Math.round(runStats.executionTime / runStats.executionCount)}ms"
-                    description += "\nMax evaluation time: ${runStats.maxExecutionTime}ms"
-                }
-                if (runStats.eventDelay) {
-                    description += "\n\nLast event delay: ${runStats.lastEventDelay}ms"
-                    if (runStats.executionCount > 0) {
-                        description += "\nMin event delay time: ${runStats.minEventDelay}ms"
-                        description += "\nAvg event delay time: ${Math.round(runStats.eventDelay / runStats.executionCount)}ms"
-                        description += "\nMax event delay time: ${runStats.maxEventDelay}ms"
-                    }
-                }
-            }
-            section(app.label ?: app.name) {
-                paragraph description, required: currentState != null, state: currentState ? "complete" : null
-            }
-        } else {
-        	section() {
-            	paragraph "Sorry, the piston you selected cannot be found", required: false
-            }
-        }
-    }
+		def app = getChildApps().find{ it.id == pistonId }
+		if (app) {
+			def mode = app.getMode()
+			def version = app.version()
+			def currentState = app.getCurrentState()
+			def stateSince = app.getCurrentStateSince()
+			def runStats = app.getRunStats()
+			def conditionStats = app.getConditionStats()
+			def subscribedDevices = app.getDeviceSubscriptionCount()
+			stateSince = stateSince ? formatLocalTime(stateSince) : null
+			def description = "Piston mode: ${mode ? mode : "unknown"}"
+			description += "\nPiston version: $version"
+			description += "\nSubscribed devices: $subscribedDevices"
+			description += "\nCondition count: ${conditionStats.conditions}"
+			description += "\nTrigger count: ${conditionStats.triggers}"
+			description += "\n\nCurrent state: ${currentState == null ? "unknown" : currentState}"
+			description += "\nSince: " + (stateSince ?  stateSince : "(never run)")
+			description += "\n\nMemory usage: " + app.mem()
+			if (runStats) {
+				def executionSince = runStats.executionSince ? formatLocalTime(runStats.executionSince) : null
+				description += "\n\nEvaluated: ${runStats.executionCount} time${runStats.executionCount == 1 ? "" : "s"}"
+				description += "\nSince: " + (executionSince ?  executionSince : "(unknown)")
+				description += "\n\nTotal evaluation time: ${Math.round(runStats.executionTime / 1000)}s"
+				description += "\nLast evaluation time: ${runStats.lastExecutionTime}ms"
+				if (runStats.executionCount > 0) {
+					description += "\nMin evaluation time: ${runStats.minExecutionTime}ms"
+					description += "\nAvg evaluation time: ${Math.round(runStats.executionTime / runStats.executionCount)}ms"
+					description += "\nMax evaluation time: ${runStats.maxExecutionTime}ms"
+				}
+				if (runStats.eventDelay) {
+					description += "\n\nLast event delay: ${runStats.lastEventDelay}ms"
+					if (runStats.executionCount > 0) {
+						description += "\nMin event delay time: ${runStats.minEventDelay}ms"
+						description += "\nAvg event delay time: ${Math.round(runStats.eventDelay / runStats.executionCount)}ms"
+						description += "\nMax event delay time: ${runStats.maxEventDelay}ms"
+					}
+				}
+			}
+			section(app.label ?: app.name) {
+				paragraph description, required: currentState != null, state: currentState ? "complete" : null
+			}
+		} else {
+			section() {
+				paragraph "Sorry, the piston you selected cannot be found", required: false
+			}
+		}
+	}
 }
 
 def pageChart(params) {
 	def chartName = params?.chart ?: state.chartName
 	def chartTitle = params?.title ?: state.chartTitle
-    state.chartName = chartName
-    state.chartTitle = chartTitle
+	state.chartName = chartName
+	state.chartTitle = chartTitle
 	dynamicPage(name: "pageChart", title: "", install: false, uninstall: false) {
 		if (chartName) {
 			updateChart(chartName, null)
@@ -530,7 +531,6 @@ def pageChart(params) {
 		}
 	}
 }
-
 
 def pageIntegrateIFTTT() {
 	return dynamicPage(name: "pageIntegrateIFTTT", title: "IFTTT Integration", nextPage: settings.iftttEnabled ? "pageIntegrateIFTTTConfirm" : null) {
@@ -563,8 +563,6 @@ def pageIntegrateIFTTTConfirm() {
 	}
 }
 
-
-
 def pageIntegrateLIFX() {
 	return dynamicPage(name: "pageIntegrateLIFX", title: "LIFX Integration", nextPage: settings.lifxEnabled ? "pageIntegrateLIFXConfirm" : null) {
 		section() {
@@ -595,10 +593,6 @@ def pageIntegrateLIFXConfirm() {
 		}
 	}
 }
-
-
-
-
 
 def pageResetSecurityToken() {
 	return dynamicPage(name: "pageResetSecurityToken", title: "CoRE Security Token") {
@@ -637,7 +631,6 @@ def pageRebuildAllPistons() {
 	}
 }
 
-
 /******************************************************************************/
 /*** CoRE PISTON PAGES														***/
 /******************************************************************************/
@@ -660,73 +653,62 @@ private pageMainCoREPiston() {
 				pistonModes.remove("Basic")
 				pistonModes.remove("Simple")
 			} else pistonModes.add("Follow-Up")
-			//input "enabled", "bool", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete", defaultValue: true
 			href "pageToggleEnabled", description: enabled ? "Current state: ${currentState == null ? "unknown" : currentState}\nCPU: ${cpu()}\t\tMEM: ${mem(false)}" : "", title: "Status: ${enabled ? "RUNNING" : "PAUSED"}", submitOnChange: true, required: false, state: "complete"
 			input "mode", "enum", title: "Piston Mode", required: true, state: null, options: pistonModes, defaultValue: "Basic", submitOnChange: true
-/*
-			switch (state.config.app.mode) {
-				case "Latching":
-				paragraph "A latching Piston - also known as a bi-stable Piston - uses one set of conditions to achieve a 'true' state and a second set of conditions to revert back to its 'false' state"
-				break
-				case "Else-If":
-				paragraph "An Else-If Piston executes a set of actions if an initial condition set evaluates to true, otherwise executes a second set of actions if a second condition set evaluates to true"
-				break
-			}
-*/
 		}
-        
-        if (state.config.app.mode != "Do") {
-            section() {
-                href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
-                buildIfContent()
-            }
 
-            section() {
-                def actions = listActions(0)
-                def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
-                href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
-                if (actions.size()) {
-                    for (action in actions) {
-                        href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
-                    }
-                }
-            }
+		if (state.config.app.mode != "Do") {
+			section() {
+				href "pageIf", title: "If...", description: (state.config.app.conditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
+				buildIfContent()
+			}
 
-            def title = ""
-            switch (settings.mode) {
-                case "Latching":
-                title = "But if..."
-                break
-                case "And-If":
-                title = "And if..."
-                break
-                case "Or-If":
-                title = "Or if..."
-                break
-                case "Then-If":
-                title = "Then if..."
-                break
-                case "Else-If":
-                title = "Else if..."
-                break
-            }
-            if (title) {
-                section() {
-                    href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
-                    buildIfOtherContent()
-                }
-                section() {
-                    def actions = listActions(-1)
-                    def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
-                    href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
-                    if (actions.size()) {
-                        for (action in actions) {
-                            href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
-                        }
-                    }
-                }
-            }
-        }
+			section() {
+				def actions = listActions(0)
+				def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
+				href "pageActionGroup", params:[conditionId: 0], title: "Then...", description: desc, state: null, submitOnChange: false
+				if (actions.size()) {
+					for (action in actions) {
+						href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+					}
+				}
+			}
+
+			def title = ""
+			switch (settings.mode) {
+				case "Latching":
+					title = "But if..."
+					break
+				case "And-If":
+					title = "And if..."
+					break
+				case "Or-If":
+					title = "Or if..."
+					break
+				case "Then-If":
+					title = "Then if..."
+					break
+				case "Else-If":
+					title = "Else if..."
+					break
+			}
+			if (title) {
+				section() {
+					href "pageIfOther", title: title, description: (state.config.app.otherConditions.children.size() ? "Tap here to add more conditions" : "Tap here to add a condition")
+					buildIfOtherContent()
+				}
+				section() {
+					def actions = listActions(-1)
+					def desc = actions.size() ? "Tap here to add more actions" : "Tap here to add an action"
+					href "pageActionGroup", params:[conditionId: -1], title: "Then...", description: desc, state: null, submitOnChange: false
+					if (actions.size()) {
+						for (action in actions) {
+							href "pageAction", params:[actionId: action.id], title: "", description: getActionDescription(action), required: true, state: "complete", submitOnChange: true
+						}
+					}
+				}
+			}
+		}
 		if (!(state.config.app.mode in ["Basic", "Latching"])) {
 			section() {
 				def actions = listActions(-2)
@@ -759,7 +741,7 @@ private pageMainCoREPiston() {
 					input "restrictionTimeFromCustom", "time", title: "Custom time", required: true, multiple: false
 				} else {
 					input "restrictionTimeFromOffset", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
-                }
+				}
 				def timeTo = settings["restrictionTimeTo"]
 				input "restrictionTimeTo", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
 				if (timeTo && (timeTo.contains("custom"))) {
@@ -770,7 +752,7 @@ private pageMainCoREPiston() {
 			}
 			input "restrictionSwitchOn", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
 			input "restrictionSwitchOff", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true
-            input "restrictionPreventTaskExecution", "bool", title: "Prevent already scheduled tasks from executing during restrictions", required: true, defaultValue: false
+			input "restrictionPreventTaskExecution", "bool", title: "Prevent already scheduled tasks from executing during restrictions", required: true, defaultValue: false
 		}
 
 		section() {
@@ -797,7 +779,7 @@ private pageMainCoREPiston() {
 			input "disableCO", "bool", title: "Disable command optimizations", defaultValue: false
 			href "pageRebuild", title: "Rebuild this CoRE piston", description: "Only use this option if your piston has been corrupted."
 		}
-        
+
 		section("Rebuild or remove piston") {
 			href "pageRemove", title: "", description: "Remove this CoRE piston"
 		}
@@ -821,6 +803,7 @@ def pageIfOther(params) {
 		getConditionGroupPageContent(params, condition)
 	}
 }
+
 def pageConditionGroupL1(params) {
 	pageConditionGroup(params, 1)
 }
@@ -1067,7 +1050,6 @@ def pageCondition(params) {
 											if (trigger && !recurring) showDateTimeRepeat = true
 										}
 									}
-
 								} else {
 									//Location Mode, Smart Home Monitor support
 									validCondition = false
@@ -1091,10 +1073,10 @@ def pageCondition(params) {
 										href "", title: "EchoSistant", description: "Tap here for more information on EchoSistant", style: "external", url: "https://community.smartthings.com/t/release-echosistant-version-1-2-0/62109"
 										showParameters = false
 									} else {
-                                        def options = listComparisonOptions(attribute, supportsTriggers, overrideAttributeType)
-                                        def defaultValue = (options.size() == 1 ? options[0] : null)
+										def options = listComparisonOptions(attribute, supportsTriggers, overrideAttributeType)
+										def defaultValue = (options.size() == 1 ? options[0] : null)
 										input "condComp$id", "enum", title: "Comparison", options: options, defaultValue: defaultValue, required: true, multiple: false, submitOnChange: true
-                                        comparison = cleanUpComparison(settings["condComp$id"] ?: defaultValue)
+										comparison = cleanUpComparison(settings["condComp$id"] ?: defaultValue)
 										if (comparison) {
 											showParameters = true
 											validCondition = true
@@ -1202,14 +1184,12 @@ def pageCondition(params) {
 										input "condInteraction$id", "enum", title: "Interaction", options: ["Any", "Physical", "Programmatic"], required: true, multiple: false, defaultValue: defaultInteraction, submitOnChange: true
 									}
 								}
-                                if (capability.count && (attribute == "lock") && (settings["condValue$id#1"] == "unlocked")) {
-                                    def subDevices = capability.count && (attribute == capability.attribute) ? ["(none)"] + listCommonDeviceSubDevices(devices, capability.count, "") : []
-                                    if (subDevices.size()) {
-                                        input "condSubDev$id", "enum", title: "${capability.subDisplay ?: capability.display}(s)", options: subDevices, required: false, multiple: true, submitOnChange: false
-                                    }
-                                }
-                                
-
+								if (capability.count && (attribute == "lock") && (settings["condValue$id#1"] == "unlocked")) {
+									def subDevices = capability.count && (attribute == capability.attribute) ? ["(none)"] + listCommonDeviceSubDevices(devices, capability.count, "") : []
+									if (subDevices.size()) {
+										input "condSubDev$id", "enum", title: "${capability.subDisplay ?: capability.display}(s)", options: subDevices, required: false, multiple: true, submitOnChange: false
+									}
+								}
 							}
 						}
 					}
@@ -1259,7 +1239,6 @@ def pageCondition(params) {
 						}
 					}
 				}
-
 
 				if (validCondition) {
 					section(title: (condition.trg ? "Trigger" : "Condition") + " Overview") {
@@ -1336,14 +1315,14 @@ def pageCondition(params) {
 						section("Set variables on true") {
 							input "condVarT$id", "string", title: "Save event date on true", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
 							input "condVarV$id", "string", title: "Save event value on true", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                            input "condImportT$id", "bool", title: "Import event data on true", required: false, submitOnChange: true
-                            if (settings["condImportT$id"]) input "condImportTP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
+							input "condImportT$id", "bool", title: "Import event data on true", required: false, submitOnChange: true
+							if (settings["condImportT$id"]) input "condImportTP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
 						}
 						section("Set variables on false") {
 							input "condVarF$id", "string", title: "Save event date on false", description: "Enter a variable name to store the date in", required: false, capitalization: "none"
 							input "condVarW$id", "string", title: "Save event value on false", description: "Enter a variable name to store the value in", required: false, capitalization: "none"
-                            input "condImportF$id", "bool", title: "Import event data on false", required: false, submitOnChange: true
-                            if (settings["condImportF$id"]) input "condImportFP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
+							input "condImportF$id", "bool", title: "Import event data on false", required: false, submitOnChange: true
+							if (settings["condImportF$id"]) input "condImportFP$id", "string", title: "Variables prefix for import", description: "Choose a prefix that you want to use for event data parameters", required: false
 						}
 					}
 				}
@@ -1391,7 +1370,7 @@ def pageActionGroup(params) {
 	state.run = "config"
 	def conditionId = params?.conditionId != null ? (int) params?.conditionId : (int) state.config.actionConditionId
 	def onState = conditionId > 0 ? (params?.onState != null ? (boolean) params?.onState : (boolean) state.config.onState) : true
-    state.config.actionConditionId = conditionId
+	state.config.actionConditionId = conditionId
 	state.config.onState = (boolean) onState
 	def value = conditionId < -1 ? false : true
 	def block = conditionId > 0 ? "WHEN ${onState ? "TRUE" : "FALSE"}, DO ..." : "IF"
@@ -1454,7 +1433,7 @@ def pageActionGroup(params) {
 
 def pageAction(params) {
 	state.run = "config"
-		//this page has a dual purpose, either action wizard or task manager
+	//this page has a dual purpose, either action wizard or task manager
 	//if no devices have been previously selected, the page acts as a wizard, guiding the use through the selection of devices
 	//if at least one device has been previously selected, the page will guide the user through setting up tasks for selected devices
 	def action = null
@@ -1548,7 +1527,7 @@ def pageAction(params) {
 					ids = ids.sort()
 					def availableCommands = (deviceAction ? listCommonDeviceCommands(devices, usedCapabilities) : [])
 					def flowCommands = []
-                    def cmds = virtualCommands()
+					def cmds = virtualCommands()
 					for (vcmd in cmds.sort{ it.display }) {
 						if ((!(vcmd.display in availableCommands)) && (vcmd.location || deviceAction)) {
 							def ok = true
@@ -1684,7 +1663,7 @@ def pageAction(params) {
 							}
 						}
 					}
-                    
+
 					section() {
 						input "$prefix$maxId", "enum", options: availableCommands, title: "Add a task", required: !ids.size(), submitOnChange: true
 					}
@@ -1703,23 +1682,23 @@ def pageAction(params) {
 						input "actRComparison$id", "enum", options: options, title: "Comparison", description: "Tap to choose a comparison", required: true, multiple: false
 						input "actRValue$id", "string", title: "Value", description: "Tap to choose a value to compare", required: false, multiple: false, capitalization: "none"
 					}
-                    input "actRDOW$id", "enum", options: timeDayOfWeekOptions(), title: "Only execute on these days", description: "Any week day", required: false, multiple: true
-                    def timeFrom = settings["actRTimeFrom$id"]
-                    input "actRTimeFrom$id", "enum", title: (timeFrom ? "Only execute if time is between" : "Only execute during this time interval"), options: timeComparisonOptionValues(false, false), required: false, multiple: false, submitOnChange: true
-                    if (timeFrom) {
-                        if (timeFrom.contains("custom")) {
-                            input "actRTimeFromCustom$id", "time", title: "Custom time", required: true, multiple: false
-                        } else {
-                            input "actRTimeFromOffset$id", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
-                        }
-                        def timeTo = settings["actRTimeTo$id"]
-                        input "actRTimeTo$id", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
-                        if (timeTo && (timeTo.contains("custom"))) {
-                            input "actRTimeToCustom$id", "time", title: "Custom time", required: true, multiple: false
-                        } else {
-                            input "actRTimeToOffset$id", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
-                        }
-                    }
+					input "actRDOW$id", "enum", options: timeDayOfWeekOptions(), title: "Only execute on these days", description: "Any week day", required: false, multiple: true
+					def timeFrom = settings["actRTimeFrom$id"]
+					input "actRTimeFrom$id", "enum", title: (timeFrom ? "Only execute if time is between" : "Only execute during this time interval"), options: timeComparisonOptionValues(false, false), required: false, multiple: false, submitOnChange: true
+					if (timeFrom) {
+						if (timeFrom.contains("custom")) {
+							input "actRTimeFromCustom$id", "time", title: "Custom time", required: true, multiple: false
+						} else {
+							input "actRTimeFromOffset$id", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
+						}
+						def timeTo = settings["actRTimeTo$id"]
+						input "actRTimeTo$id", "enum", title: "And", options: timeComparisonOptionValues(false, false), required: true, multiple: false, submitOnChange: true
+						if (timeTo && (timeTo.contains("custom"))) {
+							input "actRTimeToCustom$id", "time", title: "Custom time", required: true, multiple: false
+						} else {
+							input "actRTimeToOffset$id", "number", title: "Offset (+/- minutes)", range: "*..*", required: true, multiple: false, defaultValue: 0
+						}
+					}
 					input "actRSwitchOn$id", "capability.switch", title: "Only execute when these switches are all on", description: "Always", required: false, multiple: true
 					input "actRSwitchOff$id", "capability.switch", title: "Only execute when these switches are all off", description: "Always", required: false, multiple: true
 					if (action.pid > 0) {
@@ -1809,49 +1788,49 @@ private pageSetVariable(params) {
 		}
 		def immediate = settings["actParam$aid#$tid-2"]
 		def dataType = settings["actParam$aid#$tid-1"]
-        def i = 1
-        def operation = ""
-        while (dataType) {
-            def a1 = i * 4
-            def a2 = a1 + 1
-            def a3 = a2 + 1
-            def op = a3 + 1
-            def secondaryDataType = (i == 1 ? dataType : (dataType == "time" ? "decimal" : dataType))
-            section(formatOrdinalNumberName(i).capitalize() + " operand") {
-                def val = settings["actParam$aid#$tid-$a1"] != null
-                def var = settings["actParam$aid#$tid-$a2"]
-                if (val || (val == 0) || !var) {
-                    def inputType = secondaryDataType == "boolean" ? "enum" : secondaryDataType
-                    input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: dataType != "string", submitOnChange: true, capitalization: "none"
-                }
-                if (var || !val) {
-                    input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: dataType != "string", submitOnChange: true
-                }
-                if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
-                    input "actParam$aid#$tid-$a3", "enum", options: ["milliseconds", "seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
-                }
-            }
-            operation = settings["actParam$aid#$tid-$op"]
-            if (operation) operation = "$operation"
-            section(title: operation ? "" : "Add operation") {
-                def opts = []
-                switch (dataType) {
-                    case "boolean":
-                    opts += ["AND", "OR"]
-                    break
-                    case "string":
-                    opts += ["+ (concatenate)"]
-                    break
-                    case "number":
-                    case "decimal":
-                    case "time":
-                    opts += ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"]
-                    break
-                }
-                input "actParam$aid#$tid-$op", "enum", title: "Operation", options: opts, required: false, submitOnChange: true
-            }
-            i += 1
-            if (!operation || i > 10) break
+		def i = 1
+		def operation = ""
+		while (dataType) {
+			def a1 = i * 4
+			def a2 = a1 + 1
+			def a3 = a2 + 1
+			def op = a3 + 1
+			def secondaryDataType = (i == 1 ? dataType : (dataType == "time" ? "decimal" : dataType))
+			section(formatOrdinalNumberName(i).capitalize() + " operand") {
+				def val = settings["actParam$aid#$tid-$a1"] != null
+				def var = settings["actParam$aid#$tid-$a2"]
+				if (val || (val == 0) || !var) {
+					def inputType = secondaryDataType == "boolean" ? "enum" : secondaryDataType
+					input "actParam$aid#$tid-$a1", inputType, range: (i == 1 ? "*..*" : "0..*"), title: "Value", options: ["false", "true"], required: dataType != "string", submitOnChange: true, capitalization: "none"
+				}
+				if (var || !val) {
+					input "actParam$aid#$tid-$a2", "enum", options: listVariables(true, secondaryDataType), title: (var ? "Variable value" : "...or variable value...") + (var ? "\n[${getVariable(var, true)}]" : ""), required: dataType != "string", submitOnChange: true
+				}
+				if ((dataType == "time") && (i > 1) && !(operation.contains("*") || operation.contains("÷"))) {
+					input "actParam$aid#$tid-$a3", "enum", options: ["milliseconds", "seconds", "minutes", "hours", "days", "weeks", "months", "years"], title: "Time unit", required: true, submitOnChange: true, defaultValue: "minutes"
+				}
+			}
+			operation = settings["actParam$aid#$tid-$op"]
+			if (operation) operation = "$operation"
+			section(title: operation ? "" : "Add operation") {
+				def opts = []
+				switch (dataType) {
+					case "boolean":
+						opts += ["AND", "OR"]
+						break
+					case "string":
+						opts += ["+ (concatenate)"]
+						break
+					case "number":
+					case "decimal":
+					case "time":
+						opts += ["+ (add)", "- (subtract)", "* (multiply)", "÷ (divide)"]
+						break
+				}
+				input "actParam$aid#$tid-$op", "enum", title: "Operation", options: opts, required: false, submitOnChange: true
+			}
+			i += 1
+			if (!operation || i > 10) break
 		}
 		section("Initialize variables") {
 			href "pageInitializeVariable", title: "Initialize a variable"
@@ -1866,18 +1845,18 @@ def pageSimulate() {
 		section("") {
 			paragraph "Preparing to simulate piston..."
 			paragraph "Current piston state is: ${state.currentState}"
-            if (!state.config.app.enabled) {
+			if (!state.config.app.enabled) {
 				paragraph "Piston is currently PAUSED", state: null, required: true
-            }
+			}
 		}
 		state.sim = [ evals: [], cmds: [] ]
 		def error
 
 		//prepare some stuff
-        state.debugLevel = 0
-        state.globalVars = [:]
-        state.tasker = state.tasker ? state.tasker : []
-        
+		state.debugLevel = 0
+		state.globalVars = [:]
+		state.tasker = state.tasker ? state.tasker : []
+
 		def perf = now()
 		try {
 			broadcastEvent([name: "simulate", date: new Date(), deviceId: "time", conditionId: null], true, false)
@@ -1888,8 +1867,8 @@ def pageSimulate() {
 		perf = now() - perf
 		def evals = state.sim.evals
 		def cmds = state.sim.cmds
-        exitPoint(perf)
-        
+		exitPoint(perf)
+
 		section("") {
 			paragraph "Simulation ended in ${perf}ms.", state: "complete"
 			paragraph "New piston state is: ${state.currentState}"
@@ -1937,7 +1916,6 @@ def pageSimulate() {
 				}
 			}
 		}
-
 	}
 }
 
@@ -1945,18 +1923,18 @@ def pageRebuild() {
 	dynamicPage(name: "pageRebuild", title: "", uninstall: false, install: false) {
 		section("") {
 			paragraph "Rebuilding piston..."
-            rebuildPiston()
-            configApp()
-            state.run = "config"
+			rebuildPiston()
+			configApp()
+			state.run = "config"
 			paragraph "Rebuilding is now finished. Please tap Done to go back."
 		}
-    }
+	}
 }
 
 def pageToggleEnabled() {
 	state.config.app.enabled = !state.config.app.enabled
 	if (state.app) state.app.enabled = !!state.config.app.enabled
-		dynamicPage(name: "pageToggleEnabled", title: "", uninstall: false, install: false) {
+	dynamicPage(name: "pageToggleEnabled", title: "", uninstall: false, install: false) {
 		section() {
 			paragraph "The piston is now ${state.config.app.enabled ? "running" : "paused"}."
 		}
@@ -1964,7 +1942,7 @@ def pageToggleEnabled() {
 }
 
 def pageInitializeVariable() {
-		dynamicPage(name: "pageInitializeVariable", title: "", uninstall: false, install: false) {
+	dynamicPage(name: "pageInitializeVariable", title: "", uninstall: false, install: false) {
 		section("Initialize variable") {
 			input "varName", "string", title: "Variable to initialize", required: true, capitalization: "none"
 			input "varValue", "string", title: "Initial value", required: true, capitalization: "none"
@@ -1974,7 +1952,7 @@ def pageInitializeVariable() {
 }
 
 def pageInitializedVariable() {
-		dynamicPage(name: "pageInitializedVariable", title: "", uninstall: false, install: false) {
+	dynamicPage(name: "pageInitializedVariable", title: "", uninstall: false, install: false) {
 		section() {
 			def var = settings.varName
 			def val = settings.varValue
@@ -2017,7 +1995,7 @@ private buildIfContent(id, level) {
 			pre = " │ ┌ ["
 			preNot = " │ ┌ NOT ["
 			tab = " │ │	"
-				aft = " │ └ ]"
+			aft = " │ └ ]"
 			break;
 		case 3:
 			pre = " │ │ ┌ <"
@@ -2073,7 +2051,6 @@ private buildIfContent(id, level) {
 	}
 }
 
-
 /********** COMMON INITIALIZATION METHODS **********/
 def installed() {
 	initialize()
@@ -2089,8 +2066,6 @@ def updated() {
 def initialize() {
 	parent ? initializeCoREPiston() : initializeCoRE()
 }
-
-
 
 /******************************************************************************/
 /*** 																		***/
@@ -2123,104 +2098,104 @@ def getVariable(name, forDisplay) {
 
 def getVariable(name) {
 	name = sanitizeVariableName(name)
-    switch (name) {
-        case "\$now": return now()
-        case "\$hour24": return adjustTime().hours
-        case "\$hour":
-            def h = adjustTime().hours
-            return (h == 0 ? 12 : (h > 12 ? h - 12 : h))
-        case "\$meridian": 
-            def h = adjustTime().hours
-            return ( h < 12 ? "AM" : "PM")
-        case "\$meridianWithDots":
-            def h = adjustTime().hours
-            return ( h <12 ? "A.M." : "P.M.")
-        case "\$minute": return adjustTime().minutes
-        case "\$second": return adjustTime().seconds
-        case "\$time":
-            def t = adjustTime()
-            def h = t.hours
-            def m = t.minutes
-            return (h == 0 ? 12 : (h > 12 ? h - 12 : h)) + ":" + (m < 10 ? "0$m" : "$m") + " " + (h <12 ? "A.M." : "P.M.")
-        case "\$time24":
-            def t = adjustTime()
-            def h = t.hours
-            def m = t.minutes
-            return h + ":" + (m < 10 ? "0$m" : "$m")
-        case "\$day": return adjustTime().date
-        case "\$dayOfWeek": return getDayOfWeekNumber()
-        case "\$dayOfWeekName": return getDayOfWeekName()
-        case "\$month": return adjustTime().month + 1
-        case "\$monthName": return getMonthName()
-        case "\$year": return adjustTime().year + 1900
-        case "\$now": return now()
-        case "\$random":
-        	def result = getRandomValue(name) ?: (float)Math.random()
-            setRandomValue(name, result)
-            return result
-        case "\$randomColor":
-        	def result = getRandomValue(name) ?: getColorByName("Random").rgb
-            setRandomValue(name, result)
-            return result
-        case "\$randomColorName":
-        	def result = getRandomValue(name) ?: getColorByName("Random").name
-            setRandomValue(name, result)
-            return result
-        case "\$randomLevel":
-        	def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
-            setRandomValue(name, result)
-            return result
-        case "\$randomHue":
-        	def result = getRandomValue(name) ?: (int)Math.round(360 * Math.random())
-            setRandomValue(name, result)
-            return result
-        case "\$randomSaturation":
-        	def result = getRandomValue(name) ?: (int)Math.round(50 + (50 * Math.random()))
-            setRandomValue(name, result)
-            return result
-        case "\$midnight":
-            def rightNow = adjustTime().time
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000))
-        case "\$nextMidnight":
-            def rightNow = adjustTime().time
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 86400000)
-        case "\$noon":
-            def rightNow = adjustTime().time
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 43200000)
-        case "\$nextNoon":
-            def rightNow = adjustTime().time
-            if (rightNow - rightNow.mod(86400000) + 43200000 < rightNow) rightNow += 86400000
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 43200000)
-        case "\$sunrise":
-        	def sunrise = getSunrise()
-            def rightNow = adjustTime().time
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunrise.hours * 3600000 + sunrise.minutes * 60000)
-        case "\$nextSunrise":
-        	def sunrise = getSunrise()
-            def rightNow = adjustTime().time
-            if (sunrise.time < rightNow) rightNow += 86400000
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunrise.hours * 3600000 + sunrise.minutes * 60000)
-        case "\$sunset":
-        	def sunset = getSunset()
-            def rightNow = adjustTime().time
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunset.hours * 3600000 + sunset.minutes * 60000)        
-        case "\$nextSunset":
-        	def sunset = getSunset()
-            def rightNow = adjustTime().time
-            if (sunset.time < rightNow) rightNow += 86400000
-            return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunset.hours * 3600000 + sunset.minutes * 60000)        
-        case "\$currentStateDuration":
-            try {
-                return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
-            } catch(all) {
-                return null
-            }
-            return null
-        case "\$locationMode":
-        	return location.mode
-        case "\$shmStatus":
-        	return getAlarmSystemStatus()
-    }
+	switch (name) {
+		case "\$now": return now()
+		case "\$hour24": return adjustTime().hours
+		case "\$hour":
+			def h = adjustTime().hours
+			return (h == 0 ? 12 : (h > 12 ? h - 12 : h))
+		case "\$meridian":
+			def h = adjustTime().hours
+			return ( h < 12 ? "AM" : "PM")
+		case "\$meridianWithDots":
+			def h = adjustTime().hours
+			return ( h <12 ? "A.M." : "P.M.")
+		case "\$minute": return adjustTime().minutes
+		case "\$second": return adjustTime().seconds
+		case "\$time":
+			def t = adjustTime()
+			def h = t.hours
+			def m = t.minutes
+			return (h == 0 ? 12 : (h > 12 ? h - 12 : h)) + ":" + (m < 10 ? "0$m" : "$m") + " " + (h <12 ? "A.M." : "P.M.")
+		case "\$time24":
+			def t = adjustTime()
+			def h = t.hours
+			def m = t.minutes
+			return h + ":" + (m < 10 ? "0$m" : "$m")
+		case "\$day": return adjustTime().date
+		case "\$dayOfWeek": return getDayOfWeekNumber()
+		case "\$dayOfWeekName": return getDayOfWeekName()
+		case "\$month": return adjustTime().month + 1
+		case "\$monthName": return getMonthName()
+		case "\$year": return adjustTime().year + 1900
+		case "\$now": return now()
+		case "\$random":
+			def result = getRandomValue(name) ?: (float)Math.random()
+			setRandomValue(name, result)
+			return result
+		case "\$randomColor":
+			def result = getRandomValue(name) ?: getColorByName("Random").rgb
+			setRandomValue(name, result)
+			return result
+		case "\$randomColorName":
+			def result = getRandomValue(name) ?: getColorByName("Random").name
+			setRandomValue(name, result)
+			return result
+		case "\$randomLevel":
+			def result = getRandomValue(name) ?: (int)Math.round(100 * Math.random())
+			setRandomValue(name, result)
+			return result
+		case "\$randomHue":
+			def result = getRandomValue(name) ?: (int)Math.round(360 * Math.random())
+			setRandomValue(name, result)
+			return result
+		case "\$randomSaturation":
+			def result = getRandomValue(name) ?: (int)Math.round(50 + (50 * Math.random()))
+			setRandomValue(name, result)
+			return result
+		case "\$midnight":
+			def rightNow = adjustTime().time
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000))
+		case "\$nextMidnight":
+			def rightNow = adjustTime().time
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 86400000)
+		case "\$noon":
+			def rightNow = adjustTime().time
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 43200000)
+		case "\$nextNoon":
+			def rightNow = adjustTime().time
+			if (rightNow - rightNow.mod(86400000) + 43200000 < rightNow) rightNow += 86400000
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + 43200000)
+		case "\$sunrise":
+			def sunrise = getSunrise()
+			def rightNow = adjustTime().time
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunrise.hours * 3600000 + sunrise.minutes * 60000)
+		case "\$nextSunrise":
+			def sunrise = getSunrise()
+			def rightNow = adjustTime().time
+			if (sunrise.time < rightNow) rightNow += 86400000
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunrise.hours * 3600000 + sunrise.minutes * 60000)
+		case "\$sunset":
+			def sunset = getSunset()
+			def rightNow = adjustTime().time
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunset.hours * 3600000 + sunset.minutes * 60000)
+		case "\$nextSunset":
+			def sunset = getSunset()
+			def rightNow = adjustTime().time
+			if (sunset.time < rightNow) rightNow += 86400000
+			return convertDateToUnixTime(rightNow - rightNow.mod(86400000) + sunset.hours * 3600000 + sunset.minutes * 60000)
+		case "\$currentStateDuration":
+			try {
+				return state.systemStore["\$currentStateSince"] ? now() - (new Date(state.systemStore["\$currentStateSince"])).time : null
+			} catch(all) {
+				return null
+			}
+			return null
+		case "\$locationMode":
+			return location.mode
+		case "\$shmStatus":
+			return getAlarmSystemStatus()
+	}
 	if (!name) return null
 	if (parent && name.startsWith("@")) {
 		return parent.getVariable(name)
@@ -2237,18 +2212,18 @@ def getVariable(name) {
 def setVariable(name, value, system = false, globalVars = null) {
 	name = sanitizeVariableName(name)
 	if (!name) return
-    if (name.contains(",")) {
-    	//multi variables
-        def vars = name.tokenize(",")
-        for (var in vars) {
-        	setVariable(var, value, system, globalVars)
-        }
-        return
-    }
+	if (name.contains(",")) {
+		//multi variables
+		def vars = name.tokenize(",")
+		for (var in vars) {
+			setVariable(var, value, system, globalVars)
+		}
+		return
+	}
 	if (parent && name.startsWith("@")) {
-    	def gv = state.globalVars instanceof Map ? state.globalVars : [:]
-        parent.setVariable(name, value, false, gv)
-        state.globalVars = gv
+		def gv = state.globalVars instanceof Map ? state.globalVars : [:]
+		parent.setVariable(name, value, false, gv)
+		state.globalVars = gv
 	} else {
 		if (name.startsWith("\$")) {
 			if (system) {
@@ -2263,11 +2238,11 @@ def setVariable(name, value, system = false, globalVars = null) {
 				store[name] = value
 				atomicState.store = store
 				//save var name for broadcasting events
-                if (globalVars.containsKey(name)) {
-                    globalVars[name].newValue = value
-                } else {
-                    globalVars[name] = [oldValue: oldValue, newValue: value]
-                }
+				if (globalVars.containsKey(name)) {
+					globalVars[name].newValue = value
+				} else {
+					globalVars[name] = [oldValue: oldValue, newValue: value]
+				}
 			} else {
 				state.store[name] = value
 			}
@@ -2280,14 +2255,14 @@ def publishVariables() {
 	//we're saving the atomic store to our regular store to prevent race conditions
 	def globalVars = state.globalVars
 	for (variable in globalVars) {
-        def name = variable.key
-        def oldValue = variable.value.oldValue
-        def newValue = variable.value.newValue
-        if (oldValue != newValue) {
-            sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])
-        }
+		def name = variable.key
+		def oldValue = variable.value.oldValue
+		def newValue = variable.value.newValue
+		if (oldValue != newValue) {
+			sendLocationEvent(name: "variable", value: name, displayed: true, linkText: "CoRE Global Variable", isStateChange: true, descriptionText: "Variable $name changed from '$oldValue' to '$newValue'", data: [app: "CoRE", oldValue: oldValue, value: newValue])
+		}
 	}
-    state.globalVars = [:]
+	state.globalVars = [:]
 }
 
 def deleteVariable(name) {
@@ -2338,19 +2313,19 @@ def setStateVariable(name, value, global = false) {
 
 private getRandomValue(name) {
 	state.temp = state.temp ?: [:]
-    state.temp.randoms = state.temp.randoms ?: [:]
-    return state.temp?.randoms[name]
+	state.temp.randoms = state.temp.randoms ?: [:]
+	return state.temp?.randoms[name]
 }
 
 private setRandomValue(name, value) {
 	state.temp = state.temp ?: [:]
-    state.temp.randoms = state.temp.randoms ?: [:]
-    state.temp.randoms[name] = value
+	state.temp.randoms = state.temp.randoms ?: [:]
+	state.temp.randoms[name] = value
 }
 
 private resetRandomValues() {
 	state.temp = state.temp ?: [:]
-    state.temp.randoms = [:]
+	state.temp.randoms = [:]
 }
 
 private testDataType(value, dataType) {
@@ -2404,26 +2379,26 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
 		//look for variables set during conditions
 		def list = settings.findAll{it.key.startsWith("condVar") && !it.key.contains("#")}
 		for (it in list) {
-        	if (it.value instanceof String) {
-                def vars = sanitizeVariableName(it.value)
-                if (vars instanceof String) vars = vars.tokenize(",")
-                for (var in vars) {
-                    if (var.startsWith("@")) {
-                        //global
-                        if (listGlobal && !(var in parentResult)) {
-                            if (!dataType || testDataType(it.value, dataType)) {
-                                parentResult.push(var)
-                            }
-                        }
-                    } else {
-                        //local
-                        if (listLocal && !(var in result)) {
-                            if (!dataType || testDataType(it.value, dataType)) {
-                                result.push(var)
-                            }
-                        }
-                    }
-                }
+			if (it.value instanceof String) {
+				def vars = sanitizeVariableName(it.value)
+				if (vars instanceof String) vars = vars.tokenize(",")
+				for (var in vars) {
+					if (var.startsWith("@")) {
+						//global
+						if (listGlobal && !(var in parentResult)) {
+							if (!dataType || testDataType(it.value, dataType)) {
+								parentResult.push(var)
+							}
+						}
+					} else {
+						//local
+						if (listLocal && !(var in result)) {
+							if (!dataType || testDataType(it.value, dataType)) {
+								result.push(var)
+							}
+						}
+					}
+				}
 			}
 		}
 		//look for tasks that set variables...
@@ -2433,7 +2408,7 @@ def listVariables(config = false, dataType = null, listLocal = true, listGlobal 
 				def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
 				if (virtualCommand && (virtualCommand.varEntry != null)) {
 					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.varEntry}"])
-                    if (vars instanceof String) vars = vars.tokenize(",")
+					if (vars instanceof String) vars = vars.tokenize(",")
 					for (var in vars) {
 						if (var.startsWith("@")) {
 							//global
@@ -2475,7 +2450,7 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
 		//look for variables set during conditions
 		def list = settings.findAll{it.key.startsWith("actTask")}
 		for (it in list) {
-        	if (it.value instanceof String) {
+			if (it.value instanceof String) {
 				def virtualCommand = getVirtualCommandByDisplay(cleanUpCommand(it.value))
 				if (virtualCommand && (virtualCommand.stateVarEntry != null)) {
 					def vars = sanitizeVariableName(settings[it.key.replace("actTask", "actParam") + "-${virtualCommand.stateVarEntry}"]).tokenize(",")
@@ -2499,13 +2474,11 @@ def listStateVariables(config = false, dataType = null, listLocal = true, listGl
 	return result.sort() + (parentResult ? parentResult.sort() : [])
 }
 
-
 /******************************************************************************/
 /***																		***/
 /*** CoRE CODE																***/
 /***																		***/
 /******************************************************************************/
-
 
 /******************************************************************************/
 /*** CoRE INITIALIZATION METHODS											***/
@@ -2517,54 +2490,54 @@ def initializeCoRE() {
 	subscribe(location, "CoRE", coreHandler)
 	subscribe(location, "askAlexa", askAlexaHandler)
 	subscribe(location, "echoSistant", echoSistantHandler)
-    subscribe(app, appTouchHandler)
-    /* temporary - remove old handlers */
-    unschedule(recovery1)
-    unschedule(recovery2)
+	subscribe(app, appTouchHandler)
+	/* temporary - remove old handlers */
+	unschedule(recovery1)
+	unschedule(recovery2)
 //    subscribe(null, "intrusion", intrusionHandler, [filterEvents: false])
 //    subscribe(null, "newIncident", intrusionHandler, [filterEvents: false])
 //    subscribe(null, "newMessage", intrusionHandler, [filterEvents: false])
-    switch (settings["recovery#1"]) {
-    	case "Disabled":
-        	unschedule(recovery1Handler)
-            break
-    	case "Every 1 hour":
-        	runEvery1Hour(recovery1Handler)
-            break
-        default:
-        	runEvery3Hours(recovery1Handler)
-            break
-    }
+	switch (settings["recovery#1"]) {
+		case "Disabled":
+			unschedule(recovery1Handler)
+			break
+		case "Every 1 hour":
+			runEvery1Hour(recovery1Handler)
+			break
+		default:
+			runEvery3Hours(recovery1Handler)
+			break
+	}
 
 	def t = new Date(now())
-    def sch = "${t.seconds} ${t.minutes}"
-    def sch2 = "$sch ${t.hours}"
-    switch (settings["recovery#2"]) {
-    	case "Disabled":
-        	unschedule(recovery2)
-            break            
-    	case "Every 2 hours":
-        	schedule("$sch 0/2 1/1 * ? *", recovery2Handler)
-            break
-    	case "Every 4 hours":
-        	schedule("$sch 0/4 1/1 * ? *", recovery2Handler)
-            break
-    	case "Every 6 hours":
-        	schedule("$sch 0/6 1/1 * ? *", recovery2Handler)
-            break
-    	case "Every 12 hours":
-        	schedule("$sch 0/12 1/1 * ? *", recovery2Handler)
-            break
-    	case "Every 2 days":
-        	schedule("$sch2 1/2 * ? *", recovery2Handler)
-            break
-    	case "Every 3 days":
-        	schedule("$sch2 1/3 * ? *", recovery2Handler)
-            break
-        default:
-        	schedule("$sch2 1/1 * ? *", recovery2Handler)
-            break
-    }
+	def sch = "${t.seconds} ${t.minutes}"
+	def sch2 = "$sch ${t.hours}"
+	switch (settings["recovery#2"]) {
+		case "Disabled":
+			unschedule(recovery2)
+			break
+		case "Every 2 hours":
+			schedule("$sch 0/2 1/1 * ? *", recovery2Handler)
+			break
+		case "Every 4 hours":
+			schedule("$sch 0/4 1/1 * ? *", recovery2Handler)
+			break
+		case "Every 6 hours":
+			schedule("$sch 0/6 1/1 * ? *", recovery2Handler)
+			break
+		case "Every 12 hours":
+			schedule("$sch 0/12 1/1 * ? *", recovery2Handler)
+			break
+		case "Every 2 days":
+			schedule("$sch2 1/2 * ? *", recovery2Handler)
+			break
+		case "Every 3 days":
+			schedule("$sch2 1/3 * ? *", recovery2Handler)
+			break
+		default:
+			schedule("$sch2 1/1 * ? *", recovery2Handler)
+			break
+	}
 }
 
 def intrusionHandler(evt) {
@@ -2578,7 +2551,7 @@ def initializeCoREStore() {
 	state.stateStore = state.stateStore ? state.stateStore : [:]
 	state.askAlexaMacros = state.askAlexaMacros ? state.askAlexaMacros : []
 	state.echoSistantProfiles = state.echoSistantProfiles ? state.echoSistantProfiles : []
-    state.globalVars = state.globalVars ? state.globalVars : []
+	state.globalVars = state.globalVars ? state.globalVars : []
 }
 
 
@@ -2597,7 +2570,7 @@ def askAlexaHandler(evt) {
 	if (!evt) return
 	switch (evt.value) {
 		case "refresh":
-				atomicState.askAlexaMacros = evt.jsonData && evt.jsonData?.macros ? evt.jsonData.macros : []
+			atomicState.askAlexaMacros = evt.jsonData && evt.jsonData?.macros ? evt.jsonData.macros : []
 			break
 	}
 }
@@ -2606,7 +2579,7 @@ def echoSistantHandler(evt) {
 	if (!evt) return
 	switch (evt.value) {
 		case "refresh":
-				atomicState.echoSistantProfiles = evt.jsonData && evt.jsonData?.profiles ? evt.jsonData.profiles : []
+			atomicState.echoSistantProfiles = evt.jsonData && evt.jsonData?.profiles ? evt.jsonData.profiles : []
 			break
 	}
 }
@@ -2621,50 +2594,49 @@ def childUninstalled() {
 
 private recoverPistons(recoverAll = false, excludeAppId = null) {
 	if (recoverAll) debug "Piston recovery initiated...", null, "trace"
-    int count = 0
+	int count = 0
 	def recovery = atomicState.recovery
 	if (!(recovery instanceof Map)) recovery = [:]
-    def threshold = now() - 30000
-    def apps = getChildApps()
-    for(app in apps) {
-    	if ((recoverAll || (recovery[app.id] && (recovery[app.id] < threshold))) && (!excludeAppId || (excludeAppId != app.id))) {
-        	count += 1
-        	if (recoverAll || excludeAppId) {
+	def threshold = now() - 30000
+	def apps = getChildApps()
+	for(app in apps) {
+		if ((recoverAll || (recovery[app.id] && (recovery[app.id] < threshold))) && (!excludeAppId || (excludeAppId != app.id))) {
+			count += 1
+			if (recoverAll || excludeAppId) {
 				sendLocationEvent(name: "CoRE Recovery [${app.id}]", value: "", displayed: true, linkText: "CoRE/${app.label} Recovery", isStateChange: true)
-            } else {
-            	def message = "Found CoRE Piston '${app.label ?: app.name}' about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due, attempting recovery"
-                int n = (int) (settings["recoveryNotifications"] ? 1 : 0) + (int) (settings["recoveryPushNotifications"] ? 2 : 0)
-                switch (n) {
-                	case 1:
-                    	sendNotificationEvent(message)
-                        break
-                	case 2:
+			} else {
+				def message = "Found CoRE Piston '${app.label ?: app.name}' about ${Math.round((now() - recovery[app.id])/ 1000)} seconds past due, attempting recovery"
+				int n = (int) (settings["recoveryNotifications"] ? 1 : 0) + (int) (settings["recoveryPushNotifications"] ? 2 : 0)
+				switch (n) {
+					case 1:
+						sendNotificationEvent(message)
+						break
+					case 2:
 						sendPushMessage(message)
-                        break
-                	case 3:
-                    	sendPush(message)
-                        break
-                }
-        		app.recoveryHandler(null, false)
-            }
-            subscribeToRecovery(app.id, null)
-        }
-    }
+						break
+					case 3:
+						sendPush(message)
+						break
+				}
+				app.recoveryHandler(null, false)
+			}
+			subscribeToRecovery(app.id, null)
+		}
+	}
 	if (recoverAll || (count > 0)) debug "Piston recovery finished, $count piston${count == 1 ? " was" : "s were"} recovered.", null, "trace"
-    if (recoverAll) refreshPistons(false)
-    return true
+	if (recoverAll) refreshPistons(false)
+	return true
 }
 
 def rebuildPistons() {
-   	debug "Initializing piston rebuild...", null, trace
-    for(app in getChildApps()) {
-	   	debug "Rebuilding piston ${app.label ?: app.name}", null, trace
+	debug "Initializing piston rebuild...", null, trace
+	for(app in getChildApps()) {
+		debug "Rebuilding piston ${app.label ?: app.name}", null, trace
 		sendLocationEvent(name: "CoRE Recovery [${app.id}]", value: "", displayed: true, linkText: "CoRE/${app.label} Recovery", isStateChange: true, data: [rebuild: true])
 		//app.rebuildPiston(true)
-    }
-   	debug "Done rebuilding pistons.", null, trace
+	}
+	debug "Done rebuilding pistons.", null, trace
 }
-
 
 //temporary - to be removed after 2018/01/01
 def recovery1() {
@@ -2714,17 +2686,17 @@ mappings {
 
 def api_dashboard() {
 	def cdn = "https://core.caramaliu.com/dashboard"
-    def theme = (settings["dashboardTheme"] ?: "experimental").toLowerCase()
+	def theme = (settings["dashboardTheme"] ?: "experimental").toLowerCase()
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/components/components.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/components/components.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
 
 def api_getDashboardData() {
 	def result = [ pistons: [] ]
-    def pistons = atomicState.pistons
-    if (!pistons) {
-    	refreshPistons(false)
-        pistons = atomicState.pistons
-    }
+	def pistons = atomicState.pistons
+	if (!pistons) {
+		refreshPistons(false)
+		pistons = atomicState.pistons
+	}
 	for(piston in pistons) {
 		result.pistons.push piston.value
 	}
@@ -2735,9 +2707,9 @@ def api_getDashboardData() {
 		result.variables[variable.key] = getVariable(variable.key, true)
 	}
 	result.variables = result.variables.sort{ it.key }
-    result.version = version()
-    result.taps = state.taps
-    result.now = now()
+	result.version = version()
+	result.taps = state.taps
+	result.now = now()
 	return result
 }
 
@@ -2748,9 +2720,9 @@ def api_pause() {
 		def child = getChildApps()?.find { it.id == pistonId }
 		if (child) {
 			child.pause()
-            def pistons = atomicState.pistons ?: [:]
-            pistons[child.id] = child.getSummary()
-            atomicState.pistons = pistons            
+			def pistons = atomicState.pistons ?: [:]
+			pistons[child.id] = child.getSummary()
+			atomicState.pistons = pistons
 		}
 	}
 	return api_getDashboardData()
@@ -2759,27 +2731,27 @@ def api_pause() {
 def api_execute() {
 	def data = request?.JSON
 	def pistonName = params?.pistonName ?: data?.pistonName
-    def result = "Sorry, piston $pistonName could not be found."
-	def d = debug("Received an API execute request for piston '$pistonName' with data: $data")        
+	def result = "Sorry, piston $pistonName could not be found."
+	def d = debug("Received an API execute request for piston '$pistonName' with data: $data")
 	if (pistonName) {
-    	data.remove "pistonName"
-    	result = execute(pistonName, data)
-        result = "Piston $pistonName is now being executed."
-    }
+		data.remove "pistonName"
+		result = execute(pistonName, data)
+		result = "Piston $pistonName is now being executed."
+	}
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">$result<body></body></html>"
 }
 
 def api_tap() {
 	def data = request?.JSON
 	def tapId = params?.tapId ?: data?.tapId
-    def tap = state.taps.find{ "${it.i}" == tapId }
-    def result = ""
-    if (tap && tap.p) {
-    	for(pistonName in tap.p) {
-	    	execute(pistonName)
+	def tap = state.taps.find{ "${it.i}" == tapId }
+	def result = ""
+	if (tap && tap.p) {
+		for(pistonName in tap.p) {
+			execute(pistonName)
 			result += "Piston $pistonName is now being executed.<br/>"
 		}
-    }
+	}
 	def d = debug("Received an API tap request for tapID $tapId")
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">$result<body></body></html>"
 }
@@ -2788,8 +2760,8 @@ def api_ifttt() {
 	def data = request?.JSON
 	def eventName = params?.eventName
 	if (eventName) {
-		sendLocationEvent([name: "ifttt", value: eventName, isStateChange: true, linkText: "IFTTT event", descriptionText: "CoRE has received an IFTTT event: $eventName", data: data])    	
-    }
+		sendLocationEvent([name: "ifttt", value: eventName, isStateChange: true, linkText: "IFTTT event", descriptionText: "CoRE has received an IFTTT event: $eventName", data: data])
+	}
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\">Received event $eventName.<body></body></html>"
 }
 
@@ -2800,9 +2772,9 @@ def api_resume() {
 		def child = getChildApps().find { it.id == pistonId }
 		if (child) {
 			child.resume()
-            def pistons = atomicState.pistons ?: [:]
-            pistons[child.id] = child.getSummary()
-            atomicState.pistons = pistons
+			def pistons = atomicState.pistons ?: [:]
+			pistons[child.id] = child.getSummary()
+			atomicState.pistons = pistons
 		}
 	}
 	return api_getDashboardData()
@@ -2943,34 +2915,34 @@ def updateChart(name, value) {
 		charts[name] = chart
 		atomicState.charts = charts
 	}
-		return null
+	return null
 }
 
 def subscribeToRecovery(appId, recoveryTime) {
 	if (parent) {
-    	parent.subscribeToRecovery(appId, recoveryTime);
-    } else {
-        def recovery = atomicState.recovery
-        if (!(recovery instanceof Map)) recovery = [:]
-        if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now() + 30000)/1000)} seconds"
-        recovery[appId] = recoveryTime
-        atomicState.recovery = recovery
-        //kick start all other dead pistons, use location events...
-        if (recoveryTime != null) recoverPistons(false, appId)
-    }
+		parent.subscribeToRecovery(appId, recoveryTime);
+	} else {
+		def recovery = atomicState.recovery
+		if (!(recovery instanceof Map)) recovery = [:]
+		if (recoveryTime) debug "Subscribing app $appId to recovery in about ${Math.round((recoveryTime - now() + 30000)/1000)} seconds"
+		recovery[appId] = recoveryTime
+		atomicState.recovery = recovery
+		//kick start all other dead pistons, use location events...
+		if (recoveryTime != null) recoverPistons(false, appId)
+	}
 }
 
 private onChildExitPoint(piston, lastEvent, duration, nextScheduledTime, summary) {
 	if (parent) {
-	    parent.onChildExitPoint(piston, lastEvent, duration, nextScheduledTime, summary)
-    } else {
-	    if (lastEvent) updateChart("delay", lastEvent.delay)
-	    updateChart("exec", duration)
-	    subscribeToRecovery(piston.id, nextScheduledTime ?: 0)
-        def pistons = atomicState.pistons ?: [:]
-        pistons[piston.id] = summary
-        atomicState.pistons = pistons
-    }
+		parent.onChildExitPoint(piston, lastEvent, duration, nextScheduledTime, summary)
+	} else {
+		if (lastEvent) updateChart("delay", lastEvent.delay)
+		updateChart("exec", duration)
+		subscribeToRecovery(piston.id, nextScheduledTime ?: 0)
+		def pistons = atomicState.pistons ?: [:]
+		pistons[piston.id] = summary
+		atomicState.pistons = pistons
+	}
 }
 
 def generatePistonName() {
@@ -2989,7 +2961,7 @@ def generatePistonName() {
 			}
 		}
 		if (found) {
-				i++
+			i++
 			continue
 		}
 		return name
@@ -2998,11 +2970,11 @@ def generatePistonName() {
 
 def refreshPistons(event = true) {
 	if (event) sendLocationEvent([name: "CoRE", value: "refresh", isStateChange: true, linkText: "CoRE Refresh", descriptionText: "CoRE has an updated list of pistons", data: [pistons: listPistons()]])
-    def pistons = [:]
+	def pistons = [:]
 	for(app in getChildApps()) {
-    	pistons[app.id] = app.getSummary()
+		pistons[app.id] = app.getSummary()
 	}
-    atomicState.pistons = pistons
+	atomicState.pistons = pistons
 }
 
 def listAskAlexaMacros() {
@@ -3031,28 +3003,26 @@ def listLifxScenes() {
 	if (parent) return parent.listLifxScenes()
 	def modules = atomicState.modules
 	if (modules && modules["LIFX"] && modules["LIFX"].connected) {
-    	return modules["LIFX"]?.scenes*.name
-    }
-    return []
+		return modules["LIFX"]?.scenes*.name
+	}
+	return []
 }
 
 def getLifxSceneId(name) {
 	if (parent) return parent.getLifxSceneId(name)
 	def modules = atomicState.modules
 	if (modules && modules["LIFX"] && modules["LIFX"].connected) {
-    	def scene = modules["LIFX"]?.scenes.find { it.name == name }
-        if (scene) return scene.id
-    }
-    return null
+		def scene = modules["LIFX"]?.scenes.find { it.name == name }
+		if (scene) return scene.id
+	}
+	return null
 }
-
 
 /******************************************************************************/
 /***																		***/
 /*** CoRE PISTON CODE														***/
 /***																		***/
 /******************************************************************************/
-
 
 /******************************************************************************/
 /*** CoRE PISTON INITIALIZATION METHODS										***/
@@ -3068,8 +3038,8 @@ def initializeCoREPiston() {
 	state.app = state.config ? state.config.app : state.app
 	//save misc
 	state.app.mode = settings.mode
-    state.app.debugging = settings.debugging
-    state.app.disableCO = settings.disableCO
+	state.app.debugging = settings.debugging
+	state.app.disableCO = settings.disableCO
 	state.app.description = settings.description
 	state.app.restrictions = cleanUpMap([
 		a: settings["restrictionAlarm"],
@@ -3083,19 +3053,19 @@ def initializeCoREPiston() {
 		tt: settings["restrictionTimeTo"],
 		ttc: settings["restrictionTimeToCustom"],
 		tto: settings["restrictionTimeToOffset"],
-        w: settings["restrictionDOW"],
-        s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
-        s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
-        pe: settings["restrictionPreventTaskExecution"],
+		w: settings["restrictionDOW"],
+		s1: buildDeviceNameList(settings["restrictionSwitchOn"], "and"),
+		s0: buildDeviceNameList(settings["restrictionSwitchOff"], "and"),
+		pe: settings["restrictionPreventTaskExecution"],
 	])
-    state.lastInitialized = now()
+	state.lastInitialized = now()
 	setVariable("\$lastInitialized", state.lastInitialized, true)
 	setVariable("\$currentState", state.currentState, true)
 	setVariable("\$currentStateSince", state.currentStateSince, true)
 
 	if (state.app.enabled) {
-    	resume()
-    }
+		resume()
+	}
 
 	state.remove("config")
 	state.remove("temp")
@@ -3106,7 +3076,6 @@ def initializeCoREPiston() {
 	//save all atomic states to state
 	//to avoid race conditions
 }
-
 
 def initializeCoREPistonStore() {
 	state.temp = state.temp ?: [:]
@@ -3139,10 +3108,10 @@ private configApp() {
 			state.config.app.otherConditions.id = -1
 			state.config.app.actions = []
 			state.config.app.enabled = true
-            state.config.app.created = now()
-            state.config.app.version = version()
-            rebuildConditions()
-            rebuildActions()
+			state.config.app.created = now()
+			state.config.app.version = version()
+			rebuildConditions()
+			rebuildActions()
 		}
 	}
 	//get expert savvy
@@ -3150,15 +3119,15 @@ private configApp() {
 	state.config.app.mode = settings.mode ? settings.mode : "Basic"
 	state.config.app.description = settings.description
 	state.config.app.enabled = !!state.config.app.enabled
-	if (!state.app) state.app = [:]    
+	if (!state.app) state.app = [:]
 }
 
 private subscribeToAll(appData) {
 	debug "Initializing subscriptions...", 1
 	state.deviceSubscriptions = 0
 	def hasTriggers = getConditionHasTriggers(appData.conditions)
-		def hasLatchingTriggers = false
-		if (settings.mode in ["Latching", "And-If", "Or-If"]) {
+	def hasLatchingTriggers = false
+	if (settings.mode in ["Latching", "And-If", "Or-If"]) {
 		//we really get the count
 		hasLatchingTriggers = getConditionHasTriggers(appData.otherConditions)
 		//simulate subscribing to both lists
@@ -3180,7 +3149,7 @@ private subscribeToAll(appData) {
 		//simple IF case, no worries here
 		subscribeToDevices(appData.conditions, hasTriggers, deviceHandler, null, null, null)
 	}
-    subscribe(location, "CoRE Recovery [${app.id}]", recoveryHandler)
+	subscribe(location, "CoRE Recovery [${app.id}]", recoveryHandler)
 	debug "Finished subscribing", -1
 }
 
@@ -3240,18 +3209,6 @@ private subscribeToDevices(condition, triggersOnly, handler, subscriptions, only
 	return subscriptions
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 /******************************************************************************/
 /*** CoRE PISTON CONFIGURATION METHODS										***/
 /******************************************************************************/
@@ -3268,10 +3225,10 @@ def testIFTTT() {
 			if (response.status == 200) {
 				if (response.data == "Congratulations! You've fired the test event")
 					state.modules["IFTTT"].connected = true
-					return true;
+				return true;
 			}
 			return false;
- 		}
+		}
 	}
 	return false
 }
@@ -3285,37 +3242,37 @@ def testLIFX() {
 	]
 	if (settings.lifxToken) {
 		//verify the key
-         def requestParams = [
-            uri:  "https://api.lifx.com",
-            path: "/v1/scenes",
-            headers: [
-            	"Authorization": "Bearer ${settings.lifxToken}"
-            ],
-            requestContentType: "application/json"
-        ]
-        try {
-            return httpGet(requestParams) { response ->
-                if (response.status == 200) {
-                	if (response.data instanceof List) {
-    	                state.modules["LIFX"].connected = true
-                        def ss = []
-                        for(scene in response.data) {
-                        	def s = [
-                            	id: scene.uuid,
-                                name: scene.name
-                            ]
-                            ss.push(s)
-                        }
-                        state.modules["LIFX"].scenes = ss
-                    }
-                    return true;
-                }
-                return false;
-            }
-        }
-        catch(all) {
-	        return false
-        }
+		def requestParams = [
+			uri:  "https://api.lifx.com",
+			path: "/v1/scenes",
+			headers: [
+				"Authorization": "Bearer ${settings.lifxToken}"
+			],
+			requestContentType: "application/json"
+		]
+		try {
+			return httpGet(requestParams) { response ->
+				if (response.status == 200) {
+					if (response.data instanceof List) {
+						state.modules["LIFX"].connected = true
+						def ss = []
+						for(scene in response.data) {
+							def s = [
+								id: scene.uuid,
+								name: scene.name
+							]
+							ss.push(s)
+						}
+						state.modules["LIFX"].scenes = ss
+					}
+					return true;
+				}
+				return false;
+			}
+		}
+		catch(all) {
+			return false
+		}
 	}
 	return false
 }
@@ -3341,15 +3298,15 @@ private createCondition(parentConditionId, group, conditionId = null) {
 	def parent = getCondition(parentConditionId)
 	if (parent) {
 		def condition = createCondition(group)
-        if (conditionId != null) condition.id = conditionId
+		if (conditionId != null) condition.id = conditionId
 		//preserve the parentId so we can rebuild the app from settings
 		condition.parentId = parent ? (int) parent.id : null
 		//calculate depth for new condition
 		condition.level = (parent.level ? parent.level : 0) + 1
-        //add the new condition to its parent, if any
+		//add the new condition to its parent, if any
 		//set the parent for upwards traversal
-        //if (!parent.children) parent = getCondition(0)
-        parent.children.push(condition)
+		//if (!parent.children) parent = getCondition(0)
+		parent.children.push(condition)
 		//return the newly created condition
 		return condition
 	}
@@ -3480,11 +3437,11 @@ private updateCondition(condition) {
 	condition.vv = settings["condVarV${condition.id}"]
 	condition.vf = settings["condVarF${condition.id}"]
 	condition.vw = settings["condVarW${condition.id}"]
-    
-    condition.it = settings["condImportT${condition.id}"]
-    condition.itp = settings["condImportTP${condition.id}"]
-    condition.if = settings["condImportF${condition.id}"]
-    condition.ifp = settings["condImportFP${condition.id}"]
+
+	condition.it = settings["condImportT${condition.id}"]
+	condition.itp = settings["condImportTP${condition.id}"]
+	condition.if = settings["condImportF${condition.id}"]
+	condition.ifp = settings["condImportFP${condition.id}"]
 
 	condition = cleanUpMap(condition)
 	return null
@@ -3495,7 +3452,7 @@ private getNextConditionId() {
 	def nextId = getLastConditionId(state.config.app.conditions) + 1
 	def otherNextId = getLastConditionId(state.config.app.otherConditions) + 1
 	nextId = nextId > otherNextId ? nextId : otherNextId
-    def keys = settings.findAll { it.key.startsWith("condParent") }
+	def keys = settings.findAll { it.key.startsWith("condParent") }
 	while (keys.find { it.key == "condParent" + nextId }) {
 		nextId++
 	}
@@ -3512,7 +3469,6 @@ private getLastConditionId(parent) {
 	}
 	return lastId
 }
-
 
 //creates a condition (grouped or not)
 private createAction(parentId, onState = true, actionId = null) {
@@ -3573,7 +3529,7 @@ private updateAction(action) {
 	action.rv = settings["actRVariable$id"]
 	action.rvc = settings["actRComparison$id"]
 	action.rvv = settings["actRValue$id"] != null ? settings["actRValue$id"] : ""
-    action.rw = settings["actRDOW$id"]
+	action.rw = settings["actRDOW$id"]
 	action.rtf = settings["actRTimeFrom$id"]
 	action.rtfc = settings["actRTimeFromCustom$id"]
 	action.rtfo = settings["actRTimeFromOffset$id"]
@@ -3581,9 +3537,9 @@ private updateAction(action) {
 	action.rttc = settings["actRTimeToCustom$id"]
 	action.rtto = settings["actRTimeToOffset$id"]
 	action.rs1 = []
-    for (device in settings["actRSwitchOn$id"]) { action.rs1.push(device.id) }
+	for (device in settings["actRSwitchOn$id"]) { action.rs1.push(device.id) }
 	action.rs0 = []
-    for (device in settings["actRSwitchOff$id"]) { action.rs0.push(device.id) }
+	for (device in settings["actRSwitchOff$id"]) { action.rs0.push(device.id) }
 	action.tos = settings["actTOS$id"]
 	action.tcp = settings["actTCP$id"]
 
@@ -3684,7 +3640,7 @@ private updateAction(action) {
 							task.p.push([i: i + 1, t: type, d: settings["actParam$id#$tid-${i + 1}"]])
 						} else {
 							break
-							}
+						}
 						i += 2
 					}
 
@@ -3701,19 +3657,19 @@ private cleanUpActions() {
 	for(action in state.config.app.actions) {
 		updateAction(action)
 	}
-    def washer = []
-    for(action in state.config.app.actions) {
-        if (!((action.d && action.d.size()) || action.l)) {
-            washer.push(action)
-        }
-    }
-    for (action in washer) {
-    	state.config.app.actions.remove(action)
-    }
-    washer = null
-    
-    /*    
-    def dirty = true
+	def washer = []
+	for(action in state.config.app.actions) {
+		if (!((action.d && action.d.size()) || action.l)) {
+			washer.push(action)
+		}
+	}
+	for (action in washer) {
+		state.config.app.actions.remove(action)
+	}
+	washer = null
+
+	/*
+	def dirty = true
 	while (dirty) {
 		dirty = false
 		for(action in state.config.app.actions) {
@@ -3724,7 +3680,7 @@ private cleanUpActions() {
 			}
 		}
 	}
-    */
+	*/
 }
 
 private listActionDevices(actionId) {
@@ -3763,15 +3719,15 @@ private getActionDescription(action) {
 	if (action.rw) {
 		result += "® If day is ${buildNameList(action.rw, "or")}...\n"
 	}
-	if (action.rtf && action.rtt) {   
+	if (action.rtf && action.rtt) {
 		result += "® If time is between ${action.rtf == "custom time" ? formatTime(action.rtfc) : (action.rtfo ? (action.rtfo < 0 ? "${-action.rtfo} minutes before " : "${action.rtfo} minutes after ") : "") + action.rtf} and ${action.rtt == "custom time" ? formatTime(action.rttc) : (action.rtto ? (action.rtto < 0 ? "${-action.rtto} minutes before " : "${action.rtto} minutes after ") : "") + action.rtt}...\n"
-    }    
-    if (action.rs1) {
-    	result += "® If each of ${buildDeviceNameList(settings["actRSwitchOn${action.id}"], "and")} is on"
-	}    
-    if (action.rs0) {
-    	result += "® If each of ${buildDeviceNameList(settings["actRSwitchOff${action.id}"], "and")} is off"
-	}    
+	}
+	if (action.rs1) {
+		result += "® If each of ${buildDeviceNameList(settings["actRSwitchOn${action.id}"], "and")} is on"
+	}
+	if (action.rs0) {
+		result += "® If each of ${buildDeviceNameList(settings["actRSwitchOff${action.id}"], "and")} is off"
+	}
 	result += (result ? "\n" : "") + "Using " + buildDeviceNameList(devices, "and")+ "..."
 	state.taskIndent = 0
 	def tasks = action.t.sort{it.i}
@@ -3785,7 +3741,7 @@ private getActionDescription(action) {
 				i++
 			}
 			t += "]"
-            
+
 		}
 		result += "\n " + getTaskDescription(task, '► ')
 	}
@@ -3811,16 +3767,16 @@ private getTaskDescription(task, prfx = '') {
 	def result = ""
 	if (custom) {
 		result = task.c.replace(customCommandSuffix(), "") + "("
-        for (int i=0; i < task.p.size() / 2; i++) {
-            if (i > 0) result += ", "
-        	int j = i * 2 + 1
-        	if (task.p[j].t == "string") {
-            	result += "\"${task.p[j].d}\""
-            } else {
-            	result += "${task.p[j].d}"
-            }
-        }
-        result = result + ")"
+		for (int i=0; i < task.p.size() / 2; i++) {
+			if (i > 0) result += ", "
+			int j = i * 2 + 1
+			if (task.p[j].t == "string") {
+				result += "\"${task.p[j].d}\""
+			} else {
+				result += "${task.p[j].d}"
+			}
+		}
+		result = result + ")"
 	} else {
 		def cmd = (virtual ? getVirtualCommandByDisplay(command) : getCommandByDisplay(command))
 		if (!cmd) {
@@ -3835,46 +3791,46 @@ private getTaskDescription(task, prfx = '') {
 				def immediate = !!task.p[2].d
 				if (!name || !dataType) return "[ERROR]"
 				result = "${immediate ? "Immediately set" : "Set"} $dataType variable {$name} = "
-                def i = 4
-                def grouping = false
-                def groupingUnit = ""
-                while (true) {
-                    def value = task.p[i].d
-                    //null strings are really blanks
-                    if ((dataType == "string") && (value == null)) value = ""
-                    if ((dataType == "time") && (i == 4) && (value != null)) value = formatTime(value)
-                    def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
-                    def unit = (dataType == "time" ? task.p[i + 2].d : null)
-                    def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null
-                    def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
-                    if (needsGrouping) {
-                        //these operations require grouping i.e. (a * b * c) seconds
-                        if (!grouping) {
-                            grouping = true
-                            groupingUnit = unit
-                            result += "("
-                        }
-                    }
-                    //add the value/variable
-                    result += variable + (!grouping && unit ? " $unit" : "")
-                    if (grouping && !needsGrouping) {
-                        //these operations do NOT require grouping
-                        grouping = false
-                        result += ")${groupingUnit ? " $groupingUnit" : ""}"
-                    }
-                    if (!operation) break
-                    result += " $operation "
-                    i += 4
+				def i = 4
+				def grouping = false
+				def groupingUnit = ""
+				while (true) {
+					def value = task.p[i].d
+					//null strings are really blanks
+					if ((dataType == "string") && (value == null)) value = ""
+					if ((dataType == "time") && (i == 4) && (value != null)) value = formatTime(value)
+					def variable = value != null ? (dataType == "string" ? "\"$value\"" : "$value") : "${task.p[i + 1].d}"
+					def unit = (dataType == "time" ? task.p[i + 2].d : null)
+					def operation = task.p.size() > i + 3 ? "${task.p[i + 3].d} ".tokenize(" ")[0] : null
+					def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+					if (needsGrouping) {
+						//these operations require grouping i.e. (a * b * c) seconds
+						if (!grouping) {
+							grouping = true
+							groupingUnit = unit
+							result += "("
+						}
+					}
+					//add the value/variable
+					result += variable + (!grouping && unit ? " $unit" : "")
+					if (grouping && !needsGrouping) {
+						//these operations do NOT require grouping
+						grouping = false
+						result += ")${groupingUnit ? " $groupingUnit" : ""}"
+					}
+					if (!operation) break
+					result += " $operation "
+					i += 4
 				}
 			} else if (cmd.name == "setColor") {
 				result = "Set color to "
 				if (task.p[0].d) {
-                	result = result + "\"${task.p[0].d}\""
-                } else if (task.p[1].d) {
-                	result = result + "RGB(${task.p[1].d})"
-                } else {
+					result = result + "\"${task.p[0].d}\""
+				} else if (task.p[1].d) {
+					result = result + "RGB(${task.p[1].d})"
+				} else {
 					result = result + "HSL(${task.p[2].d}°, ${task.p[3].d}%, ${task.p[4].d}%)"
-                }
+				}
 			} else {
 				result = formatMessage(cmd.description ?: cmd.display, task.p)
 			}
@@ -3885,7 +3841,6 @@ private getTaskDescription(task, prfx = '') {
 	state.taskIndent = state.taskIndent + indent
 	return prefix + (prfx ?: '') + result + (task.m && task.m.size() ? " (only for ${buildNameList(task.m, "or")})" : "") + (task.d && task.d.size() ? " (only on ${buildNameList(task.d, "or")})" : "")
 }
-
 
 /******************************************************************************/
 /*** ENTRY AND EXIT POINT HANDLERS											***/
@@ -3949,20 +3904,20 @@ def timeHandler() {
 }
 
 def recoveryHandler(evt = null, showWarning = true) {
-	if (evt) {    
+	if (evt) {
 		if (evt.jsonData && evt.jsonData.rebuild) {
-        	debug "Received a REBUILD request...", null, "info"
-    		rebuildPiston(true)
-        	return
-    	} else {
-        	debug "Received a RECOVER request...", null, "info"
-        }
-    }
+			debug "Received a REBUILD request...", null, "info"
+			rebuildPiston(true)
+			return
+		} else {
+			debug "Received a RECOVER request...", null, "info"
+		}
+	}
 	entryPoint()
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-    debug "Received a recovery request", 1, "trace"
+	debug "Received a recovery request", 1, "trace"
 	if (!evt && showWarning) debug "CAUTION: Received a recovery event", 1, "warn"
 	//reset markers for all tasks, the owner of the task probably crashed :)
 	def tasks = atomicState.tasks
@@ -3981,11 +3936,11 @@ def executeHandler(data = null) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-    if (data instanceof Map) {
-    	for(item in data) {
-        	setVariable(item.key, item.value)
-        }
-    }
+	if (data instanceof Map) {
+		for(item in data) {
+			setVariable(item.key, item.value)
+		}
+	}
 	debug "Received an execute request", 1, "trace"
 	broadcastEvent([name: "execute", date: new Date(), deviceId: "time", conditionId: null], true, false)
 	processTasks()
@@ -4000,13 +3955,13 @@ private preAuthorizeEvent(evt) {
 	//prevent one piston from retriggering itself
 	if (evt && (evt.name == "piston") && (evt.value == app.label)) return false
 	state.filterEvent = true
-    if (evt.name == "variable") {
+	if (evt.name == "variable") {
 		withEachCondition(state.app.conditions, "preAuthorizeTrigger", evt)
 		if (state.filterEvent) withEachCondition(state.app.otherConditions, "preAuthorizeTrigger", evt)
-    } else {
+	} else {
 		withEachTrigger(state.app.conditions, "preAuthorizeTrigger", evt)
 		if (state.filterEvent) withEachTrigger(state.app.otherConditions, "preAuthorizeTrigger", evt)
-    }
+	}
 	if (state.filterEvent) debug "Received a '${evt.name}' event, but no trigger matches it, so we're not going to execute at this time."
 	return !state.filterEvent
 }
@@ -4015,7 +3970,7 @@ private preAuthorizeTrigger(condition, evt) {
 	if (!state.filterEvent) return
 	def attribute = evt.name
 	def value = evt.value
-    switch (evt.name) {
+	switch (evt.name) {
 		case "routineExecuted":
 			value = evt.displayName
 			break
@@ -4031,7 +3986,7 @@ private entryPoint() {
 	state.sim = null
 	state.debugLevel = 0
 	state.globalVars = [:]
-    state.tasker = []
+	state.tasker = []
 	//state.tasker = state.tasker ? state.tasker : []
 }
 
@@ -4056,10 +4011,10 @@ private exitPoint(milliseconds) {
 	}
 	setVariable("\$previousEventExecutionTime", milliseconds, true)
 	state.lastExecutionTime = milliseconds
-    
+
 	try {
-        state.nextScheduledTime = atomicState.nextScheduledTime
-    	parent.onChildExitPoint(app, lastEvent, milliseconds, state.nextScheduledTime, getSummary())        
+		state.nextScheduledTime = atomicState.nextScheduledTime
+		parent.onChildExitPoint(app, lastEvent, milliseconds, state.nextScheduledTime, getSummary())
 	} catch(e) {
 		debug "ERROR: Could not update parent app: ", null, "error", e
 	}
@@ -4072,7 +4027,7 @@ private exitPoint(milliseconds) {
 	}
 
 	//give a chance to variable events
-    publishVariables()
+	publishVariables()
 
 	//save all atomic states to state
 	//to avoid race conditions
@@ -4080,13 +4035,12 @@ private exitPoint(milliseconds) {
 	state.tasks = atomicState.tasks
 	state.stateStore = atomicState.stateStore
 	state.runStats = atomicState.runStats
-    state.currentState = atomicState.currentState
-    state.currentStateSince = atomicState.currentStateSince
+	state.currentState = atomicState.currentState
+	state.currentStateSince = atomicState.currentStateSince
 	state.temp = null
 	state.sim = null
-    
-}
 
+}
 
 /******************************************************************************/
 /*** EVENT MANAGEMENT FUNCTIONS												***/
@@ -4100,65 +4054,65 @@ private broadcastEvent(evt, primary, secondary) {
 	debug "Processing event ${evt.name}${evt.device ? " for device ${evt.device}" : ""}${evt.deviceId ? " with id ${evt.deviceId}" : ""}${evt.value ? ", value ${evt.value}" : ""}, generated on ${evt.date}, about ${delay}ms ago (${version()})", 1, "trace"
 	def allowed = true
 	def restriction
-    def initialState = atomicState.currentState
-    def initialStateSince = atomicState.currentStateSince
+	def initialState = atomicState.currentState
+	def initialStateSince = atomicState.currentStateSince
 	if (evt && app.restrictions) {
 		//check restrictions
-        restriction = checkPistonRestriction()
-        allowed = (restriction == null)
+		restriction = checkPistonRestriction()
+		allowed = (restriction == null)
 	}
-    //save previous event
-    setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
-    setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
-    setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
-    setVariable("\$previousEventDevicePhysical", getVariable("\$currentEventDevicePhysical"), true)
-    setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
-    setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
-    setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
-    setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)
-    def lastEvent = [
-        event: [
-            device: evt.device ? "${evt.device}" : evt.deviceId,
-            name: evt.name,
-            value: evt.value,
-            date: evt.date
-        ],
-        delay: delay
-    ]
-    state.lastEvent = lastEvent
-    setVariable("\$currentEventReceived", perf, true)
-    setVariable("\$currentEventDevice", lastEvent.event.device, true)
-    setVariable("\$currentEventDeviceIndex", 0, true)
-    setVariable("\$currentEventDevicePhysical", 0, true)
-    setVariable("\$currentEventAttribute", lastEvent.event.name, true)
-    setVariable("\$currentEventValue", lastEvent.event.value, true)
-    setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
-    setVariable("\$currentEventDelay", lastEvent.delay, true)
-    if (!(evt.name in ["askAlexaMacro", "echoSistantProfile", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
-        def cache = atomicState.cache
-        cache = cache ? cache : [:]
-        def deviceId = evt.deviceId ? evt.deviceId : location.id
-        def cachedValue = cache[deviceId + '-' + evt.name]
-        def eventTime = evt.date.getTime()
-        cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
-        if (evt.name == "threeAxis") {
-	        cachedValue = cache[deviceId + '-orientation']
-	        cache[deviceId + '-orientation'] = [o: cachedValue ? cachedValue.v : null, v: getThreeAxisOrientation(evt.xyzValue), q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
-        }
-        atomicState.cache = cache
-        state.cache = cache
-        if (cachedValue) {
-            if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
-                //duplicate event
-                debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
-                evt = null
-            }
-        }
-    }
+	//save previous event
+	setVariable("\$previousEventReceived", getVariable("\$currentEventReceived"), true)
+	setVariable("\$previousEventDevice", getVariable("\$currentEventDevice"), true)
+	setVariable("\$previousEventDeviceIndex", getVariable("\$currentEventDeviceIndex"), true)
+	setVariable("\$previousEventDevicePhysical", getVariable("\$currentEventDevicePhysical"), true)
+	setVariable("\$previousEventAttribute", getVariable("\$currentEventAttribute"), true)
+	setVariable("\$previousEventValue", getVariable("\$currentEventValue"), true)
+	setVariable("\$previousEventDate", getVariable("\$currentEventDate"), true)
+	setVariable("\$previousEventDelay", getVariable("\$currentEventDelay"), true)
+	def lastEvent = [
+		event: [
+			device: evt.device ? "${evt.device}" : evt.deviceId,
+			name: evt.name,
+			value: evt.value,
+			date: evt.date
+		],
+		delay: delay
+	]
+	state.lastEvent = lastEvent
+	setVariable("\$currentEventReceived", perf, true)
+	setVariable("\$currentEventDevice", lastEvent.event.device, true)
+	setVariable("\$currentEventDeviceIndex", 0, true)
+	setVariable("\$currentEventDevicePhysical", 0, true)
+	setVariable("\$currentEventAttribute", lastEvent.event.name, true)
+	setVariable("\$currentEventValue", lastEvent.event.value, true)
+	setVariable("\$currentEventDate", lastEvent.event.date && lastEvent.event.date instanceof Date ? lastEvent.event.date.time : null, true)
+	setVariable("\$currentEventDelay", lastEvent.delay, true)
+	if (!(evt.name in ["askAlexaMacro", "echoSistantProfile", "ifttt", "piston", "routineExecuted", "variable", "time"])) {
+		def cache = atomicState.cache
+		cache = cache ? cache : [:]
+		def deviceId = evt.deviceId ? evt.deviceId : location.id
+		def cachedValue = cache[deviceId + '-' + evt.name]
+		def eventTime = evt.date.getTime()
+		cache[deviceId + '-' + evt.name] = [o: cachedValue ? cachedValue.v : null, v: evt.value, q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+		if (evt.name == "threeAxis") {
+			cachedValue = cache[deviceId + '-orientation']
+			cache[deviceId + '-orientation'] = [o: cachedValue ? cachedValue.v : null, v: getThreeAxisOrientation(evt.xyzValue), q: cachedValue ? cachedValue.p : null, p: !!evt.physical, t: eventTime ]
+		}
+		atomicState.cache = cache
+		state.cache = cache
+		if (cachedValue) {
+			if ((cachedValue.v == evt.value) && (!evt.jsonData) && (/*(cachedValue.v instanceof String) || */(eventTime < cachedValue.t) || (cachedValue.t + 1000 > eventTime))) {
+				//duplicate event
+				debug "WARNING: Received duplicate event for device ${evt.device}, attribute ${evt.name}='${evt.value}', ignoring...", null, "warn"
+				evt = null
+			}
+		}
+	}
 	if (allowed) {
 		try {
-            resetConditionState(app.conditions)
-            resetConditionState(app.otherConditions)
+			resetConditionState(app.conditions)
+			resetConditionState(app.otherConditions)
 			if (evt) {
 				//broadcast to primary IF block
 				def result1 = null
@@ -4167,21 +4121,21 @@ private broadcastEvent(evt, primary, secondary) {
 				def force = false
 				def mode = app.mode
 				switch (mode) {
-                	case "And-If":
-                    case "Or-If":
-                    case "Latching":
-                        //these three modes always evaluate both blocks
-                        primary = true
-                        secondary = true
-                        force = true
-                        break
-                    case "Do":
-                    	primary = false
-                        secondary = false
-                        force = false
-                        result1 = false
-                        result2 = false
-                        break
+					case "And-If":
+					case "Or-If":
+					case "Latching":
+						//these three modes always evaluate both blocks
+						primary = true
+						secondary = true
+						force = true
+						break
+					case "Do":
+						primary = false
+						secondary = false
+						force = false
+						result1 = false
+						result2 = false
+						break
 				}
 				//override eligibility concerns when dealing with Follow-Up pistons, or when dealing with "execute" and "simulate" events
 				force = force || app.mode == "Follow-Up" || (evt && evt.name in ["execute", "simulate", "time"])
@@ -4240,10 +4194,10 @@ private broadcastEvent(evt, primary, secondary) {
 							}
 						}
 						break
-                    case "Do":
-                    	currentState = false
-                    	currentStateSince = now()
-	                    stateMsg = "♦ $mode Piston changed state to $result1 ♦"
+					case "Do":
+						currentState = false
+						currentStateSince = now()
+						stateMsg = "♦ $mode Piston changed state to $result1 ♦"
 						break
 					case "Basic":
 					case "Simple":
@@ -4302,19 +4256,19 @@ private broadcastEvent(evt, primary, secondary) {
 					setVariable("\$currentState", currentState, true)
 					setVariable("\$currentStateSince", currentStateSince, true)
 					//new state
-                    atomicState.currentState = currentState
-                    atomicState.currentStateSince = currentStateSince
-                    state.currentState = currentState
-                    state.currentStateSince = currentStateSince
+					atomicState.currentState = currentState
+					atomicState.currentStateSince = currentStateSince
+					state.currentState = currentState
+					state.currentStateSince = currentStateSince
 					//resume all tasks that are waiting for a state change
 					cancelTasks(currentState)
 					resumeTasks(currentState)
 				}
 				//execute the DO EVERY TIME actions
-                if (mode != "Do") {
-                    if (result1) scheduleActions(0, stateChanged)
-                    if (result2) scheduleActions(-1, stateChanged)
-                }
+				if (mode != "Do") {
+					if (result1) scheduleActions(0, stateChanged)
+					if (result2) scheduleActions(-1, stateChanged)
+				}
 				if (!(mode in ["Basic", "Latching"]) && (!currentState)) {
 					//execute the else branch
 					scheduleActions(-2, stateChanged)
@@ -4324,8 +4278,8 @@ private broadcastEvent(evt, primary, secondary) {
 			debug "ERROR: An error occurred while processing event $evt: ", null, "error", e
 		}
 	} else {
-    	def msg = "Piston evaluation was prevented by ${restriction}." 
-        if (state.sim) state.sim.evals.push(msg)
+		def msg = "Piston evaluation was prevented by ${restriction}."
+		if (state.sim) state.sim.evals.push(msg)
 		debug msg, null, "trace"
 	}
 	perf = now() - perf
@@ -4335,36 +4289,36 @@ private broadcastEvent(evt, primary, secondary) {
 private checkPistonRestriction() {
 	def restriction
 	def app = state.run == "config" ? state.config.app : state.app
-    
-    if (app.restrictions.m && app.restrictions.m.size() && !(location.mode in app.restrictions.m)) {
-        restriction = "a mode mismatch"
-    } else if (app.restrictions.a && app.restrictions.a.size() && !(getAlarmSystemStatus() in app.restrictions.a)) {
-        restriction = "an alarm status mismatch"
-    } else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
-        restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
-    } else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
-        restriction = "a day of week mismatch"
-    } else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tfo, app.restrictions.tt, app.restrictions.ttc, app.restrictions.tto))) {
-        restriction = "a time of day mismatch"
-    } else {
-        if (settings["restrictionSwitchOn"]) {
-            for(sw in settings["restrictionSwitchOn"]) {
-                if (sw.currentValue("switch") != "on") {
-                    restriction = "switch ${sw} being ${sw.currentValue("switch")}"
-                    break
-                }
-            }
-        }
-        if (!restriction && settings["restrictionSwitchOff"]) {
-            for(sw in settings["restrictionSwitchOff"]) {
-                if (sw.currentValue("switch") != "off") {
-                    restriction = "switch ${sw} being ${sw.currentValue("switch")}"
-                    break
-                }
-            }
-        }
-    }
-    return restriction
+
+	if (app.restrictions.m && app.restrictions.m.size() && !(location.mode in app.restrictions.m)) {
+		restriction = "a mode mismatch"
+	} else if (app.restrictions.a && app.restrictions.a.size() && !(getAlarmSystemStatus() in app.restrictions.a)) {
+		restriction = "an alarm status mismatch"
+	} else if (app.restrictions.v && !(checkVariableCondition(app.restrictions.v, app.restrictions.vc, app.restrictions.vv))) {
+		restriction = "variable condition {${app.restrictions.v}} ${app.restrictions.vc} '${app.restrictions.vv}'"
+	} else if (app.restrictions.w && app.restrictions.w.size() && !(getDayOfWeekName() in app.restrictions.w)) {
+		restriction = "a day of week mismatch"
+	} else if (app.restrictions.tf && app.restrictions.tt && !(checkTimeCondition(app.restrictions.tf, app.restrictions.tfc, app.restrictions.tfo, app.restrictions.tt, app.restrictions.ttc, app.restrictions.tto))) {
+		restriction = "a time of day mismatch"
+	} else {
+		if (settings["restrictionSwitchOn"]) {
+			for(sw in settings["restrictionSwitchOn"]) {
+				if (sw.currentValue("switch") != "on") {
+					restriction = "switch ${sw} being ${sw.currentValue("switch")}"
+					break
+				}
+			}
+		}
+		if (!restriction && settings["restrictionSwitchOff"]) {
+			for(sw in settings["restrictionSwitchOff"]) {
+				if (sw.currentValue("switch") != "off") {
+					restriction = "switch ${sw} being ${sw.currentValue("switch")}"
+					break
+				}
+			}
+		}
+	}
+	return restriction
 }
 
 private checkEventEligibility(condition, evt) {
@@ -4421,8 +4375,6 @@ private checkEventEligibility(condition, evt) {
 	return result
 }
 
-
-
 /******************************************************************************/
 /*** CONDITION EVALUATION FUNCTIONS											***/
 /******************************************************************************/
@@ -4436,7 +4388,7 @@ private evaluateConditionSet(evt, primary, force = false) {
 	//this check ensures that an event that is used in both blocks, but as different types, one as a trigger
 	//and one as a condition do not interfere with each other
 	def app = state.run == "config" ? state.config.app : state.app
-    //reset last condition state
+	//reset last condition state
 	def eligibilityStatus = force ? 1 : checkEventEligibility(primary ? app.conditions: app.otherConditions , evt)
 	def evaluation = null
 	if (!force) {
@@ -4451,10 +4403,10 @@ private evaluateConditionSet(evt, primary, force = false) {
 	if (evaluation != null) {
 		if (primary) {
 			app.conditions.eval = evaluation
-            app.conditions.state = evaluation
+			app.conditions.state = evaluation
 		} else {
 			app.otherConditions.eval = evaluation
-            app.otherConditions.state = evaluation
+			app.otherConditions.state = evaluation
 		}
 	}
 	return evaluation
@@ -4463,9 +4415,9 @@ private evaluateConditionSet(evt, primary, force = false) {
 private resetConditionState(condition) {
 	if (!condition) return
 	condition.eval = null
-    if (condition.children) {
-    	for (cond in condition.children) resetConditionState(cond)
-    }
+	if (condition.children) {
+		for (cond in condition.children) resetConditionState(cond)
+	}
 }
 
 private evaluateCondition(condition, evt = null) {
@@ -4534,7 +4486,7 @@ private evaluateCondition(condition, evt = null) {
 		result = condition.not ? !result : result
 		def oldState = condition.state
 		condition.eval = result
-        condition.state = result
+		condition.state = result
 
 		//store variables (only if evt is available, i.e. not simulating)
 		if (evt) {
@@ -4544,21 +4496,21 @@ private evaluateCondition(condition, evt = null) {
 			if (condition.vv && result) setVariable(condition.vv, evt.value)
 			if (condition.vf && !result) setVariable(condition.vf, evt.date.getTime())
 			if (condition.vw && !result) setVariable(condition.vw, evt.value)
-            if (condition.it && result && evt.jsonData) {
-                def prefix = condition.itp ?: ""
-                if (evt.jsonData instanceof Map) {
-                	importVariables(evt.jsonData, prefix)
-                }
-            }
-            if (condition.if && !result && evt.jsonData) {
-            	def prefix = condition.ifp ?: ""
-                if (evt.jsonData instanceof Map) {
-                	importVariables(evt.jsonData, prefix)
-                }                
-            }
+			if (condition.it && result && evt.jsonData) {
+				def prefix = condition.itp ?: ""
+				if (evt.jsonData instanceof Map) {
+					importVariables(evt.jsonData, prefix)
+				}
+			}
+			if (condition.if && !result && evt.jsonData) {
+				def prefix = condition.ifp ?: ""
+				if (evt.jsonData instanceof Map) {
+					importVariables(evt.jsonData, prefix)
+				}
+			}
 			if (condition.id > 0) {
-            	if (oldState != result) {
-                	//cancel all actions that need to be canceled on condition state change
+				if (oldState != result) {
+					//cancel all actions that need to be canceled on condition state change
 					unscheduleActions(condition.id)
 				}
 				scheduleActions(condition.id, oldState != result, result)
@@ -4628,7 +4580,7 @@ private evaluateDeviceCondition(condition, evt) {
 			attribute = "variable"
 			break
 	}
-    
+
 	if (!devices) {
 		//something went wrong
 		return false
@@ -4641,13 +4593,13 @@ private evaluateDeviceCondition(condition, evt) {
 	if (evt && capability && capability.count && capability.data) {
 		//at this point we won't evaluate this condition unless we have the right sub device below
 		hasSubDevices = true
-        def idx = cast(evt.jsonData ? evt.jsonData[capability.data] : 0, "number")
-        //if button index is 0, make it 1
-        if ((attr.name == "button") && (idx == 0)) idx = 1
+		def idx = cast(evt.jsonData ? evt.jsonData[capability.data] : 0, "number")
+		//if button index is 0, make it 1
+		if ((attr.name == "button") && (idx == 0)) idx = 1
 		setVariable("\$currentEventDeviceIndex", idx, true)
 		def subDeviceId = "#$idx".trim()
 		def subDevices = condition.sdev ?: []
-        if (subDeviceId == "#0") subDeviceId = "(none)"
+		if (subDeviceId == "#0") subDeviceId = "(none)"
 		if (subDevices && subDevices.size()) {
 			//are we expecting that button?
 			//subDeviceId in subDevices didn't seem to work?!
@@ -4658,8 +4610,8 @@ private evaluateDeviceCondition(condition, evt) {
 				}
 			}
 		} else {
-        	matchesSubDevice = true
-        }
+			matchesSubDevice = true
+		}
 	}
 
 	//is this a momentary event?
@@ -4755,7 +4707,7 @@ private evaluateDeviceCondition(condition, evt) {
 					}
 					break
 			}
-            
+
 			def interactionMatched = true
 			if (attr.interactive) {
 				interactionMatched = (physical && (condition.iact != "Programmatic")) || (!physical && (condition.iact != "Physical"))
@@ -4794,13 +4746,13 @@ private evaluateDeviceCondition(condition, evt) {
 			def finalResult = false
 			switch (mode) {
 				case "All":
-				result = result && deviceResult
-				finalResult = !result
-				break
+					result = result && deviceResult
+					finalResult = !result
+					break
 				case "Any":
-				result = result || deviceResult
-				finalResult = result
-				break
+					result = result || deviceResult
+					finalResult = result
+					break
 			}
 			//optimize the loop to exit when we find a result that's going to be the final one (AND encountered a false, or OR encountered a true)
 			if (finalResult && !(condition.vm || condition.vn)) break
@@ -4859,7 +4811,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 		def m = time ? time.hours * 60 + time.minutes : 0 + (time.seconds >= 57 ? 1 : 0)
 		def m1 = null
 		def m2 = null
-			//go through each parameter
+		//go through each parameter
 		def o1 = condition.o1 ? condition.o1 : 0
 		def o2 = condition.o2 ? condition.o2 : 0
 		def useDate1 = false
@@ -4885,7 +4837,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 								break
 						}
 					}
-						break
+					break
 				case "midnight":
 					v = (i == 1 ? 0 : 1440)
 					break
@@ -4920,7 +4872,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 		}
 
 		//add one minute if we're within 3 seconds of the next minute
-        def rightNow = adjustTime()
+		def rightNow = adjustTime()
 		rightNow = rightNow.time - rightNow.time.mod(60000) + (rightNow.seconds >= 57 ? 60000 : 0)
 		def lastMidnight =  rightNow - rightNow.mod(86400000)
 		def nextMidnight =  lastMidnight + 86400000
@@ -4985,7 +4937,7 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 				break
 			case { comparison.contains("between") }:
 				def a1 = useDate1 ? m1 + o1 * 60000 : (useDate2 ? m2 - m2.mod(86400000) : lastMidnight) + addOffsetToMinutes(m1, o1) * 60000
-				def a2 = useDate2 ? m2 + o2 * 60000 : (useDate1 ? m1 - m1.mod(86400000) : lastMidnight) + addOffsetToMinutes(m2, o2) * 60000                
+				def a2 = useDate2 ? m2 + o2 * 60000 : (useDate1 ? m1 - m1.mod(86400000) : lastMidnight) + addOffsetToMinutes(m2, o2) * 60000
 				def mm = rightNow
 				if ((a1 > a2) && (!useDate1 || !useDate2)) {
 					//if a1 is after a2, and we haven't specified dates for both, increment a2 with 1 day to bring it after a1
@@ -5017,8 +4969,8 @@ private evaluateTimeCondition(condition, evt = null, unixTime = null, getNextEve
 	}
 
 	if (getNextEventTime) {
-    	return null
-    }
+		return null
+	}
 	return result && testDateTimeFilters(condition, time)
 }
 
@@ -5112,7 +5064,7 @@ private eval_cond_is_one_of(condition, device, attribute, oldValue, oldValueSinc
 	def v = "$currentValue".trim()
 	for(def value in value1) {
 		if ("$value".trim() == v)
-		return true
+			return true
 	}
 	return false
 }
@@ -5139,14 +5091,14 @@ private eval_cond_is_greater_than_or_equal_to(condition, device, attribute, oldV
 
 private eval_cond_is_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	try {
-			return Math.round(currentValue).mod(2) == 0
+		return Math.round(currentValue).mod(2) == 0
 	} catch(all) {}
 	return false
 }
 
 private eval_cond_is_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	try {
-			return Math.round(currentValue).mod(2) == 1
+		return Math.round(currentValue).mod(2) == 1
 	} catch(all) {}
 	return false
 }
@@ -5168,7 +5120,6 @@ private eval_cond_is_outside_of_range(condition, device, attribute, oldValue, ol
 }
 
 private listPreviousStates(device, attribute, currentValue, minutes, excludeLast) {
-//	def events = device.eventsSince(new Date(now() - minutes * 60000));
 	def result = []
 	if (!(device instanceof physicalgraph.app.DeviceWrapper)) return result
 	def events = device.events([all: true, max: 100]).findAll{it.name == attribute}
@@ -5363,7 +5314,6 @@ private eval_cond_was_outside_of_range(condition, device, attribute, oldValue, o
 /* triggers */
 private eval_trg_changes(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return true
-	//return momentary || (oldValue != currentValue)
 }
 
 private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -5372,17 +5322,17 @@ private eval_trg_changes_to(condition, device, attribute, oldValue, oldValueSinc
 
 private eval_trg_changes_to_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return 	eval_cond_is_not_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_away_from(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return	eval_cond_is_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_not_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_away_from_one_of(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return	eval_cond_is_one_of(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_not_one_of(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_drops(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -5391,12 +5341,12 @@ private eval_trg_drops(condition, device, attribute, oldValue, oldValueSince, cu
 
 private eval_trg_drops_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_less_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_less_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_less_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_drops_to_or_below(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_less_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_raises(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -5405,32 +5355,32 @@ private eval_trg_raises(condition, device, attribute, oldValue, oldValueSince, c
 
 private eval_trg_raises_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_greater_than(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_greater_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_greater_than(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_raises_to_or_above(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_greater_than_or_equal_to(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_to_even(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_even(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_even(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_even(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_changes_to_odd(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_odd(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_odd(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_odd(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_enters_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_inside_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_inside_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_inside_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_exits_range(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
 	return !eval_cond_is_outside_of_range(condition, device, attribute, null, null, oldValue, value1, value2, evt, sourceEvt, momentary, dataType) &&
-			eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
+		eval_cond_is_outside_of_range(condition, device, attribute, null, null, currentValue, value1, value2, evt, sourceEvt, momentary, dataType)
 }
 
 private eval_trg_executed(condition, device, attribute, oldValue, oldValueSince, currentValue, value1, value2, evt, sourceEvt, momentary, dataType) {
@@ -5493,7 +5443,7 @@ private eval_trg_stays_common(func, condition, device, attribute, oldValue, oldV
 			//true, let's schedule time...
 			//if there is no event task currently scheduled for this, so we need to schedule one, but wait...
 			//was the old value not matching? because if it was, then we need to inhibit this...
-				def oldResult = "eval_cond_$func"(condition, device, attribute, oldValue, oldValueSince, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)
+			def oldResult = "eval_cond_$func"(condition, device, attribute, oldValue, oldValueSince, oldValue, value1, value2, evt, sourceEvt, momentary, dataType)
 			if (oldResult != result) {
 				def tasks = state.tasks
 				if (!tasks || !tasks.find{ (it.value?.type == "evt") && (it.value?.ownerId == condition.id) && (it.value?.deviceId == device.id) }) {
@@ -5538,8 +5488,8 @@ private scheduleTimeTrigger(condition, data = null) {
 	def time = condition.trg ? getNextTimeTriggerTime(condition, condition.lt) : getNextTimeConditionTime(condition, condition.lt)
 	condition.nt = time
 	if ((time instanceof Long) && (time > 0)) {
-    	scheduleTask("evt", condition.id, "time", null, time)
-    }
+		scheduleTask("evt", condition.id, "time", null, time)
+	}
 }
 
 private scheduleActions(conditionId, stateChanged = false, currentState = true) {
@@ -5552,28 +5502,28 @@ private scheduleActions(conditionId, stateChanged = false, currentState = true) 
 		if (action.rm && action.rm.size() && !(location.mode in action.rm)) continue
 		if (action.ra && action.ra.size() && !(getAlarmSystemStatus() in action.ra)) continue
 		if (action.rv && !(checkVariableCondition(action.rv, action.rvc, action.rvv))) continue
-        if (action.rw && action.rw.size() && !(getDayOfWeekName() in action.rw)) continue
+		if (action.rw && action.rw.size() && !(getDayOfWeekName() in action.rw)) continue
 		if (action.rtf && action.rtt && !(checkTimeCondition(action.rtf, action.rtfc, action.rtfo, action.rtt, action.rttc, action.rtto))) continue
 		if (action.rs1) {
-        	def r = false
-            for(sw in settings["actRSwitchOn${action.id}"]) {
-                if (sw.currentValue("switch") != "on") {
-                    r = true
-                    break
-                }
-            }
-            if (r) continue
-        }
+			def r = false
+			for(sw in settings["actRSwitchOn${action.id}"]) {
+				if (sw.currentValue("switch") != "on") {
+					r = true
+					break
+				}
+			}
+			if (r) continue
+		}
 		if (action.rs0) {
-        	def r = false
-            for(sw in settings["actRSwitchOff${action.id}"]) {
-                if (sw.currentValue("switch") != "off") {
-                    r = true
-                    break
-                }
-            }
-            if (r) continue
-        }
+			def r = false
+			for(sw in settings["actRSwitchOff${action.id}"]) {
+				if (sw.currentValue("switch") != "off") {
+					r = true
+					break
+				}
+			}
+			if (r) continue
+		}
 		//we survived all restrictions, pfew
 		scheduleAction(action)
 	}
@@ -5618,7 +5568,7 @@ private scheduleAction(action) {
 		def x = 0
 		def cnt = 0
 		while (true) {
-        	resetRandomValues()
+			resetRandomValues()
 			//make sure x is within task list
 			if ((x == null) || (x < 0) || (x >= tasks.size())) break
 			cnt += 1
@@ -5673,7 +5623,7 @@ private scheduleAction(action) {
 											if (newX) {
 												x = newX + 1
 												continue
-									  	  }
+											}
 										}
 										break
 									case "switch":
@@ -5701,7 +5651,7 @@ private scheduleAction(action) {
 										continue
 									case "case":
 										//if we got here, we need to skip to the end
-										//a matching case probably just finished 
+										//a matching case probably just finished
 										x = flow.endIdx
 										continue
 									case "loop":
@@ -5796,7 +5746,7 @@ private scheduleAction(action) {
 										time = time + cast(task.p[0].d, "number") * 1000
 									}
 									//if this is the end of a loop, we cycle back to the start
-										//that loop start will automatically jump over the end if the loop is finished
+									//that loop start will automatically jump over the end if the loop is finished
 									x = flow.startIdx
 									continue
 								}
@@ -5815,22 +5765,22 @@ private scheduleAction(action) {
 					x += 1
 					continue
 				} else if (command && command.immediate) {
-                	//only execute task in certain modes?
-                    //only execute task on certain days?
-                    def restricted = (task.m && !(location.mode in task.m)) || (task.d && task.d.size() && !(getDayOfWeekName() in task.d))
-                    def function = "cmd_${sanitizeCommandName(command.name)}"
-                    def result = "$function"(action, task, time)
-                    if (!restricted) {
-                        time = (result && result.time) ? result.time : time
-                        command.delay = (result && result.delay) ? result.delay : 0
-                        if (result && result.waitFor) {
-                            waitFor = result.waitFor
-                            waitSince = time
-                        }
-                    }
-                    if (!result.schedule) {
-                        command = null
-                    }
+					//only execute task in certain modes?
+					//only execute task on certain days?
+					def restricted = (task.m && !(location.mode in task.m)) || (task.d && task.d.size() && !(getDayOfWeekName() in task.d))
+					def function = "cmd_${sanitizeCommandName(command.name)}"
+					def result = "$function"(action, task, time)
+					if (!restricted) {
+						time = (result && result.time) ? result.time : time
+						command.delay = (result && result.delay) ? result.delay : 0
+						if (result && result.waitFor) {
+							waitFor = result.waitFor
+							waitSince = time
+						}
+					}
+					if (!result.schedule) {
+						command = null
+					}
 				}
 			} else {
 				if (custom) {
@@ -5850,19 +5800,19 @@ private scheduleAction(action) {
 					if (action.tcp && action.tcp != "None") {
 						data = data ? data : [:]
 						data.c = action.tcp.contains("piston")
-                        data.cc = action.tcp.contains("condition") ? action.pid : null
+						data.cc = action.tcp.contains("condition") ? action.pid : null
 					}
 					if (command.aggregated) {
 						//an aggregated command schedules one command task for the whole group
 						deviceId = null
 					}
-                    def restricted = (task.m && !(location.mode in task.m)) || (task.d && task.d.size() && !(getDayOfWeekName() in task.d))
-                    if (!restricted && (!command.delay) && (time == rightNow) && (command.name == "setVariable") && (data.p) && (data.p.size() >= 3) && (data.p[2].d)) {
-                    	//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values
-                        task_vcmd_setVariable(null, action, [data: data])
-                    } else {
+					def restricted = (task.m && !(location.mode in task.m)) || (task.d && task.d.size() && !(getDayOfWeekName() in task.d))
+					if (!restricted && (!command.delay) && (time == rightNow) && (command.name == "setVariable") && (data.p) && (data.p.size() >= 3) && (data.p[2].d)) {
+						//due to popular demand, we need to execute setVariable right during the condition evaluation so that subsequent evaluations can use the new values
+						task_vcmd_setVariable(null, action, [data: data])
+					} else {
 						scheduleTask("cmd", action.id, deviceId, task.i, command.delay ? command.delay : time, data)
-                    }
+					}
 					//an aggregated command schedules one command task for the whole group, so there's only one scheduled task, exit
 					if (command.aggregated) break
 				}
@@ -5870,8 +5820,8 @@ private scheduleAction(action) {
 			x += 1
 			//exit when we reached the end
 			if (x >= tasks.size()) {
-            	break
-            }
+				break
+			}
 		}
 	}
 }
@@ -5881,7 +5831,7 @@ private checkFlowCondition(task) {
 		def variable = task.p[0].d
 		def comparison = task.p[1].d
 		def value = formatMessage(task.p[2].d)
- 		return checkVariableCondition(variable, comparison, value)
+		return checkVariableCondition(variable, comparison, value)
 	}
 	return false
 }
@@ -5934,11 +5884,11 @@ private checkTimeCondition(timeFrom, timeFromCustom, timeFromOffset, timeTo, tim
 		switch(i == 0 ? timeFrom : timeTo) {
 			case "custom time":
 				t = adjustTime(i == 0 ? timeFromCustom : timeToCustom)
-                if (i == 0) {
-                	timeFromOffset = 0
-                } else {
-                	timeToOffset = 0
-                }
+				if (i == 0) {
+					timeFromOffset = 0
+				} else {
+					timeToOffset = 0
+				}
 				break
 			case "sunrise":
 				t = getSunrise()
@@ -5951,7 +5901,7 @@ private checkTimeCondition(timeFrom, timeFromCustom, timeFromOffset, timeTo, tim
 				break
 			case "midnight":
 				h = (i == 0 ? 0 : 24)
-			break
+				break
 		}
 		if (h != null) {
 			m = 0
@@ -5969,11 +5919,11 @@ private checkTimeCondition(timeFrom, timeFromCustom, timeFromOffset, timeTo, tim
 		}
 		i += 1
 	}
-   	//due to offsets, let's make sure all times are within 0-1440 minutes
-    while (tf < 0) tf += 1440
-    while (tf > 1440) tf -= 1440
-    while (tt < 0) tt += 1440
-    while (tt > 1440) tt -= 1440
+	//due to offsets, let's make sure all times are within 0-1440 minutes
+	while (tf < 0) tf += 1440
+	while (tf > 1440) tf -= 1440
+	while (tt < 0) tt += 1440
+	while (tt > 1440) tt -= 1440
 	if (tf < tt) {
 		return (tc >= tf) && (tc < tt)
 	} else {
@@ -6051,8 +6001,8 @@ private buildFlowChart(tasks) {
 									}
 									break
 								case "case":
-                                	endFlow.startIdx = flow.idx
-	                                flow.endIdx = i
+									endFlow.startIdx = flow.idx
+									flow.endIdx = i
 									break
 								case "switch":
 									if ((flow.caseIdxs != null) && (endFlow.isCase)) {
@@ -6071,11 +6021,9 @@ private buildFlowChart(tasks) {
 				if (flow.endIdx) break
 			}
 		}
-	}    
+	}
 	return result
 }
-
-
 
 private cmd_followUp(action, task, time) {
 	def result = cmd_wait(action, task, time)
@@ -6100,8 +6048,8 @@ private cmd_wait(action, task, time) {
 				unit = 3600000
 				break
 		}
-			def offset = task.p[0].d * unit
-			result.time = time + offset
+		def offset = task.p[0].d * unit
+		result.time = time + offset
 	}
 	return result
 }
@@ -6121,8 +6069,8 @@ private cmd_waitVariable(action, task, time) {
 				unit = 3600000
 				break
 		}
-			def offset = (int) Math.round(cast(getVariable(task.p[0].d), "decimal") * unit)
-			result.time = time + offset
+		def offset = (int) Math.round(cast(getVariable(task.p[0].d), "decimal") * unit)
+		result.time = time + offset
 	}
 	return result
 }
@@ -6150,8 +6098,8 @@ private cmd_waitRandom(action, task, time) {
 			min = max
 			max = x
 		}
-			def offset = (long)(min + Math.round(Math.random() * (max - min)))
-			result.time = time + offset
+		def offset = (long)(min + Math.round(Math.random() * (max - min)))
+		result.time = time + offset
 	}
 	return result
 }
@@ -6159,26 +6107,26 @@ private cmd_waitRandom(action, task, time) {
 private cmd_waitTime(action, task, time) {
 	def result = [time: time]
 	if (task && task.p && task.p.size() == 3) {
-    	def t = cast(task.p[0].d, "string")
-        def offset = cast(task.p[1].d, "number")
-        def days = task.p[2].d
-        if (!days || !days.size()) {
-        	return result
-        }
-        def newTime = getVariable("\$next" + t.capitalize())
-        def rightNow = now()
-        newTime += offset * 60000
-        def date = adjustTime(newTime)
-        def count = 10
-        while ((newTime < rightNow) || (newTime < time) || !(getDayOfWeekName(date) in days)) {
-        	newTime += 86400000
-            date = adjustTime(newTime)
-            count -= 1
-            if (count == 0) {
-            	return result
-            }
-        }
-        result.time = newTime
+		def t = cast(task.p[0].d, "string")
+		def offset = cast(task.p[1].d, "number")
+		def days = task.p[2].d
+		if (!days || !days.size()) {
+			return result
+		}
+		def newTime = getVariable("\$next" + t.capitalize())
+		def rightNow = now()
+		newTime += offset * 60000
+		def date = adjustTime(newTime)
+		def count = 10
+		while ((newTime < rightNow) || (newTime < time) || !(getDayOfWeekName(date) in days)) {
+			newTime += 86400000
+			date = adjustTime(newTime)
+			count -= 1
+			if (count == 0) {
+				return result
+			}
+		}
+		result.time = newTime
 	}
 	return result
 }
@@ -6186,23 +6134,23 @@ private cmd_waitTime(action, task, time) {
 private cmd_waitCustomTime(action, task, time) {
 	def result = [time: time]
 	if (task && task.p && task.p.size() == 2) {
-    	def newTime = convertDateToUnixTime(adjustTime(task.p[0].d))
-        def days = task.p[1].d
-        if (!days || !days.size()) {
-        	return result
-        }
-        def date = adjustTime(newTime)
-        def rightNow = now()
-        def count = 10
-        while ((newTime < rightNow) || (newTime < time) || !(getDayOfWeekName(date) in days)) {
-        	newTime += 86400000
-            date = adjustTime(newTime)
-            count -= 1
-            if (count == 0) {
-            	return result
-            }
-        }
-        result.time = newTime
+		def newTime = convertDateToUnixTime(adjustTime(task.p[0].d))
+		def days = task.p[1].d
+		if (!days || !days.size()) {
+			return result
+		}
+		def date = adjustTime(newTime)
+		def rightNow = now()
+		def count = 10
+		while ((newTime < rightNow) || (newTime < time) || !(getDayOfWeekName(date) in days)) {
+			newTime += 86400000
+			date = adjustTime(newTime)
+			count -= 1
+			if (count == 0) {
+				return result
+			}
+		}
+		result.time = newTime
 	}
 	return result
 }
@@ -6223,7 +6171,6 @@ private cmd_waitState(action, task, time) {
 	}
 	return result
 }
-
 
 private scheduleTask(task, ownerId, deviceId, taskId, unixTime, data = null) {
 	if (!unixTime) return false
@@ -6249,7 +6196,7 @@ private unscheduleTask(task, ownerId, deviceId) {
 }
 
 private getNextTimeConditionTime(condition, startTime = null) {
-def perf = now()
+	def perf = now()
 
 	//no condition? not time condition? false!
 	if (!condition || (condition.attr != "time")) {
@@ -6303,11 +6250,11 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			//we need to catch up with the present
 			def pastMinutes = (long) (Math.floor((currentTime.time - now.time) / 60000))
 			if (pastMinutes > interval) {
-            	if (interval > 0) {
+				if (interval > 0) {
 					now = new Date(now.time + interval * (long) Math.floor(pastMinutes / interval) * 60000)
-                } else {
+				} else {
 					now = new Date(now.time + pastMinutes * 60000)
-                }
+				}
 			}
 			now = new Date(now.time + interval * 60000)
 			cycles = 1500 //up to 25 hours
@@ -6317,11 +6264,11 @@ private getNextTimeTriggerTime(condition, startTime = null) {
 			def rm = (condition.m ? condition.m : "0").toInteger()
 			def pastHours = (long) (Math.floor((currentTime.time - now.time) / 3600000))
 			if (pastHours > interval) {
-            	if (interval > 0) {
+				if (interval > 0) {
 					now = new Date(now.time + interval * (long) Math.floor(pastHours / interval) * 60000)
-                } else {
+				} else {
 					now = new Date(now.time + pastHours * 60000)
-                }
+				}
 			}
 			now = new Date(now.time + (m < rm ? interval - 1 : interval) * 3600000)
 			now = new Date(now.year, now.month, now.date, now.hours, rm, 0)
@@ -6604,7 +6551,7 @@ private processTasks() {
 	//pfew, off to process tasks
 	//first, we make a variable to help us pick up where we left off
 	state.rerunSchedule = false
-    def appData = state.run == "config" ? state.config.app : state.app
+	def appData = state.run == "config" ? state.config.app : state.app
 	def tasks = null
 	def perf = now()
 	def marker = now()
@@ -6613,10 +6560,10 @@ private processTasks() {
 
 		def safetyNet = false
 
-        //find out if we need to execute the tasks
-        def restricted = (checkPistonRestriction() != null)
-        state.restricted = restricted
-        def executeTasks = !appData.restrictions?.pe || !restricted
+		//find out if we need to execute the tasks
+		def restricted = (checkPistonRestriction() != null)
+		state.restricted = restricted
+		def executeTasks = !appData.restrictions?.pe || !restricted
 
 		//let's give now() a 2s bump up so that if anything is due within 2s, we do it now rather than scheduling ST
 		def threshold = 2000
@@ -6630,7 +6577,7 @@ private processTasks() {
 			tasks = atomicState.tasks
 			tasks = tasks ? tasks : [:]
 			for (item in tasks.findAll{it.value?.type == "evt"}.sort{ it.value?.time }) {
-				def task = item.value                
+				def task = item.value
 				if (task.time <= now() + threshold) {
 					//remove from tasks
 					tasks.remove(item.key)
@@ -6645,21 +6592,21 @@ private processTasks() {
 						runIn(90, recoveryHandler)
 					}
 					//trigger an event
-                    if (!restricted) {
-                        if (getCondition(task.ownerId, true)) {
-                            //look for condition in primary block
-                            debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task", null, "trace"
-                            broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], true, false)
-                        } else if (getCondition(task.ownerId, false)) {
-                            //look for condition in secondary block
-                            debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
-                            broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], false, true)
-                        } else {
-                            debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"                            
-                        }
-                    } else {
-                            debug "Not broadcasting event due to restrictions"
-					}                
+					if (!restricted) {
+						if (getCondition(task.ownerId, true)) {
+							//look for condition in primary block
+							debug "Broadcasting time event for primary IF block, condition #${task.ownerId}, task = $task", null, "trace"
+							broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], true, false)
+						} else if (getCondition(task.ownerId, false)) {
+							//look for condition in secondary block
+							debug "Broadcasting time event for secondary IF block, condition #${task.ownerId}", null, "trace"
+							broadcastEvent([name: "time", date: new Date(task.time), deviceId: task.deviceId ? task.deviceId : "time", conditionId: task.ownerId], false, true)
+						} else {
+							debug "ERROR: Time event cannot be processed because condition #${task.ownerId} does not exist", null, "error"
+						}
+					} else {
+						debug "Not broadcasting event due to restrictions"
+					}
 					//continue the loop
 					break
 				}
@@ -6701,22 +6648,22 @@ private processTasks() {
 						tasks[n] = t
 					} else if (task.del) {
 						//delete a task
-                        def washer = []
-                        for (it in tasks) {
-                            if (
-                                (it.value?.type == task.del) &&
-                                (!task.ownerId || (it.value?.ownerId == task.ownerId)) &&
-                                //(task.ownerId || (task.deviceId != "location")) && //do not unschedule location commands unless an action Id is provided
-                                (!task.deviceId || (task.deviceId == it.value?.deviceId)) &&
-                                (!task.taskId || (task.taskId == it.value?.taskId))
-                            ) {
-                                washer.push(it.key)
-                            }
-                        }
-                        for (it in washer) {
-                        	tasks.remove(it)
-                        }
-                        washer = null
+						def washer = []
+						for (it in tasks) {
+							if (
+							(it.value?.type == task.del) &&
+								(!task.ownerId || (it.value?.ownerId == task.ownerId)) &&
+								//(task.ownerId || (task.deviceId != "location")) && //do not unschedule location commands unless an action Id is provided
+								(!task.deviceId || (task.deviceId == it.value?.deviceId)) &&
+								(!task.taskId || (task.taskId == it.value?.taskId))
+							) {
+								washer.push(it.key)
+							}
+						}
+						for (it in washer) {
+							tasks.remove(it)
+						}
+						washer = null
 						/*
 						def dirty = true
 						while (dirty) {
@@ -6779,7 +6726,7 @@ private processTasks() {
 				setVariable("\$nextScheduledTime", null, true)
 				atomicState.nextScheduledTime = null
 				state.nextScheduledTime = nextTime
-                unschedule(timeHandler)
+				unschedule(timeHandler)
 			}
 
 			//we're done with the scheduling, let's do some real work, if we have any
@@ -6840,24 +6787,24 @@ private processTasks() {
 
 		//remove the markers
 		tasks = atomicState.tasks
-        def found = false
+		def found = false
 		for(it in tasks.findAll{ it.value.marker == marker }) {
-        	def task = it.value
+			def task = it.value
 			task.marker = null
-        	tasks[it.key] = task
-        	found = true
+			tasks[it.key] = task
+			found = true
 		}
-        if (found) atomicState.tasks = tasks
-        
-        //DO NOT REMOVE THE NEXT LINE - we need this line for instances that do not run the exitPoint()
-        state.tasks = tasks
-        
+		if (found) atomicState.tasks = tasks
+
+		//DO NOT REMOVE THE NEXT LINE - we need this line for instances that do not run the exitPoint()
+		state.tasks = tasks
+
 		debug "Removing any existing ST safety nets", null, "trace"
 		unschedule(recoveryHandler)
 	} catch (e) {
 		debug "ERROR: Error while executing processTasks: ", null, "error", e
 	}
-    state.tasker = null
+	state.tasker = null
 	//end of processTasks
 	perf = now() - perf
 	debug "Task processing took ${perf}ms", -1, "trace"
@@ -6937,11 +6884,11 @@ private processCommandTask(task) {
 			def msg = "Executing virtual command ${cn}"
 			def function = "task_vcmd_${sanitizeCommandName(cn)}"
 			def perf = now()
-            try {            
+			try {
 				def result = "$function"(command.aggregated ? devices : device, action, task, suffix)
-            } catch (all) {
+			} catch (all) {
 				msg += " (ERROR EXECUTING TASK $task: $all)"
-            }
+			}
 			msg += " (${now() - perf}ms)"
 			if (state.sim) state.sim.cmds.push(msg)
 			debug msg, null, "info"
@@ -7017,70 +6964,70 @@ private processCommandTask(task) {
 								p.saturation = saturation
 								p.level = lightness
 							}
-                            def msg = "Executing command: [${device}].${cn}($p)"
-                            def perf = now()
-                            try {
-                                device."${cn}"(p)
-                            } catch(all) {
-                                msg += " (ERROR EXECUTING TASK $task: $all)"
-                            }
-                            msg += " (${now() - perf}ms)"
+							def msg = "Executing command: [${device}].${cn}($p)"
+							def perf = now()
+							try {
+								device."${cn}"(p)
+							} catch(all) {
+								msg += " (ERROR EXECUTING TASK $task: $all)"
+							}
+							msg += " (${now() - perf}ms)"
 							if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
 						} else {
 							def perf = now()
-                            if ((cn == "setHue") && (params.size() == 1)) {
-                                //ST expects hue in 0.100, in reality, it is 0..360
-                                params[0] = cast(params[0], "decimal") / 3.6
-                            }
-                            def doIt = true
-                            def msg
-                            if (!state.app?.disableCO && command.attribute && (params.size() == 1)) {
-                            	//we may be able to avoid executing this command
-			                	def currentValue = "${device.currentValue(command.attribute)}"
-                                if (cn == "setLevel") {
-                                	//setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
-                                    if (device.currentValue("switch") == (params[0] > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
-                                }
-            			        if (currentValue == "${params[0]}") {
-                                	doIt = false
-                    				msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}($params) because current value is the same"
-                                }
-                            }
-                            if (doIt) {                            
-	                            msg = "Executing command: [${getDeviceLabel(device)}].${cn}($params)"
+							if ((cn == "setHue") && (params.size() == 1)) {
+								//ST expects hue in 0.100, in reality, it is 0..360
+								params[0] = cast(params[0], "decimal") / 3.6
+							}
+							def doIt = true
+							def msg
+							if (!state.app?.disableCO && command.attribute && (params.size() == 1)) {
+								//we may be able to avoid executing this command
+								def currentValue = "${device.currentValue(command.attribute)}"
+								if (cn == "setLevel") {
+									//setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
+									if (device.currentValue("switch") == (params[0] > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
+								}
+								if (currentValue == "${params[0]}") {
+									doIt = false
+									msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}($params) because current value is the same"
+								}
+							}
+							if (doIt) {
+								msg = "Executing command: [${getDeviceLabel(device)}].${cn}($params)"
 								try {
 									device."${cn}"(params as Object[])
 								} catch(all) {
-                                    msg += " (ERROR EXECUTING TASK $task: $all)"
+									msg += " (ERROR EXECUTING TASK $task: $all)"
 								}
 								msg += " (${now() - perf}ms)"
-                            }
+							}
 							if (state.sim) state.sim.cmds.push(msg)
 							debug msg, null, "info"
 						}
 						return true
 					} else {
-                        def doIt = true
-                        def msg
-                        if (!state.app?.disableCO && command.attribute && command.value) {
-                            //we may be able to avoid executing this command
-                            def currentValue = "${device.currentValue(command.attribute)}"
-                            if (currentValue == command.value) {
-                                doIt = false
-                                msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}() because current value is the same"
-                            }
-                        }
-                        if (doIt) {                    
+						def doIt = true
+						def msg
+						if (!state.app?.disableCO && command.attribute && command.value) {
+							//we may be able to avoid executing this command
+							def currentValue = "${device.currentValue(command.attribute)}"
+							if (currentValue == command.value) {
+								doIt = false
+								msg = "Preventing execution of command [${getDeviceLabel(device)}].${command.name}() because current value is the same"
+							}
+						}
+						if (doIt) {
 							msg = "Executing command: [${getDeviceLabel(device)}].${cn}()"
 							def perf = now()
 							try {
 								device."${cn}"()
 							} catch(all) {
-                                msg += " (ERROR EXECUTING TASK $task: $all)"
+								msg += " (ERROR EXECUTING TASK $task: $all)"
 							}
 							msg += " (${now() - perf}ms)"
-                        }
+						}
 						if (state.sim) state.sim.cmds.push(msg)
 						debug msg, null, "info"
 						return true
@@ -7143,7 +7090,7 @@ private task_vcmd_delayedOn(device, action, task, suffix = "") {
 		return false
 	}
 	def delay = params[0].d
-		device."on$suffix"([delay: delay])
+	device."on$suffix"([delay: delay])
 	return true
 }
 
@@ -7154,7 +7101,7 @@ private task_vcmd_delayedOff(device, action, task, suffix = "") {
 		return false
 	}
 	def delay = params[0].d
-		device."off$suffix"([delay: delay])
+	device."off$suffix"([delay: delay])
 	return true
 }
 
@@ -7175,17 +7122,17 @@ private task_vcmd_fadeLevelHW(device, action, task, suffix = "") {
 	return true
 }
 
-
 private task_vcmd_fadeLevelVariable(device, action, task, suffix = "") {
 	return task_vcmd_fadeLevel(device, action, task, suffix, true)
 }
+
 private task_vcmd_fadeLevel(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 3)) {
 		return false
 	}
-    def currentLevel = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
-    if (currentLevel == null) currentLevel = cast(device.currentValue('level'), "number")
+	def currentLevel = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
+	if (currentLevel == null) currentLevel = cast(device.currentValue('level'), "number")
 	def level = variables? cast(getVariable(params[1].d), "number") : cast(params[1].d, params[1].t)
 	def duration = cast(params[2].d, params[2].t)
 	def delta = level - currentLevel
@@ -7209,31 +7156,31 @@ private task_vcmd_fadeLevel(device, action, task, suffix = "", variables = false
 	return true
 }
 
-
 private task_vcmd_setLevelIf(device, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 2)) {
 		return false
 	}
-    def currentSwitch = cast(device.currentValue("switch"), "string")
-    def level = cast(params[0].d, params[0].t)
-    if (currentSwitch == cast(params[1].d, "string")) {
+	def currentSwitch = cast(device.currentValue("switch"), "string")
+	def level = cast(params[0].d, params[0].t)
+	if (currentSwitch == cast(params[1].d, "string")) {
 		device."setLevel$suffix"(level)
-    }
+	}
 	return true
 }
 
 private task_vcmd_adjustLevelVariable(device, action, task, suffix = "") {
 	return task_vcmd_adjustLevel(device, action, task, suffix, true)
 }
+
 private task_vcmd_adjustLevel(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 1)) {
 		return false
 	}
-    def currentLevel = cast(device.currentValue('level'), "number")
-    def level = currentLevel + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
-    level = (level < 0 ? 0 : (level > 100 ? 100 : level))
+	def currentLevel = cast(device.currentValue('level'), "number")
+	def level = currentLevel + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
+	level = (level < 0 ? 0 : (level > 100 ? 100 : level))
 	if (level == currentLevel) return
 	device."setLevel$suffix"(level)
 	return true
@@ -7244,8 +7191,8 @@ private task_vcmd_setLevelVariable(device, action, task, suffix = "") {
 	if (!device || !device.hasCommand("setLevel$suffix") || (params.size() != 1)) {
 		return false
 	}
-    def level = cast(getVariable(params[0].d), "number")
-    level = (level < 0 ? 0 : (level > 100 ? 100 : level))
+	def level = cast(getVariable(params[0].d), "number")
+	level = (level < 0 ? 0 : (level > 100 ? 100 : level))
 	device."setLevel$suffix"(level)
 	return true
 }
@@ -7255,12 +7202,11 @@ private task_vcmd_setSaturationVariable(device, action, task, suffix = "") {
 	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 1)) {
 		return false
 	}
-    def saturation = cast(getVariable(params[0].d), "number")
-    saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
+	def saturation = cast(getVariable(params[0].d), "number")
+	saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
 	device."setSaturation$suffix"(level)
 	return true
 }
-
 
 private task_vcmd_fadeSaturationVariable(device, action, task, suffix = "") {
 	return task_vcmd_fadeSaturation(device, action, task, suffix, true)
@@ -7271,11 +7217,11 @@ private task_vcmd_fadeSaturation(device, action, task, suffix = "", variables = 
 	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 3)) {
 		return false
 	}
-    
-    def currentSaturation = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
-    if (currentSaturation == null) currentSaturation = cast(device.currentValue('saturation'), "number")
+
+	def currentSaturation = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
+	if (currentSaturation == null) currentSaturation = cast(device.currentValue('saturation'), "number")
 	def saturation = variables? cast(getVariable(params[1].d), "number") : cast(params[1].d, params[1].t)
-   	def duration = cast(params[2].d, params[2].t)
+	def duration = cast(params[2].d, params[2].t)
 	def delta = saturation - currentSaturation
 	if (delta == 0) return
 	//we try to achieve 10 steps
@@ -7297,18 +7243,18 @@ private task_vcmd_fadeSaturation(device, action, task, suffix = "", variables = 
 	return true
 }
 
-
 private task_vcmd_adjustSaturationVariable(device, action, task, suffix = "") {
 	return task_vcmd_adjustSaturation(device, action, task, suffix, true)
 }
+
 private task_vcmd_adjustSaturation(device, action, task, suffix = "", variables = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (!device || !device.hasCommand("setSaturation$suffix") || (params.size() != 1)) {
 		return false
 	}
-    def currentSaturation = cast(device.currentValue('saturation'), "number")
-    def saturation = currentSaturation + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
-    saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
+	def currentSaturation = cast(device.currentValue('saturation'), "number")
+	def saturation = currentSaturation + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
+	saturation = (saturation < 0 ? 0 : (saturation > 100 ? 100 : saturation))
 	if (saturation == currentSaturation) return
 	device."setSaturation$suffix"(saturation)
 	return true
@@ -7323,8 +7269,8 @@ private task_vcmd_fadeHue(device, action, task, suffix = "", variables = false) 
 	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 3)) {
 		return false
 	}
-    def currentHue = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
-    if (currentHue == null) currentHue = (int) Math.round(cast(device.currentValue('hue'), "number") * 3.6)
+	def currentHue = variables ? (params[0].d ? cast(getVariable(params[0].d), "number") : null) : cast(params[0].d, params[0].t)
+	if (currentHue == null) currentHue = (int) Math.round(cast(device.currentValue('hue'), "number") * 3.6)
 	def hue = variables ? cast(getVariable(params[1].d), "number") : cast(params[1].d, params[1].t)
 	def duration = cast(params[2].d, params[2].t)
 	def delta = hue - currentHue
@@ -7348,7 +7294,6 @@ private task_vcmd_fadeHue(device, action, task, suffix = "", variables = false) 
 	return true
 }
 
-
 private task_vcmd_adjustHueVariable(device, action, task, suffix = "") {
 	return task_vcmd_adjustHue(device, action, task, suffix, true)
 }
@@ -7358,10 +7303,10 @@ private task_vcmd_adjustHue(device, action, task, suffix = "", variables = false
 	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 1)) {
 		return false
 	}
-    def currentHue = cast(device.currentValue('hue'), "decimal") * 3.6
-    def hue = currentHue + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
-    while (hue < 0) hue += 360
-    while (hue >= 360) hue -= 360 
+	def currentHue = cast(device.currentValue('hue'), "decimal") * 3.6
+	def hue = currentHue + (variables ? cast(getVariable(params[0].d), "number") : cast(params[0].d, params[0].t))
+	while (hue < 0) hue += 360
+	while (hue >= 360) hue -= 360
 	if (hue == currentHue) return
 	device."setHue$suffix"((int) Math.round(hue / 3.6))
 	return true
@@ -7372,9 +7317,9 @@ private task_vcmd_setHueVariable(device, action, task, suffix = "") {
 	if (!device || !device.hasCommand("setHue$suffix") || (params.size() != 1)) {
 		return false
 	}
-    def hue = cast(getVariable(params[0].d), "number")
-    while (hue < 0) hue += 360
-    while (hue >= 360) hue -= 360 
+	def hue = cast(getVariable(params[0].d), "number")
+	while (hue < 0) hue += 360
+	while (hue >= 360) hue -= 360
 	device."setHue$suffix"((int) Math.round(hue / 3.6))
 	return true
 }
@@ -7497,9 +7442,9 @@ private task_vcmd_queueAskAlexaMessage(device, action, task, suffix = "") {
 		return false
 	}
 	def message = formatMessage(params[0].d)
-    def unit = formatMessage(params[1].d)
-    def appName = (params.size() == 3 ? formatMessage(params[2].d) : null) ?: (app.label ?: app.name)
-    sendLocationEvent name: "AskAlexaMsgQueue", value: appName , isStateChange: true, descriptionText: message, unit: unit
+	def unit = formatMessage(params[1].d)
+	def appName = (params.size() == 3 ? formatMessage(params[2].d) : null) ?: (app.label ?: app.name)
+	sendLocationEvent name: "AskAlexaMsgQueue", value: appName , isStateChange: true, descriptionText: message, unit: unit
 }
 
 private task_vcmd_deleteAskAlexaMessages(device, action, task, suffix = "") {
@@ -7507,9 +7452,9 @@ private task_vcmd_deleteAskAlexaMessages(device, action, task, suffix = "") {
 	if ((params.size() < 1) || (params.size() > 2)) {
 		return false
 	}
-    def unit = formatMessage(params[0].d)
-    def appName = (params.size() == 2 ? formatMessage(param[1].d) : null) ?: (app.label ?: app.name)
-    sendLocationEvent name: "AskAlexaMsgQueueDelete", value: appName, isStateChange: true, unit: unit
+	def unit = formatMessage(params[0].d)
+	def appName = (params.size() == 2 ? formatMessage(param[1].d) : null) ?: (app.label ?: app.name)
+	sendLocationEvent name: "AskAlexaMsgQueueDelete", value: appName, isStateChange: true, unit: unit
 }
 
 private task_vcmd_executeRoutine(devices, action, task, suffix = "") {
@@ -7529,8 +7474,8 @@ private task_vcmd_followUp(devices, action, task, suffix = "") {
 	}
 	def piston = params[2].d
 	def result = execute(piston)
-    //state.store = atomicState.store
-    state.nextScheduledTime = atomicState.nextScheduledTime
+	//state.store = atomicState.store
+	state.nextScheduledTime = atomicState.nextScheduledTime
 	if (params[3].d) {
 		setVariable(params[3].d, result)
 	}
@@ -7544,8 +7489,8 @@ private task_vcmd_executePiston(devices, action, task, suffix = "") {
 	}
 	def piston = params[0].d
 	def result = execute(piston)
-    //state.store = atomicState.store
-    state.nextScheduledTime = atomicState.nextScheduledTime
+	//state.store = atomicState.store
+	state.nextScheduledTime = atomicState.nextScheduledTime
 	if (params[1].d) {
 		setVariable(params[1].d, result)
 	}
@@ -7578,31 +7523,31 @@ private task_vcmd_lifxScene(devices, action, task, suffix = "") {
 		return false
 	}
 	def sceneName = params[0].d
-    def sceneId = getLifxSceneId(sceneName)
-    def token = getLifxToken()
-    if (sceneId != null) {
-    	def requestParams = [
-            uri:  "https://api.lifx.com",
-            path: "/v1/scenes/scene_id:${sceneId}/activate",
-            headers: [
-                "Authorization": "Bearer $token"
-            ]
-        ]
-        try {
-            return httpPut(requestParams) { response ->
-                if (response.status == 200) {
-                    return true;
-                }
-                return false;
-            }
-        }
-        catch(all) {
-            return false
-        }
-    } else {
-    	debug "WARNING: LIFX Scene $sceneName could not be found", null, "warn"
-    }
-    return false
+	def sceneId = getLifxSceneId(sceneName)
+	def token = getLifxToken()
+	if (sceneId != null) {
+		def requestParams = [
+			uri:  "https://api.lifx.com",
+			path: "/v1/scenes/scene_id:${sceneId}/activate",
+			headers: [
+				"Authorization": "Bearer $token"
+			]
+		]
+		try {
+			return httpPut(requestParams) { response ->
+				if (response.status == 200) {
+					return true;
+				}
+				return false;
+			}
+		}
+		catch(all) {
+			return false
+		}
+	} else {
+		debug "WARNING: LIFX Scene $sceneName could not be found", null, "warn"
+	}
+	return false
 }
 
 private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
@@ -7611,30 +7556,30 @@ private task_vcmd_iftttMaker(devices, action, task, suffix = "") {
 		return false
 	}
 	def event = params[0].d
-    def value1
-    def value2
-    def value3
-    if (params.size() == 4) {
+	def value1
+	def value2
+	def value3
+	if (params.size() == 4) {
 		value1 = formatMessage(params[1].d)
 		value2 = formatMessage(params[2].d)
 		value3 = formatMessage(params[3].d)
 	}
-    if (value1 || value2 || value3) {
-        def requestParams = [
-            uri:  "https://maker.ifttt.com/trigger/${event}/with/key/" + getIftttKey(),
-            requestContentType: "application/json",
-            body: [value1: value1, value2: value2, value3: value3]
-        ]        
-        httpPost(requestParams){ response ->
-            setVariable("\$iftttStatusCode", response.status, true)            
-            setVariable("\$iftttStatusOk", response.status == 200, true)
-	    }
-	} else {    
-        httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + getIftttKey()){ response ->
-            setVariable("\$iftttStatusCode", response.status, true)            
-            setVariable("\$iftttStatusOk", response.status == 200, true)
-	    }
-    }
+	if (value1 || value2 || value3) {
+		def requestParams = [
+			uri:  "https://maker.ifttt.com/trigger/${event}/with/key/" + getIftttKey(),
+			requestContentType: "application/json",
+			body: [value1: value1, value2: value2, value3: value3]
+		]
+		httpPost(requestParams){ response ->
+			setVariable("\$iftttStatusCode", response.status, true)
+			setVariable("\$iftttStatusOk", response.status == 200, true)
+		}
+	} else {
+		httpGet("https://maker.ifttt.com/trigger/${event}/with/key/" + getIftttKey()){ response ->
+			setVariable("\$iftttStatusCode", response.status, true)
+			setVariable("\$iftttStatusOk", response.status == 200, true)
+		}
+	}
 	return true
 }
 
@@ -7642,182 +7587,182 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 6) return false
 	def uri = formatMessage(params[0].d).replace(" ", "%20")
-    def method = params[1].d
-    def contentType = params[2].d
-    def variables = params[3].d
-    def importData = !!params[4].d
-    def importPrefix = params[5].d ?: ""
-    if (!uri) return false
-    def protocol = "https"
-    def uriParts = uri.split("://").toList()
-    if (uriParts.size() > 2) {
-    	debug "Invalid URI for web request: $uri", null, "warn"
-    	return false
-    }
-    if (uriParts.size() == 2) {
-    	//remove the httpX:// from the uri
-    	protocol = uriParts[0].toLowerCase()
-        uri = uriParts[1]
-    }
-    def internal = uri.startsWith("10.") || uri.startsWith("192.168.")
-    if ((!internal) && uri.startsWith("172.")) {
-    	//check for the 172.16.x.x/12 class
-        def b = uri.substring(4,2)
-        if (b.isInteger()) {
-        	b = b.toInteger()
-            internal = (b >= 16) && (b <= 31)
-        }
-    }
-    def data = [:]
-    for(variable in variables) {
-    	data[variable] = getVariable(variable)
-    }
-    if (internal) {    
-    	try {
-            debug "Sending internal web request to: $uri", null, "info"
-            sendHubCommand(new physicalgraph.device.HubAction(
-                method: method,
-                path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
-                headers: [
-                    HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
-                ],
-                query: data ?: null
-            ))
-        } catch (all) {
-            debug "Error executing internal web request: $all", null, "error"
-        }            
-    } else {
-        try {
-            debug "Sending external web request to: $uri", null, "info"
-            def requestParams = [
-                uri:  "${protocol}://${uri}",
-                query: method == "GET" ? data : null,
-                requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
-                body: method != "GET" ? data : null
-            ]
-            def func = ""
-            switch(method) {
-                case "GET":
-                    func = "httpGet"
-                    break
-                case "POST":
-                    func = "httpPost"
-                    break
-                case "PUT":
-                    func = "httpPut"
-                    break
-                case "DELETE":
-                    func = "httpDelete"
-                    break
-                case "HEAD":
-                    func = "httpHead"
-                    break
-            }
-            if (func) {
-                "$func"(requestParams) { response ->
-                    setVariable("\$httpStatusCode", response.status, true)            
-                    setVariable("\$httpStatusOk", response.status == 200, true)            
-                    if (importData && (response.status == 200) && response.data) {
-                        try {
-                            def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
-                            importVariables(jsonData, importPrefix)
-                        } catch (all) {
-                            debug "Error parsing JSON response for web request: $all", null, "error"
-                        }
-                    }
-                }
-            }
-        } catch (all) {
-            debug "Error executing external web request: $all", null, "error"
-        }
-    }
+	def method = params[1].d
+	def contentType = params[2].d
+	def variables = params[3].d
+	def importData = !!params[4].d
+	def importPrefix = params[5].d ?: ""
+	if (!uri) return false
+	def protocol = "https"
+	def uriParts = uri.split("://").toList()
+	if (uriParts.size() > 2) {
+		debug "Invalid URI for web request: $uri", null, "warn"
+		return false
+	}
+	if (uriParts.size() == 2) {
+		//remove the httpX:// from the uri
+		protocol = uriParts[0].toLowerCase()
+		uri = uriParts[1]
+	}
+	def internal = uri.startsWith("10.") || uri.startsWith("192.168.")
+	if ((!internal) && uri.startsWith("172.")) {
+		//check for the 172.16.x.x/12 class
+		def b = uri.substring(4,2)
+		if (b.isInteger()) {
+			b = b.toInteger()
+			internal = (b >= 16) && (b <= 31)
+		}
+	}
+	def data = [:]
+	for(variable in variables) {
+		data[variable] = getVariable(variable)
+	}
+	if (internal) {
+		try {
+			debug "Sending internal web request to: $uri", null, "info"
+			sendHubCommand(new physicalgraph.device.HubAction(
+				method: method,
+				path: (uri.indexOf("/") > 0) ? uri.substring(uri.indexOf("/")) : "",
+				headers: [
+					HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
+				],
+				query: data ?: null
+			))
+		} catch (all) {
+			debug "Error executing internal web request: $all", null, "error"
+		}
+	} else {
+		try {
+			debug "Sending external web request to: $uri", null, "info"
+			def requestParams = [
+				uri:  "${protocol}://${uri}",
+				query: method == "GET" ? data : null,
+				requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
+				body: method != "GET" ? data : null
+			]
+			def func = ""
+			switch(method) {
+				case "GET":
+					func = "httpGet"
+					break
+				case "POST":
+					func = "httpPost"
+					break
+				case "PUT":
+					func = "httpPut"
+					break
+				case "DELETE":
+					func = "httpDelete"
+					break
+				case "HEAD":
+					func = "httpHead"
+					break
+			}
+			if (func) {
+				"$func"(requestParams) { response ->
+					setVariable("\$httpStatusCode", response.status, true)
+					setVariable("\$httpStatusOk", response.status == 200, true)
+					if (importData && (response.status == 200) && response.data) {
+						try {
+							def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
+							importVariables(jsonData, importPrefix)
+						} catch (all) {
+							debug "Error parsing JSON response for web request: $all", null, "error"
+						}
+					}
+				}
+			}
+		} catch (all) {
+			debug "Error executing external web request: $all", null, "error"
+		}
+	}
 	return true
 }
-
 
 private task_vcmd_httpRequest_backup(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 6) return false
 	def uri = params[0].d
-    def method = params[1].d
-    def contentType = params[2].d
-    def variables = params[3].d
-    def importData = !!params[4].d
-    def importPrefix = params[5].d ?: ""
-    if (!uri) return false
-    def protocol = ""
-    switch (uri.substring(0, 7).toLowerCase()) {
-    	case "http://":
-        	protocol = "http"
-            break
-    	case "https:/":
-        	protocol = "https"
-            break
+	def method = params[1].d
+	def contentType = params[2].d
+	def variables = params[3].d
+	def importData = !!params[4].d
+	def importPrefix = params[5].d ?: ""
+	if (!uri) return false
+	def protocol = ""
+	switch (uri.substring(0, 7).toLowerCase()) {
+		case "http://":
+			protocol = "http"
+			break
+		case "https:/":
+			protocol = "https"
+			break
 		default:
-        	protocol = "https"
-            uri = "https://" + uri
-            break
-    }
-    def data = [:]
-    for(variable in variables) {
-    	data[variable] = getVariable(variable)
-    }    
-    def requestParams = [
-        uri:  uri,
-        query: method == "GET" ? data : null,
-        requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
-        body: method != "GET" ? data : null
-    ]
-    try {
-    	def func = ""
-    	switch(method) {
-        	case "GET":
-            	func = "httpGet"
-                break
-        	case "POST":
-            	func = "httpPost"
-                break
-        	case "PUT":
-            	func = "httpPut"
-                break
-        	case "DELETE":
-            	func = "httpDelete"
-                break
-        	case "HEAD":
-            	func = "httpHead"
-                break
-        }
-        if (func) {
+			protocol = "https"
+			uri = "https://" + uri
+			break
+	}
+	def data = [:]
+	for(variable in variables) {
+		data[variable] = getVariable(variable)
+	}
+	def requestParams = [
+		uri:  uri,
+		query: method == "GET" ? data : null,
+		requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
+		body: method != "GET" ? data : null
+	]
+	try {
+		def func = ""
+		switch(method) {
+			case "GET":
+				func = "httpGet"
+				break
+			case "POST":
+				func = "httpPost"
+				break
+			case "PUT":
+				func = "httpPut"
+				break
+			case "DELETE":
+				func = "httpDelete"
+				break
+			case "HEAD":
+				func = "httpHead"
+				break
+		}
+		if (func) {
 			"$func"(requestParams) { response ->
-				setVariable("\$httpStatusCode", response.status, true)            
-				setVariable("\$httpStatusOk", response.status == 200, true)            
-            	if (importData && (response.status == 200) && response.data) {
-                	try {
-                    	def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
-                		importVariables(jsonData, importPrefix)
-                    } catch (all) {
-                    	debug "Error parsing JSON response for web request: $all", null, "error"
-                    }
-                }
-            }
-        }
-    } catch (all) {
-    	debug "Error executing external web request: $all", null, "error"
-    }
+				setVariable("\$httpStatusCode", response.status, true)
+				setVariable("\$httpStatusOk", response.status == 200, true)
+				if (importData && (response.status == 200) && response.data) {
+					try {
+						def jsonData = response.data instanceof Map ? response.data : new groovy.json.JsonSlurper().parseText(response.data)
+						importVariables(jsonData, importPrefix)
+					} catch (all) {
+						debug "Error parsing JSON response for web request: $all", null, "error"
+					}
+				}
+			}
+		}
+	} catch (all) {
+		debug "Error executing external web request: $all", null, "error"
+	}
 	return true
 }
+
 private task_vcmd_wolRequest(devices, action, task, suffix = "") {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
 	if (params.size() != 2) return false
 	def mac = params[0].d ?: ""
-    def secureCode = params[1].d
-    mac = mac.replace(":", "").replace("-", "").replace(".", "").replace(" ", "").toLowerCase()
-    return sendHubCommand(new physicalgraph.device.HubAction(
-        "wake on lan $mac",
-        physicalgraph.device.Protocol.LAN,
-        null,
-        secureCode ? [secureCode: secureCode] : [:]
-    ))
+	def secureCode = params[1].d
+	mac = mac.replace(":", "").replace("-", "").replace(".", "").replace(" ", "").toLowerCase()
+	return sendHubCommand(new physicalgraph.device.HubAction(
+		"wake on lan $mac",
+		physicalgraph.device.Protocol.LAN,
+		null,
+		secureCode ? [secureCode: secureCode] : [:]
+	))
 }
 
 private task_vcmd_cancelPendingTasks(device, action, task, suffix = "") {
@@ -7844,7 +7789,6 @@ private task_vcmd_beginForLoop(device, action, task, suffix = "") {
 		setVariable(task.data.variable, task.data.value)
 	}
 }
-
 
 private task_vcmd_loadAttribute(device, action, task, simulate = false) {
 	def params = (task && task.data && task.data.p && task.data.p.size()) ? task.data.p : []
@@ -7890,7 +7834,7 @@ private task_vcmd_loadStateLocally(device, action, task, simulate = false, globa
 		return false
 	}
 	def attributes = params[0].d
-    def emptyState = params.size() == 2 ? !!params[1].d : false
+	def emptyState = params.size() == 2 ? !!params[1].d : false
 	def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
 	debug "Load from state: attributes are $attributes, values are $values"
 	if (values instanceof Map) {
@@ -7902,9 +7846,9 @@ private task_vcmd_loadStateLocally(device, action, task, simulate = false, globa
 			}
 		}
 	}
-    if (emptyState) {
+	if (emptyState) {
 		setStateVariable("${ global ? "@" : "" }:::${device.id}:::", null)
-    }
+	}
 	return true
 }
 
@@ -7923,26 +7867,26 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 				if (parts.size() == 2) {
 					v = cast(v, parts[1])
 				} else {
-                    def attr = getAttributeByName(attribute)
-                    if (attr) {
-                    	v = cast(v, attr.type)
-                    }
-                }
+					def attr = getAttributeByName(attribute)
+					if (attr) {
+						v = cast(v, attr.type)
+					}
+				}
 				if (attribute == "hue") {
 					v = cast(v, "decimal") / 3.6
-				}                
+				}
 				if (device.hasCommand(command.name)) {
-                	def currentValue = "${device.currentValue(attribute)}"
-                    if (command.name == "setLevel") {
-                        //setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
-                        if (device.currentValue("switch") == (v > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
-                    }
-                    if (!state.app?.disableCO && (currentValue == "$v")) {
-                    	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}($v) because current value is the same", null, "info"
-                    } else {
+					def currentValue = "${device.currentValue(attribute)}"
+					if (command.name == "setLevel") {
+						//setLevel is handled differently. Even if we have the same value, but the switch would flip, we need to let it execute
+						if (device.currentValue("switch") == (v > 0 ? "off" : "on")) currentValue = null //we fake the current value to allow execution
+					}
+					if (!state.app?.disableCO && (currentValue == "$v")) {
+						debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}($v) because current value is the same", null, "info"
+					} else {
 						debug "Executing [${getDeviceLabel(device)}].${command.name}($v)", null, "info"
 						device."${command.name}"(v)
-                	}
+					}
 					return true
 				}
 			}
@@ -7950,12 +7894,12 @@ private setAttributeValue(device, attribute, value, allowTranslations, negateTra
 			if ((command.value == value) && (!command.parameters)) {
 				//found an exact match, let's do it
 				if (device.hasCommand(command.name)) {
-                	def currentValue = "${device.currentValue(attribute)}"
-                    if (!state.app?.disableCO && (currentValue == "$value")) {
-                    	debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}() because current value is the same", null, "info"
-                    } else {
+					def currentValue = "${device.currentValue(attribute)}"
+					if (!state.app?.disableCO && (currentValue == "$value")) {
+						debug "Preventing execution of [${getDeviceLabel(device)}].${command.name}() because current value is the same", null, "info"
+					} else {
 						debug "Executing [${getDeviceLabel(device)}].${command.name}()", null, "info"
-                    }
+					}
 					device."${command.name}"()
 					return true
 				}
@@ -7987,7 +7931,7 @@ private task_vcmd_saveAttribute(devices, action, task, simulate = false) {
 	}
 	def attribute = cleanUpAttribute(params[0].d)
 	def aggregation = params[1].d
-    if (!aggregation) aggregation = "First"
+	if (!aggregation) aggregation = "First"
 	def dataType = params[2].d
 	def variable = params[3].d
 	//work, work, work
@@ -8021,16 +7965,16 @@ private task_vcmd_saveStateLocally(device, action, task, simulate = false, globa
 		return false
 	}
 	def attributes = params[0].d
-    def needsEmptyState = params.size() == 2 ? !!params[1].d : false
-    if (needsEmptyState) {
-    	//check to ensure state is empty
-        def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
-        if (values != null) return false
-    }
+	def needsEmptyState = params.size() == 2 ? !!params[1].d : false
+	if (needsEmptyState) {
+		//check to ensure state is empty
+		def values = getStateVariable("${ global ? "@" : "" }:::${device.id}:::")
+		if (values != null) return false
+	}
 	def values = [:]
 	for (attribute in attributes) {
-        def cleanAttribute = cleanUpAttribute(attribute)
-        values[cleanAttribute] = cleanAttribute == "hue" ? device.currentValue(cleanAttribute) * 3.6 : device.currentValue(cleanAttribute)
+		def cleanAttribute = cleanUpAttribute(attribute)
+		values[cleanAttribute] = cleanAttribute == "hue" ? device.currentValue(cleanAttribute) * 3.6 : device.currentValue(cleanAttribute)
 	}
 	debug "Save to state: attributes are $attributes, values are $values"
 	setStateVariable("${ global ? "@" : "" }:::${device.id}:::", values)
@@ -8146,7 +8090,6 @@ private getAggregatedAttributeValue(devices, attribute, aggregation, dataType) {
 		}
 	}
 
-
 	if (dataType) {
 		//if user wants a certain data type, we comply
 		result = cast(result, dataType)
@@ -8170,185 +8113,184 @@ private task_vcmd_setVariable(devices, action, task, simulate = false) {
 			result = adjustTime()
 			break
 		case "number":
-        	//we need to use long numbers
-        	dataType = "long"
+			//we need to use long numbers
+			dataType = "long"
 		case "long":
 		case "decimal":
 			result = 0
 			break
 	}
 	def immediate = !!params[2].d
-    try {
-        def i = 4
-        def grouping = false
-        def groupingUnit = ""
-        def groupingIndex = null
-        def groupingResult = null
-        def groupingOperation = null
-        def previousOperation = null
-        def operation = null
-        def subDataType = dataType == "long" ? "decimal" : dataType
-        def idx = 0
-        while (true) {
-            def value = params[i].d
-            def variable = params[i + 1].d
-            if (!value) {
-                //we get the value of the variable
-                if (subDataType in ["time"]) {
-                    value = adjustTime(getVariable(variable)).time
-                } else {
-                    value = cast(getVariable(variable, dataType in ["string", "text"]), subDataType)
-                }
-            } else {
-            	if (subDataType in ["time"]) {
-                	//we need to bring the value to today
-                    def time = adjustTime(value)
-                    if (time) {
-                    	def h = time.hours
-                        def m = time.minutes
-                        def lastMidnight = adjustTime().time
-                        lastMidnight = lastMidnight - lastMidnight.mod(86400000)
-                        value = lastMidnight + h * 3600000 + m * 60000
-                        
-                    }
-            	}
-                value = cast(value, subDataType)
-            }
-            if (i == 4) {
-                //initial values
-                result = cast(value, dataType)
-            }
-            def unit = (dataType == "time" ? params[i + 2].d : null)
-            previousOperation = operation
-            operation = params.size() > i + 3 ? "${params[i + 3].d} ".tokenize(" ")[0] : null
-            def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
-            def skip = idx == 0
-            if (needsGrouping) {
-                //these operations require grouping i.e. (a * b * c) seconds
-                if (!grouping) {
-                    grouping = true
-                    groupingIndex = idx
-                    groupingUnit = unit
-                    groupingOperation = previousOperation
-                    groupingResult = value
-                    skip = true
-                }
-            }
-            //add the value/variable
-            subDataType = subDataType == "time" ? "long" : subDataType
-            if (!skip) {
-                def operand1 = grouping ? groupingResult : result
-                def operand2 = value
-                if (groupingUnit ? groupingUnit : unit) {
-                    switch (unit) {
-                        case "seconds":
-                        operand2 = operand2 * 1000
-                        break
-                        case "minutes":
-                        operand2 = operand2 * 60000
-                        break
-                        case "hours":
-                        operand2 = operand2 * 3600000
-                        break
-                        case "days":
-                        operand2 = operand2 * 86400000
-                        break
-                        case "weeks":
-                        operand2 = operand2 * 604800000
-                        break
-                        case "months":
-                        operand2 = operand2 * 2592000000
-                        break
-                        case "years":
-                        operand2 = operand2 * 31536000000
-                        break
-                    }
-                }
-                //reset the group unit - we only apply it once
-                groupingUnit = null
-                def res = null
-                switch (previousOperation) {
-                    case "AND":
-                    res = cast(operand1 && operand2, subDataType)
-                    break
-                    case "OR":
-                    res = cast(operand1 || operand2, subDataType)
-                    break
-                    case "+":
-                    res = cast(operand1 + operand2, subDataType)
-                    break
-                    case "-":
-                    res = cast(operand1 - operand2, subDataType)
-                    break
-                    case "*":
-                    res = cast(operand1 * operand2, subDataType)
-                    break
-                    case "÷":
-                    if (!operand2) return null
-                    res = cast(operand1 / operand2, subDataType)
-                    break
-                }
-                if (grouping) {
-                    groupingResult = res
-                } else {
-                    result = res
-                }
-            }
-            skip = false
-            if (grouping && !needsGrouping) {
-                //these operations do NOT require grouping
-                //ungroup
-                if (!groupingOperation) {
-                    result = groupingResult
-                } else {
-                    def operand1 = result
-                    def operand2 = groupingResult
+	try {
+		def i = 4
+		def grouping = false
+		def groupingUnit = ""
+		def groupingIndex = null
+		def groupingResult = null
+		def groupingOperation = null
+		def previousOperation = null
+		def operation = null
+		def subDataType = dataType == "long" ? "decimal" : dataType
+		def idx = 0
+		while (true) {
+			def value = params[i].d
+			def variable = params[i + 1].d
+			if (!value) {
+				//we get the value of the variable
+				if (subDataType in ["time"]) {
+					value = adjustTime(getVariable(variable)).time
+				} else {
+					value = cast(getVariable(variable, dataType in ["string", "text"]), subDataType)
+				}
+			} else {
+				if (subDataType in ["time"]) {
+					//we need to bring the value to today
+					def time = adjustTime(value)
+					if (time) {
+						def h = time.hours
+						def m = time.minutes
+						def lastMidnight = adjustTime().time
+						lastMidnight = lastMidnight - lastMidnight.mod(86400000)
+						value = lastMidnight + h * 3600000 + m * 60000
 
-                    switch (groupingOperation) {
-                        case "AND":
-                        result = cast(operand1 && operand2, subDataType)
-                        break
-                        case "OR":
-                        result = cast(operand1 || operand2, subDataType)
-                        break
-                        case "+":
-                        result = cast(operand1 + operand2, subDataType)
-                        break
-                        case "-":
-                        result = cast(operand1 - operand2, subDataType)
-                        break
-                        case "*":
-                        result = cast(operand1 * operand2, subDataType)
-                        break
-                        case "÷":
-                        if (!operand2) return null
-                        result = cast(operand1 / operand2, subDataType)
-                        break
-                    }
-                }
-                grouping = false
-            }
-            if (!operation) break
-            i += 4
-            idx += 1
-        }
-    } catch (e) {
-        return simulate ? null : false
-    }
+					}
+				}
+				value = cast(value, subDataType)
+			}
+			if (i == 4) {
+				//initial values
+				result = cast(value, dataType)
+			}
+			def unit = (dataType == "time" ? params[i + 2].d : null)
+			previousOperation = operation
+			operation = params.size() > i + 3 ? "${params[i + 3].d} ".tokenize(" ")[0] : null
+			def needsGrouping = (operation == "*") || (operation == "÷") || (operation == "AND")
+			def skip = idx == 0
+			if (needsGrouping) {
+				//these operations require grouping i.e. (a * b * c) seconds
+				if (!grouping) {
+					grouping = true
+					groupingIndex = idx
+					groupingUnit = unit
+					groupingOperation = previousOperation
+					groupingResult = value
+					skip = true
+				}
+			}
+			//add the value/variable
+			subDataType = subDataType == "time" ? "long" : subDataType
+			if (!skip) {
+				def operand1 = grouping ? groupingResult : result
+				def operand2 = value
+				if (groupingUnit ? groupingUnit : unit) {
+					switch (unit) {
+						case "seconds":
+							operand2 = operand2 * 1000
+							break
+						case "minutes":
+							operand2 = operand2 * 60000
+							break
+						case "hours":
+							operand2 = operand2 * 3600000
+							break
+						case "days":
+							operand2 = operand2 * 86400000
+							break
+						case "weeks":
+							operand2 = operand2 * 604800000
+							break
+						case "months":
+							operand2 = operand2 * 2592000000
+							break
+						case "years":
+							operand2 = operand2 * 31536000000
+							break
+					}
+				}
+				//reset the group unit - we only apply it once
+				groupingUnit = null
+				def res = null
+				switch (previousOperation) {
+					case "AND":
+						res = cast(operand1 && operand2, subDataType)
+						break
+					case "OR":
+						res = cast(operand1 || operand2, subDataType)
+						break
+					case "+":
+						res = cast(operand1 + operand2, subDataType)
+						break
+					case "-":
+						res = cast(operand1 - operand2, subDataType)
+						break
+					case "*":
+						res = cast(operand1 * operand2, subDataType)
+						break
+					case "÷":
+						if (!operand2) return null
+						res = cast(operand1 / operand2, subDataType)
+						break
+				}
+				if (grouping) {
+					groupingResult = res
+				} else {
+					result = res
+				}
+			}
+			skip = false
+			if (grouping && !needsGrouping) {
+				//these operations do NOT require grouping
+				//ungroup
+				if (!groupingOperation) {
+					result = groupingResult
+				} else {
+					def operand1 = result
+					def operand2 = groupingResult
+
+					switch (groupingOperation) {
+						case "AND":
+							result = cast(operand1 && operand2, subDataType)
+							break
+						case "OR":
+							result = cast(operand1 || operand2, subDataType)
+							break
+						case "+":
+							result = cast(operand1 + operand2, subDataType)
+							break
+						case "-":
+							result = cast(operand1 - operand2, subDataType)
+							break
+						case "*":
+							result = cast(operand1 * operand2, subDataType)
+							break
+						case "÷":
+							if (!operand2) return null
+							result = cast(operand1 / operand2, subDataType)
+							break
+					}
+				}
+				grouping = false
+			}
+			if (!operation) break
+			i += 4
+			idx += 1
+		}
+	} catch (e) {
+		return simulate ? null : false
+	}
 	if (dataType in ["string", "text"]) {
 		result = formatMessage(result)
 	} else if (dataType in ["time"]) {
 		result = simulate ? formatLocalTime(convertTimeToUnixTime(result)) : convertTimeToUnixTime(result)
 	} else {
-    	result = cast(result, dataType)
-    }
-    setVariable(name, result)
+		result = cast(result, dataType)
+	}
+	setVariable(name, result)
 	if (simulate) {
 		return result
 	}
 	return true
 }
-
 
 private cast(value, dataType) {
 	def trueStrings = ["1", "on", "open", "locked", "active", "wet", "detected", "present", "occupied", "muted", "sleeping"]
@@ -8421,13 +8363,11 @@ private cast(value, dataType) {
 		case "vector3":
 			return value instanceof String ? adjustTime(value).time : cast(value, "long")
 		case "orientation":
-				return getThreeAxisOrientation(value)
+			return getThreeAxisOrientation(value)
 	}
 	//anything else...
 	return value
 }
-
-
 
 /******************************************************************************/
 /*** CoRE PISTON PUBLISHED METHODS											***/
@@ -8503,8 +8443,8 @@ def getPistonConditionDescription(condition) {
 
 def getSummary() {
 	if (!state.app) {
-    	log.warn "Piston ${app.label} is not complete, please open it and save it"
-    }
+		log.warn "Piston ${app.label} is not complete, please open it and save it"
+	}
 	def stateApp = (state.app ?: state.config?.app)
 	return [
 		i: app.id,
@@ -8520,62 +8460,60 @@ def getSummary() {
 		t: getTriggerCount(stateApp),
 		le: state.lastEvent,
 		lx: state.lastExecutionTime,
-        cd: formatLocalTime(stateApp?.created),
-        cv: stateApp?.version,
-        md: formatLocalTime(state.lastInitialized),
+		cd: formatLocalTime(stateApp?.created),
+		cv: stateApp?.version,
+		md: formatLocalTime(state.lastInitialized),
 	]
 }
 
 def pausePiston(pistonName) {
 	if (parent) {
-    	return parent.pausePiston(pistonName)
-    } else {
+		return parent.pausePiston(pistonName)
+	} else {
 		def piston = getChildApps().find{ it.label == pistonName }
 		if (piston) {
 			//fire up the piston
 			return piston.pause()
 		}
 		return null
-    }
+	}
 }
 
 def pause() {
 	if (!parent) return null
-    if (!state.app) return null
-    state.app.enabled = false
-    if (state.config && state.config.app) state.config.app.enabled = false
-    unsubscribe()
-    state.tasks = [:]
+	if (!state.app) return null
+	state.app.enabled = false
+	if (state.config && state.config.app) state.config.app.enabled = false
+	unsubscribe()
+	state.tasks = [:]
 }
 
 def resumePiston(pistonName) {
 	if (parent) {
-    	return parent.resumePiston(pistonName)
-    } else {
+		return parent.resumePiston(pistonName)
+	} else {
 		def piston = getChildApps().find{ it.label == pistonName }
 		if (piston) {
 			//fire up the piston
 			return piston.resume()
 		}
 		return null
-    }
+	}
 }
 
 def resume() {
 	if (!parent) return null
-    if (!state.app) return null
-    state.app.enabled = true
-    if (state.config && state.config.app) state.config.app.enabled = true    
-    state.run = "app"
-    initializeCoREPistonStore()
-    if (state.app.mode != "Follow-Up") {
-        //follow-up pistons don't subscribe to anything
-        subscribeToAll(state.app)
-    }
-    processTasks()
+	if (!state.app) return null
+	state.app.enabled = true
+	if (state.config && state.config.app) state.config.app.enabled = true
+	state.run = "app"
+	initializeCoREPistonStore()
+	if (state.app.mode != "Follow-Up") {
+		//follow-up pistons don't subscribe to anything
+		subscribeToAll(state.app)
+	}
+	processTasks()
 }
-
-
 
 /******************************************************************************/
 /***																		***/
@@ -8620,7 +8558,7 @@ private debug(message, shift = null, cmd = null, err = null) {
 			levelDelta = -(level > 0 ? 1 : 0)
 			pad = "═"
 			prefix = "╔"
-		break
+			break
 	}
 
 	if (level > 0) {
@@ -8648,7 +8586,6 @@ private debug(message, shift = null, cmd = null, err = null) {
 		log.debug "$prefix$message", err
 	}
 }
-
 
 /******************************************************************************/
 /*** DATE & TIME FUNCTIONS													***/
@@ -8875,6 +8812,7 @@ private getMonthNumber(date = null) {
 	}
 	return null
 }
+
 private getSunrise() {
 	if (!(state.sunrise instanceof Date)) {
 		def sunTimes = getSunriseAndSunset()
@@ -8911,13 +8849,12 @@ private addOffsetToMinutes(minutes, offset) {
 }
 
 private timeComparisonOptionValues(trigger, supportVariables = true) {
-		return ["custom time", "midnight", "sunrise", "noon", "sunset"] + (supportVariables ? ["time of variable", "date and time of variable"] : []) + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
+	return ["custom time", "midnight", "sunrise", "noon", "sunset"] + (supportVariables ? ["time of variable", "date and time of variable"] : []) + (trigger ? ["every minute", "every number of minutes", "every hour", "every number of hours"] : [])
 }
 
 private groupOptions() {
 	return ["AND", "OR", "XOR", "THEN IF", "ELSE IF", "FOLLOWED BY"]
 }
-
 
 private threeAxisOrientations() {
 	return ["rear side up", "down side up", "left side up", "front side up", "up side up", "right side up"]
@@ -8939,7 +8876,7 @@ private getThreeAxisDistance(coord1, coord2) {
 }
 
 private getThreeAxisOrientation(value, getIndex = false) {
-	if (value instanceof Map) {    
+	if (value instanceof Map) {
 		if ((value.x != null) && (value.y != null) && (value.z != null)) {
 			def orientations = threeAxisOrientations()
 			def x = Math.abs(value.x)
@@ -8953,6 +8890,7 @@ private getThreeAxisOrientation(value, getIndex = false) {
 	}
 	return value
 }
+
 private timeOptions(trigger = false) {
 	def result = ["1 minute"]
 	for (def i =2; i <= (trigger ? 360 : 360); i++) {
@@ -9030,8 +8968,6 @@ private timeToMinutes(time) {
 	debug "ERROR: Time '$time' could not be parsed", null, "error"
 	return 0
 }
-
-
 
 /******************************************************************************/
 /*** NUMBER FUNCTIONS														***/
@@ -9120,7 +9056,6 @@ private formatOrdinalNumberName(number) {
 	}
 }
 
-
 /******************************************************************************/
 /*** CONDITION FUNCTIONS													***/
 /******************************************************************************/
@@ -9128,7 +9063,7 @@ private formatOrdinalNumberName(number) {
 //finds and returns the condition object for the given condition Id
 //fixed by @rappleg to use strict type casting - fix for Android ST 2.2.2 app
 private _traverseConditions(parent, conditionId) {
-    Integer conditionIdInt = conditionId instanceof String ? Integer.valueOf(conditionId) : conditionId
+	Integer conditionIdInt = conditionId instanceof String ? Integer.valueOf(conditionId) : conditionId
 	if (parent.id == conditionIdInt) {
 		return parent
 	}
@@ -9140,7 +9075,6 @@ private _traverseConditions(parent, conditionId) {
 	}
 	return null
 }
-
 
 //returns a condition based on its ID
 private getCondition(conditionId, primary = null) {
@@ -9213,7 +9147,7 @@ private withEachCondition(condition, callback, data = null, includeGroups = fals
 				withEachCondition(child, callback, data)
 			}
 		} else {
-				"$callback"(condition, data)
+			"$callback"(condition, data)
 		}
 	}
 	return result
@@ -9267,85 +9201,85 @@ private getConditionCount(app) {
 }
 
 def rebuildPiston(update = false) {
-	configApp()    
-    state.config.app.conditions = createCondition(true)
-    state.config.app.conditions.id = 0
-    state.config.app.otherConditions = createCondition(true)
-    state.config.app.otherConditions.id = -1
-    state.config.app.actions = []
-    rebuildConditions()
-    rebuildActions()
-    if (update) {
-	    debug "Finished rebuilding piston, updating SmartApp...", null, "trace"
-	    updated()
-    }
+	configApp()
+	state.config.app.conditions = createCondition(true)
+	state.config.app.conditions.id = 0
+	state.config.app.otherConditions = createCondition(true)
+	state.config.app.otherConditions.id = -1
+	state.config.app.actions = []
+	rebuildConditions()
+	rebuildActions()
+	if (update) {
+		debug "Finished rebuilding piston, updating SmartApp...", null, "trace"
+		updated()
+	}
 }
 
 private rebuildConditions() {
 	def conditions = settings.findAll{it.key.startsWith("condParent")}.sort{ it.key.replace("condParent", "").toInteger() }
-    boolean keepGoing = true
-    while (keepGoing) {
-    	keepGoing = false
-        for(condition in conditions) {
-        	if (condition.value != null) {
-        		int parentId = condition.value.toInteger()
-        		int conditionId = condition.key.replace("condParent", "").toInteger()
-            	parentId = conditionId == parentId ? 0 : parentId
-                def parentCondition = getCondition(parentId)
-                if (parentCondition != null) {   	           
-                    //let's see if it's a group
-                    def c = null
-                    if (settings["condGrouping${conditionId}"] || conditions.find{ (it.key != "condParent${conditionId}") && it.value != null && (it.value.toInteger() == conditionId) }) {
-                    	//group
-                        c = createCondition(parentId, true, conditionId)
-                    } else {
-                    	//condition
-                        c = createCondition(parentId, false, conditionId)
-                    }
-                    if (c) updateCondition(c)
-	                keepGoing = true
-                	condition.value = null
-                }
-            }
-        }
-    }
-    cleanUpConditions(true)
+	boolean keepGoing = true
+	while (keepGoing) {
+		keepGoing = false
+		for(condition in conditions) {
+			if (condition.value != null) {
+				int parentId = condition.value.toInteger()
+				int conditionId = condition.key.replace("condParent", "").toInteger()
+				parentId = conditionId == parentId ? 0 : parentId
+				def parentCondition = getCondition(parentId)
+				if (parentCondition != null) {
+					//let's see if it's a group
+					def c = null
+					if (settings["condGrouping${conditionId}"] || conditions.find{ (it.key != "condParent${conditionId}") && it.value != null && (it.value.toInteger() == conditionId) }) {
+						//group
+						c = createCondition(parentId, true, conditionId)
+					} else {
+						//condition
+						c = createCondition(parentId, false, conditionId)
+					}
+					if (c) updateCondition(c)
+					keepGoing = true
+					condition.value = null
+				}
+			}
+		}
+	}
+	cleanUpConditions(true)
 }
 
 private rebuildActions() {
 	def actions = settings.findAll{it.key.startsWith("actParent")}.sort{ it.key.replace("actParent", "").toInteger() }
-        for(action in actions) {
-        	if (action.value != null) {
-        		def parentId = action.value.toInteger()
-        		def actionId = action.key.replace("actParent", "").toInteger()
-                def rs = !!settings["actRState${actionId}"]
-                def a = createAction(parentId, rs, actionId)
-                if (a) updateAction(a)
-            }
-        }
-    cleanUpActions()
+	for(action in actions) {
+		if (action.value != null) {
+			def parentId = action.value.toInteger()
+			def actionId = action.key.replace("actParent", "").toInteger()
+			def rs = !!settings["actRState${actionId}"]
+			def a = createAction(parentId, rs, actionId)
+			if (a) updateAction(a)
+		}
+	}
+	cleanUpActions()
 }
 
 private rebuildTaps() {
 	def taps = settings.findAll{it.key.startsWith("tapName")}
-    state.taps = []
-    for(tap in taps) {
-    	def id = tap.key.replace("tapName", "")
-        if (id.isInteger()) {
-            if (tap.value != null) {
-                def name = tap.value
-                def pistons = settings["tapPistons${id}"]
-                if (name || pistons) {
-                    def t = [
-                        i: id.toInteger(),
-                        n: name,
-                        p: settings["tapPistons${id}"]
-                    ]
-                    state.taps.push t
-                }
-            }
-        }
-    }
+	state.taps = []
+	for(tap in taps) {
+		def id = tap.key.replace("tapName", "")
+		if (id.isInteger()) {
+			if (tap.value != null) {
+				def name = tap.value
+				def pistons = settings["tapPistons${id}"]
+				if (name || pistons) {
+					def t = [
+						i: id.toInteger(),
+						n: name,
+						p: settings["tapPistons${id}"]
+					]
+					state.taps.push t
+				}
+			}
+		}
+	}
 }
 
 //cleans up conditions - this may be replaced by a complete rebuild of the app object from the settings
@@ -9385,8 +9319,8 @@ private _cleanUpCondition(condition, deleteGroups) {
 			if (!(condition.cap in ["Ask Alexa Macro", "EchoSistant Profile", "IFTTT", "Piston", "CoRE Piston", "Mode", "Location Mode", "Smart Home Monitor", "Date & Time", "Time", "Routine", "Variable"]) && settings["condDevices${condition.id}"] == null) {
 				deleteCondition(condition.id);
 				return true
-			//} else {
-			//	updateCondition(condition)
+				//} else {
+				//	updateCondition(condition)
 			}
 		} else {
 			//if condition group
@@ -9418,7 +9352,7 @@ private getConditionDescription(id, level = 0) {
 			pre = " │ ┌ ["
 			preNot = " │ ┌ NOT ["
 			tab = " │ │	"
-				aft = " │ └ ]"
+			aft = " │ └ ]"
 			break;
 		case 3:
 			pre = " │ │ ┌ <"
@@ -9469,7 +9403,7 @@ private getConditionDescription(id, level = 0) {
 						break
 				}
 				if (comp.timed) {
-						time = " for [ERROR]"
+					time = " for [ERROR]"
 					if (comparison.contains("change")) {
 						time = " in the last " + (condition.fort ? condition.fort : "[ERROR]")
 					} else if (comparison.contains("stays")) {
@@ -9492,7 +9426,7 @@ private getConditionDescription(id, level = 0) {
 					deviceList = "${capability.display} '${values.trim()}' was "
 					values = ""
 					break
-                case "ifttt":
+				case "ifttt":
 					deviceList = "IFTTT event '${values.trim()}' was "
 					values = ""
 					break
@@ -9518,7 +9452,6 @@ private getConditionDescription(id, level = 0) {
 		return result
 	}
 }
-
 
 private getTimeConditionDescription(condition) {
 	if (condition.attr != "time") {
@@ -9587,7 +9520,7 @@ private getTimeConditionDescription(condition) {
 
 			if (i == 1) {
 				val1 = val
-				} else {
+			} else {
 				val2 = val
 			}
 
@@ -9690,7 +9623,7 @@ private getTimeConditionDescription(condition) {
 			if (condition.fy) {
 				def odd = "odd years" in condition.fy
 				def even = "even years" in condition.fy
-					def leap = "leap years" in condition.fy
+				def leap = "leap years" in condition.fy
 				def list = []
 				//if we have both odd and even selected, that would match all years, so get out
 				if (!(even && odd)) {
@@ -9711,15 +9644,9 @@ private getTimeConditionDescription(condition) {
 			}
 
 		}
-
-
 	}
 	return result
 }
-
-
-
-
 
 /******************************************************************************/
 /*** ACTION FUNCTIONS														***/
@@ -9773,29 +9700,28 @@ private sanitizeCommandName(name) {
 	name = name ? "$name".trim().replace(" ", "_").replace("(", "_").replace(")", "_").replace("&", "_").replace("#", "_") : null
 }
 
-
 private importVariables(collection, prefix) {
 	for(item in collection) {
-    	if (item.value instanceof Map) {
-        	importVariables(item.value, "${prefix}${item.key}.")
-        } else {
+		if (item.value instanceof Map) {
+			importVariables(item.value, "${prefix}${item.key}.")
+		} else {
 			setVariable(prefix + item.key, item.value)
-        }
+		}
 	}
 }
 
 private cleanUpMap(map) {
 	def washer = []
-    //find dirty laundry
-    for (item in map) {
-    	if (item.value == null) washer.push(item.key)
-    }
-    //clean it
-    for (item in washer) {
-    	map.remove(item)
-    }
-    washer = null
-    return map
+	//find dirty laundry
+	for (item in map) {
+		if (item.value == null) washer.push(item.key)
+	}
+	//clean it
+	for (item in washer) {
+		map.remove(item)
+	}
+	washer = null
+	return map
 }
 
 private cleanUpAttribute(attribute) {
@@ -9895,7 +9821,7 @@ private formatMessage(message, params = null) {
 			} else {
 				value = getVariable(var, true)
 			}
-				varMap[variable] = value
+			varMap[variable] = value
 		}
 	}
 	for(var in varMap) {
@@ -9905,11 +9831,6 @@ private formatMessage(message, params = null) {
 	}
 	return message.toString().replace("|[", "{").replace("]|", "}")
 }
-
-
-
-
-
 
 /******************************************************************************/
 /*** DATABASE FUNCTIONS														***/
@@ -10045,7 +9966,7 @@ private listCommonDeviceAttributes(devices) {
 		for (attr in attrs) {
 			if (list.containsKey(attr.name)) {
 				//if attribute exists in standard list, increment its usage count
-					list[attr.name] = list[attr.name] + 1
+				list[attr.name] = list[attr.name] + 1
 				if (attr.name == "threeAxis") {
 					list["orientation"] = list["orientation"] + 1
 					list["axisX"] = list["axisX"] + 1
@@ -10054,7 +9975,7 @@ private listCommonDeviceAttributes(devices) {
 				}
 			} else {
 				//otherwise increment the usage count in the custom list
-					customList[attr.name] = customList[attr.name] ? customList[attr.name] + 1 : 1
+				customList[attr.name] = customList[attr.name] ? customList[attr.name] + 1 : 1
 			}
 		}
 	}
@@ -10077,17 +9998,16 @@ private listCommonDeviceAttributes(devices) {
 	return result.sort()
 }
 
-
 private listCommonDeviceSubDevices(devices, countAttributes, prefix = "") {
 	def result = []
 	def subDeviceCount = null
 	def hasMainSubDevice = false
 	//get supported attributes
-    if (countAttributes) {
-    	countAttributes = "$countAttributes".tokenize(",")
-    } else {
-    	countAttributes = []
-    }
+	if (countAttributes) {
+		countAttributes = "$countAttributes".tokenize(",")
+	} else {
+		countAttributes = []
+	}
 	for (device in devices) {
 		def cnt = device.name.toLowerCase().contains("lock") ? 32 : 1
 		switch (device.name) {
@@ -10097,15 +10017,15 @@ private listCommonDeviceSubDevices(devices, countAttributes, prefix = "") {
 				cnt = 4
 				break
 		}
-        if (countAttributes.size()) {
-            for(countAttribute in countAttributes) {
+		if (countAttributes.size()) {
+			for(countAttribute in countAttributes) {
 				def c = cast(device.currentValue(countAttribute), "number")
-                if (c) {                
+				if (c) {
 					cnt = c
-                    break
-                }
-            }
-        }
+					break
+				}
+			}
+		}
 		if (cnt instanceof String) {
 			cnt = cnt.isInteger() ? cnt.toInteger() : 0
 		}
@@ -10153,12 +10073,12 @@ private listCommonDeviceCommands(devices, capabilities) {
 			}
 			if (!found && list.containsKey(cmd.name)) {
 				//if attribute exists in standard list, increment its usage count
-					list[cmd.name] = list[cmd.name] + 1
+				list[cmd.name] = list[cmd.name] + 1
 				found = true
 			}
 			if (!found) {
 				//otherwise increment the usage count in the custom list
-					customList[cmd.name] = customList[cmd.name] ? customList[cmd.name] + 1 : 1
+				customList[cmd.name] = customList[cmd.name] ? customList[cmd.name] + 1 : 1
 			}
 		}
 	}
@@ -10211,13 +10131,6 @@ private getAttributeByName(name, device = null) {
 		def item = state.customAttributes.find{ it.key == name }
 		if (item) return item.value
 	}
-	/*
-	for (attribute in attributes()) {
-		if ((attribute.name == name) || (name2 && (attribute.name == name2))) {
-			return attribute
-		}
-	}
-	*/
 	//give up, return whatever...
 	if (device) {
 		def attr = device.supportedAttributes.find{ it.name == name }
@@ -10324,7 +10237,6 @@ private getCommandGroupName(command) {
 		return command.group
 	}
 }
-
 
 //gets a category and command and returns the user friendly display name
 private listCommandCapabilities(command) {
@@ -10447,7 +10359,6 @@ private parseCommandParameter(parameter) {
 	return null
 }
 
-
 /******************************************************************************/
 /*** DATABASE																***/
 /******************************************************************************/
@@ -10512,7 +10423,6 @@ private capabilities() {
 		[ name: "smokeDetector",					display: "Smoke Detector",					attribute: "smoke",						multiple: true,			devices: "smoke detectors",	],
 		[ name: "soundSensor",						display: "Sound Sensor",					attribute: "sound",						multiple: true,			devices: "sound sensors",	],
 		[ name: "speechSynthesis",					display: "Speech Synthesis",				commands: ["speak"],																multiple: true,			devices: "speech synthesizers", ],
-		//[ name: "stepSensor",						display: "Step Sensor",						attribute: "steps",						multiple: true,			devices: "step sensors",	],
 		[ name: "switch",							display: "Switch",							attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "switches",			],
 		[ name: "switchLevel",						display: "Switch Level",					attribute: "level",						commands: ["setLevel"],																multiple: true,			devices: "dimmers" ],
 		[ name: "soundPressureLevel",				display: "Sound Pressure Level",			attribute: "soundPressureLevel",		multiple: true,			devices: "sound pressure sensors",	],
@@ -10541,7 +10451,7 @@ private capabilities() {
 
 private commands() {
 	def tempUnit = "°" + location.temperatureScale
-    def defGroup = "Control [devices]"
+	def defGroup = "Control [devices]"
 	return [
 		[ name: "locationMode.setMode",						category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set location mode",			],
 		[ name: "smartHomeMonitor.setAlarmSystemStatus",	category: "Location",					group: "Control location mode, Smart Home Monitor, routines, pistons, variables, and more...",		display: "Set Smart Home Monitor status",],
@@ -10683,7 +10593,7 @@ private commands() {
 		[ name: "presetSeven",	display: "Pan camera to preset #7",		],
 		[ name: "presetEight",	display: "Pan camera to preset #8",		],
 		[ name: "presetCommand",display: "Pan camera to custom preset",	parameters: ["Preset #:number[1..99]"], description: "Pan camera to preset #{0}",	],
-        //zwave fan speed control by @pmjoen
+		//zwave fan speed control by @pmjoen
 		[ name: "low",	display: "Set to Low"],
 		[ name: "med",	display: "Set to Medium"],
 		[ name: "high",	display: "Set to High"],
@@ -10744,8 +10654,8 @@ private virtualCommands() {
 		[ name: "setLevelIf",			category: "Convenience",			group: "Control [devices]",					display: "Set level (advanced)",					parameters: ["Level:level","Only if switch state is:enum[on,off]"], description: "Set level to {0}% if switch is {1}",		attribute: "level",		value: "*|number",	],
 		[ name: "adjustLevel",			requires: ["setLevel"], 			display: "Adjust level",					parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust level by {0}%",	],
 		[ name: "adjustLevelVariable",			requires: ["setLevel"], 			display: "Adjust level (variable)",					parameters: ["Adjustment (+/-):variable"],																												description: "Adjust level by {0}%",	],
-        [ name: "fadeSaturation",		requires: ["setSaturation"],		display: "Fade to saturation",				parameters: ["?Start saturation (optional):saturation","Target saturation:saturation","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
-        [ name: "fadeSaturationVariable",requires: ["setSaturation"],		display: "Fade to saturation (variable)",				parameters: ["?Start saturation (optional):variable","Target saturation:variable","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
+		[ name: "fadeSaturation",		requires: ["setSaturation"],		display: "Fade to saturation",				parameters: ["?Start saturation (optional):saturation","Target saturation:saturation","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
+		[ name: "fadeSaturationVariable",requires: ["setSaturation"],		display: "Fade to saturation (variable)",				parameters: ["?Start saturation (optional):variable","Target saturation:variable","Duration (seconds):number[1..600]"],											description: "Fade saturation from {0}% to {1}% in {2}s",				],
 		[ name: "adjustSaturation",		requires: ["setSaturation"],		display: "Adjust saturation",				parameters: ["Adjustment (+/-):number[-100..100]"],																												description: "Adjust saturation by {0}%",	],
 		[ name: "adjustSaturationVariable",		requires: ["setSaturation"],		display: "Adjust saturation (variable)",				parameters: ["Adjustment (+/-):variable"],																												description: "Adjust saturation by {0}%",	],
 		[ name: "fadeHue",				requires: ["setHue"], 				display: "Fade to hue",						parameters: ["?Start hue (optional):hue","Target hue:hue","Duration (seconds):number[1..600]"],																description: "Fade hue from {0}° to {1}° in {2}s",				],
@@ -10783,9 +10693,8 @@ private virtualCommands() {
 		[ name: "executePiston",		display: "Execute piston",					parameters: ["Piston:piston","?Save state into variable:string"],																varEntry: 1,	location: true,	description: "Execute piston '{0}'",	aggregated: true],
 		[ name: "pausePiston",			display: "Pause piston",					parameters: ["Piston:piston"],																location: true,	description: "Pause piston '{0}'",	aggregated: true],
 		[ name: "resumePiston",			display: "Resume piston",					parameters: ["Piston:piston"],																location: true,	description: "Resume piston '{0}'",	aggregated: true],
-        [ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","?Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
-        [ name: "wolRequest",			display: "Wake a LAN device", parameters: ["MAC address:string","?Secure code:string"], location: true, description: "Wake LAN device at address {0} with secure code {1}", aggregated: true],
-        
+		[ name: "httpRequest",			display: "Make a web request", parameters: ["URL:string","Method:enum[GET,POST,PUT,DELETE,HEAD]","Content Type:enum[JSON,FORM]","?Variables to send:variables","Import response data into variables:bool","?Variable import name prefix (optional):string"], location: true, description: "Make a {1} web request to {0}", aggregated: true],
+		[ name: "wolRequest",			display: "Wake a LAN device", parameters: ["MAC address:string","?Secure code:string"], location: true, description: "Wake LAN device at address {0} with secure code {1}", aggregated: true],
 		//flow control commands
 		[ name: "beginSimpleForLoop",	display: "Begin FOR loop (simple)",			parameters: ["Number of cycles:string"],																																										location: true,		description: "FOR {0} CYCLES DO",			flow: true,					indent: 1,	],
 		[ name: "beginForLoop",			display: "Begin FOR loop",					parameters: ["Variable to use:string","From value:string","To value:string"],																													varEntry: 0,	location: true,		description: "FOR {0} = {1} TO {2} DO",		flow: true,					indent: 1,	],
@@ -10801,17 +10710,17 @@ private virtualCommands() {
 		[ name: "beginSwitchBlock",		display: "Begin SWITCH block",				parameters: ["Variable to test:variable"],																																										location: true,		description: "SWITCH (|[{0}]|) DO",				flow: true,					indent: 2,	],
 		[ name: "beginSwitchCase",		display: "Begin CASE block",				parameters: ["Value:string"],																																													location: true,		description: "CASE '{0}':",					flow: true,	selfIndent: -1,		],
 		[ name: "endSwitchBlock",		display: "End SWITCH block",				location: true,		description: "END SWITCH",					flow: true,	selfIndent: -2,	indent: -2,	],
-    ]
-   	if (location.contactBookEnabled) {
-    	cmds.push([ name: "sendNotificationToContacts", display: "Send notification to contacts", parameters: ["Message:text","Contacts:contacts","Save notification:bool"], location: true, description: "Send notification '{0}' to {1}", aggregated: true])
-    }
-    if (getIftttKey()) {
-    	cmds.push([ name: "iftttMaker", display: "Send IFTTT Maker event", parameters: ["Event:text", "?Value1:string", "?Value2:string", "?Value3:string"], location: true, description: "Send IFTTT Maker event '{0}' with parameters '{1}', '{2}', and '{3}'", aggregated: true])
-    }
+	]
+	if (location.contactBookEnabled) {
+		cmds.push([ name: "sendNotificationToContacts", display: "Send notification to contacts", parameters: ["Message:text","Contacts:contacts","Save notification:bool"], location: true, description: "Send notification '{0}' to {1}", aggregated: true])
+	}
+	if (getIftttKey()) {
+		cmds.push([ name: "iftttMaker", display: "Send IFTTT Maker event", parameters: ["Event:text", "?Value1:string", "?Value2:string", "?Value3:string"], location: true, description: "Send IFTTT Maker event '{0}' with parameters '{1}', '{2}', and '{3}'", aggregated: true])
+	}
 	if (getLifxToken()) {
 		cmds.push([ name: "lifxScene", display: "Activate LIFX scene", parameters: ["Scene:lifxScenes"], location: true, description: "Activate LIFX Scene '{0}'", aggregated: true])
-    }    
-    return cmds
+	}
+	return cmds
 }
 
 private attributes() {
@@ -11040,193 +10949,46 @@ private initialSystemStore() {
 		"\$randomLevel": 0,
 		"\$randomSaturation": 0,
 		"\$randomHue": 0,
-        "\$midnight": 999999999999,
-        "\$noon": 999999999999,
-        "\$sunrise": 999999999999,
-        "\$sunset": 999999999999,
-        "\$nextMidnight": 999999999999,
-        "\$nextNoon": 999999999999,
-        "\$nextSunrise": 999999999999,
-        "\$nextSunset": 999999999999,
+		"\$midnight": 999999999999,
+		"\$noon": 999999999999,
+		"\$sunrise": 999999999999,
+		"\$sunset": 999999999999,
+		"\$nextMidnight": 999999999999,
+		"\$nextNoon": 999999999999,
+		"\$nextSunrise": 999999999999,
+		"\$nextSunset": 999999999999,
 		"\$time": "",
 		"\$time24": "",
-        "\$httpStatusCode": 0,
-        "\$httpStatusOk": true,
-        "\$iftttStatusCode": 0,
-        "\$iftttStatusOk": true,
-        "\$locationMode": "",
-        "\$shmStatus": ""
+		"\$httpStatusCode": 0,
+		"\$httpStatusOk": true,
+		"\$iftttStatusCode": 0,
+		"\$iftttStatusOk": true,
+		"\$locationMode": "",
+		"\$shmStatus": ""
 	]
 }
 
-
-private colors() {
-	return [
-		[ name: "Random",					rgb: "#000000",		h: 0,		s: 0,		l: 0,	],
-		[ name: "Soft White",				rgb: "#B6DA7C",		h: 83,		s: 44,		l: 67,	],
-		[ name: "Warm White",				rgb: "#DAF17E",		h: 72,		s: 20,		l: 72,	],
-		[ name: "Daylight White",			rgb: "#CEF4FD",		h: 191,		s: 9,		l: 90,	],
-		[ name: "Cool White",				rgb: "#F3F6F7",		h: 187,		s: 19,		l: 96,	],
-		[ name: "White",					rgb: "#FFFFFF",		h: 0,		s: 0,		l: 100,	],
-		[ name: "Alice Blue",				rgb: "#F0F8FF",		h: 208,		s: 100,		l: 97,	],
-		[ name: "Antique White",			rgb: "#FAEBD7",		h: 34,		s: 78,		l: 91,	],
-		[ name: "Aqua",						rgb: "#00FFFF",		h: 180,		s: 100,		l: 50,	],
-		[ name: "Aquamarine",				rgb: "#7FFFD4",		h: 160,		s: 100,		l: 75,	],
-		[ name: "Azure",					rgb: "#F0FFFF",		h: 180,		s: 100,		l: 97,	],
-		[ name: "Beige",					rgb: "#F5F5DC",		h: 60,		s: 56,		l: 91,	],
-		[ name: "Bisque",					rgb: "#FFE4C4",		h: 33,		s: 100,		l: 88,	],
-		[ name: "Blanched Almond",			rgb: "#FFEBCD",		h: 36,		s: 100,		l: 90,	],
-		[ name: "Blue",						rgb: "#0000FF",		h: 240,		s: 100,		l: 50,	],
-		[ name: "Blue Violet",				rgb: "#8A2BE2",		h: 271,		s: 76,		l: 53,	],
-		[ name: "Brown",					rgb: "#A52A2A",		h: 0,		s: 59,		l: 41,	],
-		[ name: "Burly Wood",				rgb: "#DEB887",		h: 34,		s: 57,		l: 70,	],
-		[ name: "Cadet Blue",				rgb: "#5F9EA0",		h: 182,		s: 25,		l: 50,	],
-		[ name: "Chartreuse",				rgb: "#7FFF00",		h: 90,		s: 100,		l: 50,	],
-		[ name: "Chocolate",				rgb: "#D2691E",		h: 25,		s: 75,		l: 47,	],
-		[ name: "Coral",					rgb: "#FF7F50",		h: 16,		s: 100,		l: 66,	],
-		[ name: "Corn Flower Blue",			rgb: "#6495ED",		h: 219,		s: 79,		l: 66,	],
-		[ name: "Corn Silk",				rgb: "#FFF8DC",		h: 48,		s: 100,		l: 93,	],
-		[ name: "Crimson",					rgb: "#DC143C",		h: 348,		s: 83,		l: 58,	],
-		[ name: "Cyan",						rgb: "#00FFFF",		h: 180,		s: 100,		l: 50,	],
-		[ name: "Dark Blue",				rgb: "#00008B",		h: 240,		s: 100,		l: 27,	],
-		[ name: "Dark Cyan",				rgb: "#008B8B",		h: 180,		s: 100,		l: 27,	],
-		[ name: "Dark Golden Rod",			rgb: "#B8860B",		h: 43,		s: 89,		l: 38,	],
-		[ name: "Dark Gray",				rgb: "#A9A9A9",		h: 0,		s: 0,		l: 66,	],
-		[ name: "Dark Green",				rgb: "#006400",		h: 120,		s: 100,		l: 20,	],
-		[ name: "Dark Khaki",				rgb: "#BDB76B",		h: 56,		s: 38,		l: 58,	],
-		[ name: "Dark Magenta",				rgb: "#8B008B",		h: 300,		s: 100,		l: 27,	],
-		[ name: "Dark Olive Green",			rgb: "#556B2F",		h: 82,		s: 39,		l: 30,	],
-		[ name: "Dark Orange",				rgb: "#FF8C00",		h: 33,		s: 100,		l: 50,	],
-		[ name: "Dark Orchid",				rgb: "#9932CC",		h: 280,		s: 61,		l: 50,	],
-		[ name: "Dark Red",					rgb: "#8B0000",		h: 0,		s: 100,		l: 27,	],
-		[ name: "Dark Salmon",				rgb: "#E9967A",		h: 15,		s: 72,		l: 70,	],
-		[ name: "Dark Sea Green",			rgb: "#8FBC8F",		h: 120,		s: 25,		l: 65,	],
-		[ name: "Dark Slate Blue",			rgb: "#483D8B",		h: 248,		s: 39,		l: 39,	],
-		[ name: "Dark Slate Gray",			rgb: "#2F4F4F",		h: 180,		s: 25,		l: 25,	],
-		[ name: "Dark Turquoise",			rgb: "#00CED1",		h: 181,		s: 100,		l: 41,	],
-		[ name: "Dark Violet",				rgb: "#9400D3",		h: 282,		s: 100,		l: 41,	],
-		[ name: "Deep Pink",				rgb: "#FF1493",		h: 328,		s: 100,		l: 54,	],
-		[ name: "Deep Sky Blue",			rgb: "#00BFFF",		h: 195,		s: 100,		l: 50,	],
-		[ name: "Dim Gray",					rgb: "#696969",		h: 0,		s: 0,		l: 41,	],
-		[ name: "Dodger Blue",				rgb: "#1E90FF",		h: 210,		s: 100,		l: 56,	],
-		[ name: "Fire Brick",				rgb: "#B22222",		h: 0,		s: 68,		l: 42,	],
-		[ name: "Floral White",				rgb: "#FFFAF0",		h: 40,		s: 100,		l: 97,	],
-		[ name: "Forest Green",				rgb: "#228B22",		h: 120,		s: 61,		l: 34,	],
-		[ name: "Fuchsia",					rgb: "#FF00FF",		h: 300,		s: 100,		l: 50,	],
-		[ name: "Gainsboro",				rgb: "#DCDCDC",		h: 0,		s: 0,		l: 86,	],
-		[ name: "Ghost White",				rgb: "#F8F8FF",		h: 240,		s: 100,		l: 99,	],
-		[ name: "Gold",						rgb: "#FFD700",		h: 51,		s: 100,		l: 50,	],
-		[ name: "Golden Rod",				rgb: "#DAA520",		h: 43,		s: 74,		l: 49,	],
-		[ name: "Gray",						rgb: "#808080",		h: 0,		s: 0,		l: 50,	],
-		[ name: "Green",					rgb: "#008000",		h: 120,		s: 100,		l: 25,	],
-		[ name: "Green Yellow",				rgb: "#ADFF2F",		h: 84,		s: 100,		l: 59,	],
-		[ name: "Honeydew",					rgb: "#F0FFF0",		h: 120,		s: 100,		l: 97,	],
-		[ name: "Hot Pink",					rgb: "#FF69B4",		h: 330,		s: 100,		l: 71,	],
-		[ name: "Indian Red",				rgb: "#CD5C5C",		h: 0,		s: 53,		l: 58,	],
-		[ name: "Indigo",					rgb: "#4B0082",		h: 275,		s: 100,		l: 25,	],
-		[ name: "Ivory",					rgb: "#FFFFF0",		h: 60,		s: 100,		l: 97,	],
-		[ name: "Khaki",					rgb: "#F0E68C",		h: 54,		s: 77,		l: 75,	],
-		[ name: "Lavender",					rgb: "#E6E6FA",		h: 240,		s: 67,		l: 94,	],
-		[ name: "Lavender Blush",			rgb: "#FFF0F5",		h: 340,		s: 100,		l: 97,	],
-		[ name: "Lawn Green",				rgb: "#7CFC00",		h: 90,		s: 100,		l: 49,	],
-		[ name: "Lemon Chiffon",			rgb: "#FFFACD",		h: 54,		s: 100,		l: 90,	],
-		[ name: "Light Blue",				rgb: "#ADD8E6",		h: 195,		s: 53,		l: 79,	],
-		[ name: "Light Coral",				rgb: "#F08080",		h: 0,		s: 79,		l: 72,	],
-		[ name: "Light Cyan",				rgb: "#E0FFFF",		h: 180,		s: 100,		l: 94,	],
-		[ name: "Light Golden Rod Yellow",	rgb: "#FAFAD2",		h: 60,		s: 80,		l: 90,	],
-		[ name: "Light Gray",				rgb: "#D3D3D3",		h: 0,		s: 0,		l: 83,	],
-		[ name: "Light Green",				rgb: "#90EE90",		h: 120,		s: 73,		l: 75,	],
-		[ name: "Light Pink",				rgb: "#FFB6C1",		h: 351,		s: 100,		l: 86,	],
-		[ name: "Light Salmon",				rgb: "#FFA07A",		h: 17,		s: 100,		l: 74,	],
-		[ name: "Light Sea Green",			rgb: "#20B2AA",		h: 177,		s: 70,		l: 41,	],
-		[ name: "Light Sky Blue",			rgb: "#87CEFA",		h: 203,		s: 92,		l: 75,	],
-		[ name: "Light Slate Gray",			rgb: "#778899",		h: 210,		s: 14,		l: 53,	],
-		[ name: "Light Steel Blue",			rgb: "#B0C4DE",		h: 214,		s: 41,		l: 78,	],
-		[ name: "Light Yellow",				rgb: "#FFFFE0",		h: 60,		s: 100,		l: 94,	],
-		[ name: "Lime",						rgb: "#00FF00",		h: 120,		s: 100,		l: 50,	],
-		[ name: "Lime Green",				rgb: "#32CD32",		h: 120,		s: 61,		l: 50,	],
-		[ name: "Linen",					rgb: "#FAF0E6",		h: 30,		s: 67,		l: 94,	],
-		[ name: "Maroon",					rgb: "#800000",		h: 0,		s: 100,		l: 25,	],
-		[ name: "Medium Aquamarine",		rgb: "#66CDAA",		h: 160,		s: 51,		l: 60,	],
-		[ name: "Medium Blue",				rgb: "#0000CD",		h: 240,		s: 100,		l: 40,	],
-		[ name: "Medium Orchid",			rgb: "#BA55D3",		h: 288,		s: 59,		l: 58,	],
-		[ name: "Medium Purple",			rgb: "#9370DB",		h: 260,		s: 60,		l: 65,	],
-		[ name: "Medium Sea Green",			rgb: "#3CB371",		h: 147,		s: 50,		l: 47,	],
-		[ name: "Medium Slate Blue",		rgb: "#7B68EE",		h: 249,		s: 80,		l: 67,	],
-		[ name: "Medium Spring Green",		rgb: "#00FA9A",		h: 157,		s: 100,		l: 49,	],
-		[ name: "Medium Turquoise",			rgb: "#48D1CC",		h: 178,		s: 60,		l: 55,	],
-		[ name: "Medium Violet Red",		rgb: "#C71585",		h: 322,		s: 81,		l: 43,	],
-		[ name: "Midnight Blue",			rgb: "#191970",		h: 240,		s: 64,		l: 27,	],
-		[ name: "Mint Cream",				rgb: "#F5FFFA",		h: 150,		s: 100,		l: 98,	],
-		[ name: "Misty Rose",				rgb: "#FFE4E1",		h: 6,		s: 100,		l: 94,	],
-		[ name: "Moccasin",					rgb: "#FFE4B5",		h: 38,		s: 100,		l: 85,	],
-		[ name: "Navajo White",				rgb: "#FFDEAD",		h: 36,		s: 100,		l: 84,	],
-		[ name: "Navy",						rgb: "#000080",		h: 240,		s: 100,		l: 25,	],
-		[ name: "Old Lace",					rgb: "#FDF5E6",		h: 39,		s: 85,		l: 95,	],
-		[ name: "Olive",					rgb: "#808000",		h: 60,		s: 100,		l: 25,	],
-		[ name: "Olive Drab",				rgb: "#6B8E23",		h: 80,		s: 60,		l: 35,	],
-		[ name: "Orange",					rgb: "#FFA500",		h: 39,		s: 100,		l: 50,	],
-		[ name: "Orange Red",				rgb: "#FF4500",		h: 16,		s: 100,		l: 50,	],
-		[ name: "Orchid",					rgb: "#DA70D6",		h: 302,		s: 59,		l: 65,	],
-		[ name: "Pale Golden Rod",			rgb: "#EEE8AA",		h: 55,		s: 67,		l: 80,	],
-		[ name: "Pale Green",				rgb: "#98FB98",		h: 120,		s: 93,		l: 79,	],
-		[ name: "Pale Turquoise",			rgb: "#AFEEEE",		h: 180,		s: 65,		l: 81,	],
-		[ name: "Pale Violet Red",			rgb: "#DB7093",		h: 340,		s: 60,		l: 65,	],
-		[ name: "Papaya Whip",				rgb: "#FFEFD5",		h: 37,		s: 100,		l: 92,	],
-		[ name: "Peach Puff",				rgb: "#FFDAB9",		h: 28,		s: 100,		l: 86,	],
-		[ name: "Peru",						rgb: "#CD853F",		h: 30,		s: 59,		l: 53,	],
-		[ name: "Pink",						rgb: "#FFC0CB",		h: 350,		s: 100,		l: 88,	],
-		[ name: "Plum",						rgb: "#DDA0DD",		h: 300,		s: 47,		l: 75,	],
-		[ name: "Powder Blue",				rgb: "#B0E0E6",		h: 187,		s: 52,		l: 80,	],
-		[ name: "Purple",					rgb: "#800080",		h: 300,		s: 100,		l: 25,	],
-		[ name: "Red",						rgb: "#FF0000",		h: 0,		s: 100,		l: 50,	],
-		[ name: "Rosy Brown",				rgb: "#BC8F8F",		h: 0,		s: 25,		l: 65,	],
-		[ name: "Royal Blue",				rgb: "#4169E1",		h: 225,		s: 73,		l: 57,	],
-		[ name: "Saddle Brown",				rgb: "#8B4513",		h: 25,		s: 76,		l: 31,	],
-		[ name: "Salmon",					rgb: "#FA8072",		h: 6,		s: 93,		l: 71,	],
-		[ name: "Sandy Brown",				rgb: "#F4A460",		h: 28,		s: 87,		l: 67,	],
-		[ name: "Sea Green",				rgb: "#2E8B57",		h: 146,		s: 50,		l: 36,	],
-		[ name: "Sea Shell",				rgb: "#FFF5EE",		h: 25,		s: 100,		l: 97,	],
-		[ name: "Sienna",					rgb: "#A0522D",		h: 19,		s: 56,		l: 40,	],
-		[ name: "Silver",					rgb: "#C0C0C0",		h: 0,		s: 0,		l: 75,	],
-		[ name: "Sky Blue",					rgb: "#87CEEB",		h: 197,		s: 71,		l: 73,	],
-		[ name: "Slate Blue",				rgb: "#6A5ACD",		h: 248,		s: 53,		l: 58,	],
-		[ name: "Slate Gray",				rgb: "#708090",		h: 210,		s: 13,		l: 50,	],
-		[ name: "Snow",						rgb: "#FFFAFA",		h: 0,		s: 100,		l: 99,	],
-		[ name: "Spring Green",				rgb: "#00FF7F",		h: 150,		s: 100,		l: 50,	],
-		[ name: "Steel Blue",				rgb: "#4682B4",		h: 207,		s: 44,		l: 49,	],
-		[ name: "Tan",						rgb: "#D2B48C",		h: 34,		s: 44,		l: 69,	],
-		[ name: "Teal",						rgb: "#008080",		h: 180,		s: 100,		l: 25,	],
-		[ name: "Thistle",					rgb: "#D8BFD8",		h: 300,		s: 24,		l: 80,	],
-		[ name: "Tomato",					rgb: "#FF6347",		h: 9,		s: 100,		l: 64,	],
-		[ name: "Turquoise",				rgb: "#40E0D0",		h: 174,		s: 72,		l: 56,	],
-		[ name: "Violet",					rgb: "#EE82EE",		h: 300,		s: 76,		l: 72,	],
-		[ name: "Wheat",					rgb: "#F5DEB3",		h: 39,		s: 77,		l: 83,	],
-		[ name: "White Smoke",				rgb: "#F5F5F5",		h: 0,		s: 0,		l: 96,	],
-		[ name: "Yellow",					rgb: "#FFFF00",		h: 60,		s: 100,		l: 50,	],
-		[ name: "Yellow Green",				rgb: "#9ACD32",		h: 80,		s: 61,		l: 50,	],
-	]
+private List<String> colorOptions() {
+	return allColors()*.name
 }
 
-private colorOptions() {
-	return colors()*.name
+private List<Map> allColors() {
+	return [randomColor(), *colorUtil.ALL]
+}
+
+private Map randomColor() {
+	[name: "Random", rgb: "#000000", h: 0, s: 0, l: 0]
 }
 
 private getColorByName(name, ownerId = null, taskId = null) {
-	if (name == "Random") {    	
+	if (name == "Random") {
 		//randomize the color
-        def valName = "$ownerId-$taskId"
-        def randomIndex = 6 + Math.round(Math.random() * (colors().size() - 7)) as Integer
-        def result = getRandomValue(valName) ?: colors()[randomIndex]
-        setRandomValue(valName, result)
+		String valName = "$ownerId-$taskId"
+		def result = getRandomValue(valName) ?: colorUtil.RANDOM
+		setRandomValue(valName, result)
 		return result
 	}
-	for (color in colors()) {
-		if (color.name == name) {
-			return color
-		}
-	}
-	return [ name: "White", rgb: "#FFFFFF", h: 0, s: 100, l: 100, ]
+	return colorUtil.findByName(name) ?: colorUtil.WHITE
 }
 
 /******************************************************************************/
