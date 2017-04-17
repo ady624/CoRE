@@ -18,9 +18,10 @@
  *
  *  Version history
  */
-def version() {	return "v0.3.169.20170104" }
+def version() {	return "v0.3.16a.20170417" }
 /*
- *	12/30/2016 >>> v0.3.169.20170104 - RC - Moved colors() Map into core ST color utility to reduce Class file size and avoid Class file too large errors
+ *	04/17/2017 >>> v0.3.16a.20170417 - RC - Fixed a problem with internal HTTP requests passing query strings instead of body - thank you @destructure00
+ *	01/04/2017 >>> v0.3.169.20170104 - RC - Moved colors() Map into core ST color utility to reduce Class file size and avoid Class file too large errors
  *	12/20/2016 >>> v0.3.168.20161220 - RC - Fixed a bug with loading attributes coolingSetpoint and heatingSetpoint from variables, thank you @bridaus for pointing it out, also extended conditional time options to 360 minutes
  *	12/06/2016 >>> v0.3.167.20161206 - RC - Added some capabilities back - Light Bulb - removed Step Sensor as there is no more room :(
  *	11/21/2016 >>> v0.3.166.20161120 - RC - Added some capabilities back - had to remove some to make room for EchoSistant - CoRE is now reaching the max code base limit
@@ -7626,7 +7627,8 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 				headers: [
 					HOST: (uri.indexOf("/") > 0) ? uri.substring(0, uri.indexOf("/")) : uri,
 				],
-				query: data ?: null
+				query: method == "GET" ? data : null, //thank you @destructure00
+				body: method != "GET" ? data : null //thank you @destructure00    
 			))
 		} catch (all) {
 			debug "Error executing internal web request: $all", null, "error"
@@ -7636,8 +7638,8 @@ private task_vcmd_httpRequest(devices, action, task, suffix = "") {
 			debug "Sending external web request to: $uri", null, "info"
 			def requestParams = [
 				uri:  "${protocol}://${uri}",
-				query: method == "GET" ? data : null,
 				requestContentType: (method != "GET") && (contentType == "JSON") ? "application/json" : "application/x-www-form-urlencoded",
+				query: method == "GET" ? data : null,
 				body: method != "GET" ? data : null
 			]
 			def func = ""
