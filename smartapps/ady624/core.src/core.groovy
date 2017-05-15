@@ -226,13 +226,17 @@ private pageMainCoRE() {
 		}
 
 		section() {
-			def apps = getChildApps().sort{ it.label }
-			def running = apps.findAll{ it.getPistonEnabled() }.size()
+			def apps = getChildApps()
+			def running = settings.displayPistonsRunning ? apps.findAll{ it.getPistonEnabled() }.size() : apps.size()
 			def paused = apps.size - running
 			if (running + paused == 0) {
 				paragraph "You have not created any pistons yet.", required: false
 			} else {
-				paragraph "You have ${running ? running + ' running ' + (paused ? ' and ' : '') : ''}${paused ? paused + ' paused ' : ''}piston${running + paused > 0 ? 's' : ''}.", required: false
+				if( settings.displayPistonsRunning ) {
+					paragraph "You have ${running ? running + ' running ' + (paused ? ' and ' : '') : ''}${paused ? paused + ' paused ' : ''}piston${running + paused > 0 ? 's' : ''}.", required: false
+				} else {
+					paragraph "Piston Play/Pause Status has been turned off to improve performance"
+				}
 			}
 		}
 		section() {
@@ -275,6 +279,10 @@ def pageGeneralSettings(params) {
 		section(title: "Dashboard") {
 			href "pageDashboardTaps", title: "Taps", description: "Edit the list of taps on the dashboard", required: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/tap.png"
 			input "dashboardTheme", "enum", options: ["Classic", "Experimental"], title: "Dashboard theme", defaultValue: "Experimental", required: false
+		}
+
+		section(title: "Piston Pause/Play Info On Main Page") {
+			input "displayPistonsRunning", "bool", title: "Display Piston State", defaultValue: false, submitOnChange: true, required: false
 		}
 
 		section(title: "Expert Features") {
