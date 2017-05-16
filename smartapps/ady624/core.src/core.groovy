@@ -18,8 +18,9 @@
  *
  *  Version history
  */
-def version() {	return "v0.3.16a.20170417" }
+def version() {	return "v0.3.16b.20170515" }
 /*
+ *	05/15/2017 >>> v0.3.16b.20170515 - RC - Disable running/paused piston counts on main page to speed up load process
  *	04/17/2017 >>> v0.3.16a.20170417 - RC - Fixed a problem with internal HTTP requests passing query strings instead of body - thank you @destructure00
  *	01/04/2017 >>> v0.3.169.20170104 - RC - Moved colors() Map into core ST color utility to reduce Class file size and avoid Class file too large errors
  *	12/20/2016 >>> v0.3.168.20161220 - RC - Fixed a bug with loading attributes coolingSetpoint and heatingSetpoint from variables, thank you @bridaus for pointing it out, also extended conditional time options to 360 minutes
@@ -224,7 +225,7 @@ private pageMainCoRE() {
 				href "", title: "CoRE Dashboard", style: "external", url: url, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/dashboard.png", required: false
 			}
 		}
-
+		/* removed to allow execution with large number of pistons - ST lowered the timeout from 60s to 20s, causing this to fail. A LOT.
 		section() {
 			def apps = getChildApps().sort{ it.label }
 			def running = apps.findAll{ it.getPistonEnabled() }.size()
@@ -235,6 +236,7 @@ private pageMainCoRE() {
 				paragraph "You have ${running ? running + ' running ' + (paused ? ' and ' : '') : ''}${paused ? paused + ' paused ' : ''}piston${running + paused > 0 ? 's' : ''}.", required: false
 			}
 		}
+        */
 		section() {
 			app( name: "pistons", title: "Add a CoRE piston...", appName: "CoRE", namespace: "ady624", multiple: true, uninstall: false, image: "https://cdn.rawgit.com/ady624/CoRE/master/resources/images/icons/piston.png")
 		}
