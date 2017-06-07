@@ -18,8 +18,9 @@
  *
  *  Version history
  */
-def version() {	return "v0.3.16b.20170515" }
+def version() {	return "v0.3.16c.20170607" }
 /*
+ *	06/07/2017 >>> v0.3.16c.20170607 - RC - Extended setVideoLength to 120s for Blink cameras
  *	05/15/2017 >>> v0.3.16b.20170515 - RC - Disable running/paused piston counts on main page to speed up load process
  *	04/17/2017 >>> v0.3.16a.20170417 - RC - Fixed a problem with internal HTTP requests passing query strings instead of body - thank you @destructure00
  *	01/04/2017 >>> v0.3.169.20170104 - RC - Moved colors() Map into core ST color utility to reduce Class file size and avoid Class file too large errors
@@ -10574,7 +10575,7 @@ private commands() {
 		[ name: "ledOn",		display: "Turn LED on",					],
 		[ name: "ledOff",		display: "Turn LED off",				],
 		[ name: "ledAuto",		display: "Set LED to Auto",				],
-		[ name: "setVideoLength",display: "Set video length",			parameters: ["Seconds:number[1..10]"],	description: "Set video length to {0}s", ],
+		[ name: "setVideoLength",display: "Set video length",			parameters: ["Seconds:number[1..120]"],	description: "Set video length to {0}s", ],
 		//dlink camera
 		[ name: "pirOn",		display: "Enable PIR motion detection",	],
 		[ name: "pirOff",		display: "Disable PIR motion detection",],
