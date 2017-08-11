@@ -323,4 +323,3 @@ def disable() {
 	sendEvent(name: "enabled", value: "off", isStateChange: true)
 	sendEvent(name: "presence", value: "not present", isStateChange: true)
 }
-
