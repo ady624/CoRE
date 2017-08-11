@@ -8664,7 +8664,9 @@ private formatDayOfMonth(dom, dow) {
 	if (dom) {
 		if (dom.contains("week")) {
 			//relative day of week
-			return dom.replace("week", dow)
+            if (dow) {
+				return dom.replace("week", dow)
+            }
 		} else {
 			//dealing with a certain day of the month
 			if (dom.contains("last")) {
