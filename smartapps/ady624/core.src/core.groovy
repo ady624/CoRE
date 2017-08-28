@@ -18,8 +18,9 @@
  *
  *  Version history
  */
-def version() {	return "v0.3.16c.20170607" }
+def version() {	return "v0.3.16d.20170828" }
 /*
+ *	08/28/2017 >>> v0.3.16d.20170828 - RC - Fixed a problem where the value for emergencyHeat() was mistakenly set to "emergencyHeat" instead of "emergency heat" - thanks @RBoy
  *	06/07/2017 >>> v0.3.16c.20170607 - RC - Extended setVideoLength to 120s for Blink cameras
  *	05/15/2017 >>> v0.3.16b.20170515 - RC - Disable running/paused piston counts on main page to speed up load process
  *	04/17/2017 >>> v0.3.16a.20170417 - RC - Fixed a problem with internal HTTP requests passing query strings instead of body - thank you @destructure00
@@ -10508,7 +10509,7 @@ private commands() {
 		[ name: "thermostat.heat",							category: "Comfort",					group: defGroup,			display: "Set to Heat",					attribute: "thermostatMode",	value: "heat",	],
 		[ name: "thermostat.cool",							category: "Comfort",					group: defGroup,			display: "Set to Cool",					attribute: "thermostatMode",	value: "cool",	],
 		[ name: "thermostat.auto",							category: "Comfort",					group: defGroup,			display: "Set to Auto",					attribute: "thermostatMode",	value: "auto",	],
-		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: defGroup,			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergencyHeat",	],
+		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: defGroup,			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergency heat",	],
 		[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: defGroup,			display: "Quick set heating point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
 		[ name: "thermostat.quickSetCool",					category: "Comfort",					group: defGroup,			display: "Quick set cooling point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
 		[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "heatingSetpoint",	value: "*|decimal",	],
