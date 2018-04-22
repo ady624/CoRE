@@ -18,8 +18,10 @@
  *
  *  Version history
  */
-def version() {	return "v0.3.16c.20170607" }
+def version() {	return "v0.3.16e.20171219" }
 /*
+ *	12/19/2017 >>> v0.3.16e.20171219 - RC - Replaced recovery safety nets using unschedule() with a much more optimized method that does not affect ST as much as unschedule() does
+ *	08/28/2017 >>> v0.3.16d.20170828 - RC - Fixed a problem where the value for emergencyHeat() was mistakenly set to "emergencyHeat" instead of "emergency heat" - thanks @RBoy
  *	06/07/2017 >>> v0.3.16c.20170607 - RC - Extended setVideoLength to 120s for Blink cameras
  *	05/15/2017 >>> v0.3.16b.20170515 - RC - Disable running/paused piston counts on main page to speed up load process
  *	04/17/2017 >>> v0.3.16a.20170417 - RC - Fixed a problem with internal HTTP requests passing query strings instead of body - thank you @destructure00
@@ -2689,7 +2691,7 @@ mappings {
 }
 
 def api_dashboard() {
-	def cdn = "https://core.caramaliu.com/dashboard"
+	def cdn = "https://core.webcore.co/dashboard"
 	def theme = (settings["dashboardTheme"] ?: "experimental").toLowerCase()
 	render contentType: "text/html", data: "<!DOCTYPE html><html lang=\"en\" ng-app=\"CoRE\"><base href=\"${state.endpoint}\"><head><meta charset=\"utf-8\"/><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/components/components.min.css\"/><link rel=\"stylesheet prefetch\" href=\"$cdn/static/$theme/css/app.css\"/><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/components/components.min.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/app.js\"></script><script type=\"text/javascript\" src=\"$cdn/static/$theme/js/modules/dashboard.module.js\"></script></head><body><ng-view></ng-view></body></html>"
 }
@@ -3907,6 +3909,10 @@ def timeHandler() {
 	debug "Piston done in ${perf}ms", -1, "trace"
 }
 
+def timeoutRecoveryHandler_CoRE() {
+	recoveryHandler(null, true)
+}
+
 def recoveryHandler(evt = null, showWarning = true) {
 	if (evt) {
 		if (evt.jsonData && evt.jsonData.rebuild) {
@@ -3921,7 +3927,8 @@ def recoveryHandler(evt = null, showWarning = true) {
 	//executes whenever a device in the primary if block has an event
 	//starting primary IF block evaluation
 	def perf = now()
-	debug "Received a recovery request", 1, "trace"
+    //removed 2017/11/13 to alleviate tombstone issues
+	//debug "Received a recovery request", 1, "trace"
 	if (!evt && showWarning) debug "CAUTION: Received a recovery event", 1, "warn"
 	//reset markers for all tasks, the owner of the task probably crashed :)
 	def tasks = atomicState.tasks
@@ -6555,15 +6562,14 @@ private processTasks() {
 	//pfew, off to process tasks
 	//first, we make a variable to help us pick up where we left off
 	state.rerunSchedule = false
+    //new safety net, ST will execute this method if we timeout
+    setTimeoutRecoveryHandler("timeoutRecoveryHandler_CoRE")
 	def appData = state.run == "config" ? state.config.app : state.app
 	def tasks = null
 	def perf = now()
 	def marker = now()
 	debug "Processing tasks (${version()})", 1, "trace"
 	try {
-
-		def safetyNet = false
-
 		//find out if we need to execute the tasks
 		def restricted = (checkPistonRestriction() != null)
 		state.restricted = restricted
@@ -6589,12 +6595,6 @@ private processTasks() {
 					//throw away the task list as this procedure below may take time, making our list stale
 					//not to worry, we'll read it again on our next iteration
 					tasks = null
-					//since we may timeout here, install the safety net
-					if (!safetyNet) {
-						safetyNet = true
-						debug "Installing ST safety net", null, "trace"
-						runIn(90, recoveryHandler)
-					}
 					//trigger an event
 					if (!restricted) {
 						if (getCondition(task.ownerId, true)) {
@@ -6730,18 +6730,12 @@ private processTasks() {
 				setVariable("\$nextScheduledTime", null, true)
 				atomicState.nextScheduledTime = null
 				state.nextScheduledTime = nextTime
-				unschedule(timeHandler)
+                //removed 2017/11/13 to alleviate tombstone issues
+				//unschedule(timeHandler)
 			}
 
 			//we're done with the scheduling, let's do some real work, if we have any
 			if (immediateTasks) {
-				if (!safetyNet) {
-					//setup a safety net ST schedule to resume the process if we fail
-					safetyNet = true
-					debug "Installing ST safety net", null, "trace"
-					runIn(90, recoveryHandler)
-				}
-
 				debug "Found $immediateTasks task${immediateTasks > 1 ? "s" : ""} due at this time"
 				//we loop a seemingly infinite loop
 				//no worries, we'll break out of it, maybe :)
@@ -6803,8 +6797,9 @@ private processTasks() {
 		//DO NOT REMOVE THE NEXT LINE - we need this line for instances that do not run the exitPoint()
 		state.tasks = tasks
 
-		debug "Removing any existing ST safety nets", null, "trace"
-		unschedule(recoveryHandler)
+		//removed 2017/11/13 to alleviate tombstone issues
+		//debug "Removing any existing ST safety nets", null, "trace"
+		//unschedule(recoveryHandler)
 	} catch (e) {
 		debug "ERROR: Error while executing processTasks: ", null, "error", e
 	}
@@ -10510,7 +10505,7 @@ private commands() {
 		[ name: "thermostat.heat",							category: "Comfort",					group: defGroup,			display: "Set to Heat",					attribute: "thermostatMode",	value: "heat",	],
 		[ name: "thermostat.cool",							category: "Comfort",					group: defGroup,			display: "Set to Cool",					attribute: "thermostatMode",	value: "cool",	],
 		[ name: "thermostat.auto",							category: "Comfort",					group: defGroup,			display: "Set to Auto",					attribute: "thermostatMode",	value: "auto",	],
-		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: defGroup,			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergencyHeat",	],
+		[ name: "thermostat.emergencyHeat",					category: "Comfort",					group: defGroup,			display: "Set to Emergency Heat",		attribute: "thermostatMode",	value: "emergency heat",	],
 		[ name: "thermostat.quickSetHeat",					category: "Comfort",					group: defGroup,			display: "Quick set heating point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick heating point at {0}$tempUnit",	],
 		[ name: "thermostat.quickSetCool",					category: "Comfort",					group: defGroup,			display: "Quick set cooling point",		parameters: ["Desired temperature:thermostatSetpoint"], description: "Set quick cooling point at {0}$tempUnit",	],
 		[ name: "thermostat.setHeatingSetpoint",			category: "Comfort",					group: defGroup,			display: "Set heating point",			parameters: ["Desired temperature:thermostatSetpoint"], description: "Set heating point at {0}$tempUnit",	attribute: "heatingSetpoint",	value: "*|decimal",	],
