@@ -854,7 +854,7 @@ private getConditionGroupPageContent(params, condition) {
 	try {
 		if (condition) {
 			def id = (int) condition.id
-			def pid = (int) condition.parentId ? (int) condition.parentId : (int)condition.id
+			def pid = condition.parentId ? (int) condition.parentId : (int)condition.id
 			def nextLevel = (int) (condition.level ? condition.level : 0) + 1
 			def cnt = 0
 			section() {
@@ -3480,7 +3480,7 @@ private getLastConditionId(parent) {
 private createAction(parentId, onState = true, actionId = null) {
 	def action = [:]
 	//give the new condition an id
-	action.id = (int) actionId == null ? getNextActionId() : actionId
+	action.id = actionId == null ? getNextActionId() : actionId
 	action.pid = (int) parentId
 	action.rs = !!onState
 	state.config.app.actions.push(action)
