@@ -10414,6 +10414,7 @@ private capabilities() {
 		[ name: "refresh",							display: "Refresh",							commands: ["refresh"],																multiple: true,			devices: "refreshable devices",	],
 		[ name: "relativeHumidityMeasurement",		display: "Relative Humidity Measurement",	attribute: "humidity",					multiple: true,			devices: "humidity sensors",	],
 		[ name: "relaySwitch",						display: "Relay Switch",					attribute: "switch",					commands: ["on", "off"],															multiple: true,			devices: "relays",			],
+		[ name: "robotCleanerMovement",             display: "Robot Cleaner Movement",          attribute: "robotCleanerMovement",      commands: ["setRobotCleanerMovement"],                                              multiple: true,         devices: "robot cleaners"   ],
 		[ name: "routine",							display: "Routine",							attribute: "routineExecuted",			commands: ["executeRoutine"],														multiple: true,			virtualDevice: location,	virtualDeviceName: "Routine"	],
 		[ name: "sensor",							display: "Sensor",							attribute: "sensor",					multiple: true,			devices: "sensors",	],
 		[ name: "shockSensor",						display: "Shock Sensor",					attribute: "shock",						multiple: true,			devices: "shock sensors",	],
@@ -10598,6 +10599,9 @@ private commands() {
 		[ name: "low",	display: "Set to Low"],
 		[ name: "med",	display: "Set to Medium"],
 		[ name: "high",	display: "Set to High"],
+
+ 		// robotCleanerMovement by @mbafford
+ 		[ name: "robotCleanerMovement.setRobotCleanerMovement", display: "Set Robot Cleaner Movement", parameters: ["Set Movement:robotCleanerMovement"] ],
 	]
 }
 
@@ -10802,6 +10806,7 @@ private attributes() {
 		[ name: "askAlexaMacro",			type: "askAlexaMacro",	options: state.run == "config" ? listAskAlexaMacros() : [], valueType: "enum"],
 		[ name: "echoSistantProfile",		type: "echoSistantProfile",	options: state.run == "config" ? listEchoSistantProfiles() : [], valueType: "enum"],
 		[ name: "ifttt",					type: "ifttt",			valueType: "string"],
+ 		[ name: "robotCleanerMovement",     type: "enum",           options: ["homing", "idle", "charging", "alarm", "powerOff", "reserve", "point", "after", "cleaning"] ],
 	]
 	return state.temp.attributes
 }
